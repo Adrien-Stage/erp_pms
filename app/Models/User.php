@@ -69,4 +69,39 @@ class User extends Authenticatable
     {
         return \Illuminate\Support\Facades\Cache::has('user-is-online-' . $this->id);
     }
+
+    /**
+     * Helper : Vérifie si l'utilisateur possède l'un des rôles spécifiés
+     */
+    public function hasAnyRole(array $roles): bool
+    {
+        return in_array($this->role, $roles);
+    }
+
+    /**
+     * Helper : Vérifie si l'utilisateur possède un rôle spécifique
+     */
+    public function hasRole(string $role): bool
+    {
+        return $this->role === $role;
+    }
+
+    /**
+     * Helper : Alias pour isTechAdmin() pour la rétrocompatibilité des middlewares
+     */
+    public function isAdmin(): bool
+    {
+        return $this->isTechAdmin();
+    }
+
+    /**
+     * Helper : Vérifie si l'utilisateur (propriétaire) possède ou a le droit de voir l'établissement spécifié
+     */
+    public function canViewTenant($tenantId): bool
+    {
+        if ($this->isTechAdmin()) {
+            return true;
+        }
+        return $this->tenants()->where('id', $tenantId)->exists();
+    }
 }

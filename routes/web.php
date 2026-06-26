@@ -19,7 +19,7 @@ Route::post('/login', [AuthenticatedSessionController::class, 'store']);
 Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
 
 // === ESPACE TECH (Supervision Technique) ===
-Route::middleware(['auth'])->prefix('tech')->name('tech.')->group(function () {
+Route::middleware(['auth', 'role:tech_admin'])->prefix('tech')->name('tech.')->group(function () {
     // Dashboard principal TECH (Santé des conteneurs, statistiques globales)
     Route::get('/dashboard', [AdminAuditController::class, 'index'])->name('dashboard');
 
@@ -47,10 +47,10 @@ Route::middleware(['auth'])->prefix('tech')->name('tech.')->group(function () {
 });
 
 // === ESPACE BUSINESS (Vue Propriétaire) ===
-Route::middleware(['auth'])->prefix('business')->name('business.')->group(function () {
+Route::middleware(['auth', 'role:owner'])->prefix('business')->name('business.')->group(function () {
     Route::get('/dashboard', [AdminAuditController::class, 'businessDashboard'])->name('dashboard');
-    Route::get('/establishments', [AdminAuditController::class, 'businessEstablishments'])->name('establishments');
-    Route::get('/analytics', [AdminAuditController::class, 'businessAnalytics'])->name('analytics');
-    Route::get('/employees', [AdminAuditController::class, 'businessEmployees'])->name('employees');
-    Route::get('/revenue', [AdminAuditController::class, 'businessRevenue'])->name('revenue');
+    Route::get('/establishments', [AdminAuditController::class, 'businessDashboard'])->name('establishments');
+    Route::get('/analytics', [AdminAuditController::class, 'businessDashboard'])->name('analytics');
+    Route::get('/employees', [AdminAuditController::class, 'businessDashboard'])->name('employees');
+    Route::get('/revenue', [AdminAuditController::class, 'businessDashboard'])->name('revenue');
 });

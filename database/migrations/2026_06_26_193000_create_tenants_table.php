@@ -18,6 +18,7 @@ return new class extends Migration
             $table->string('address')->nullable();
             $table->string('phone')->nullable();
             $table->string('email')->nullable();
+            $table->string('currency', 10)->default('XAF');
             
             // Docker configuration
             $table->string('db_name');

@@ -173,15 +173,21 @@ class AdminAuditController extends Controller
     public function exportBackupTenant(?Tenant $tenant = null) { return response()->json(['error' => 'Non implémenté']); }
 
     // Espace BUSINESS
-    public function businessDashboard()
+    public function businessDashboard(Request $request)
     {
         $user = Auth::user();
         if (!$user || !$user->isOwner()) { abort(403); }
-        return view('admin.dashboard', ['activeTab' => 'business']);
-    }
 
-    public function businessEstablishments() { return view('admin.dashboard'); }
-    public function businessAnalytics() { return view('admin.dashboard'); }
-    public function businessEmployees() { return view('admin.dashboard'); }
-    public function businessRevenue() { return view('admin.dashboard'); }
+        $segment = $request->segment(2); // business/{segment}
+        $activeTab = $request->input('tab', $segment ?: 'dashboard');
+
+        if (!in_array($activeTab, ['dashboard', 'establishments', 'analytics', 'employees', 'revenue'])) {
+            $activeTab = 'dashboard';
+        }
+
+        // Charger uniquement les établissements appartenant à ce propriétaire
+        $tenants = $user->tenants()->orderBy('name')->get();
+
+        return view('admin.dashboard', compact('activeTab', 'tenants'));
+    }
 }

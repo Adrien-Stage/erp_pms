@@ -1,66 +1,104 @@
 @php
-    $tabs = [
-        'dashboard' => [
-            'label' => 'Supervision',
-            'title' => 'Supervision multi-etablissements',
-            'description' => 'Vue globale des etablissements, utilisateurs, activite, alertes et indicateurs consolides.',
-            'items' => ['Etablissements actifs', 'Utilisateurs actifs', 'Reservations du jour', 'Alertes globales'],
-        ],
-        'tenants' => [
-            'label' => 'Etablissements',
-            'title' => 'Gestion des etablissements',
-            'description' => 'Creation, configuration, activation, suspension et diagnostic des tenants.',
-            'items' => ['Creation tenant', 'Configuration generale', 'Modules actifs', 'Etat onboarding'],
-        ],
-        'managers' => [
-            'label' => 'Managers',
-            'title' => 'Gestion des managers',
-            'description' => 'Creation, activation, reinitialisation et rattachement des managers aux etablissements.',
-            'items' => ['Compte manager', 'Reinitialisation mot de passe', 'Activation compte', 'Rattachement tenant'],
-        ],
-        'roles' => [
-            'label' => 'Roles',
-            'title' => 'Roles et permissions',
-            'description' => 'Consultation des roles operationnels et configuration future des permissions par module.',
-            'items' => ['Roles disponibles', 'Permissions par module', 'Roles par tenant', 'Roles personnalises'],
-        ],
-        'modules' => [
-            'label' => 'Modules',
-            'title' => 'Modules plateforme',
-            'description' => 'Activation des modules disponibles selon les besoins de chaque etablissement.',
-            'items' => ['Hotel', 'Restaurant', 'Boutique', 'Housekeeping', 'Comptabilite', 'IA'],
-        ],
-        'support' => [
-            'label' => 'Support',
-            'title' => 'Support operationnel',
-            'description' => 'Lecture globale et futur mode assistance audite pour diagnostiquer un etablissement.',
-            'items' => ['Mode lecture', 'Mode assistance', 'Justification', 'Historique interventions'],
-        ],
-        'settings' => [
-            'label' => 'Configuration',
-            'title' => 'Configuration globale',
-            'description' => 'Parametres applicatifs, limites, integrations et statuts techniques de la plateforme.',
-            'items' => ['Parametres globaux', 'Limites tenant', 'Integrations', 'Etat technique'],
-        ],
-        'billing' => [
-            'label' => 'Licences',
-            'title' => 'Abonnements et licences',
-            'description' => 'Gestion future des plans, modules inclus, echeances et suspensions.',
-            'items' => ['Plan actif', 'Modules inclus', 'Expiration', 'Historique abonnement'],
-        ],
-        'imports' => [
-            'label' => 'Import/Export',
-            'title' => 'Import et export',
-            'description' => 'Zone dediee aux imports et exports de donnees sous forme de fichiers Excel.',
-            'items' => ['Import etablissements', 'Import utilisateurs', 'Export audit', 'Export supervision'],
-        ],
-        'system' => [
-            'label' => 'Systeme',
-            'title' => 'Sante systeme',
-            'description' => 'Surveillance technique des services, files, integrations et erreurs applicatives.',
-            'items' => ['Files attente', 'Erreurs API', 'Emails', 'Stockage'],
-        ],
-    ];
+    $isTech = auth()->user()->isTechAdmin();
+    $isOwner = auth()->user()->isOwner();
+
+    if ($isTech) {
+        $tabs = [
+            'dashboard' => [
+                'label' => 'Supervision',
+                'title' => 'Supervision multi-etablissements',
+                'description' => 'Vue globale des etablissements, utilisateurs, activite, alertes et indicateurs consolides.',
+                'items' => ['Etablissements actifs', 'Utilisateurs actifs', 'Reservations du jour', 'Alertes globales'],
+            ],
+            'tenants' => [
+                'label' => 'Etablissements',
+                'title' => 'Gestion des etablissements',
+                'description' => 'Creation, configuration, activation, suspension et diagnostic des tenants.',
+                'items' => ['Creation tenant', 'Configuration generale', 'Modules actifs', 'Etat onboarding'],
+            ],
+            'managers' => [
+                'label' => 'Managers',
+                'title' => 'Gestion des managers',
+                'description' => 'Creation, activation, reinitialisation et rattachement des managers aux etablissements.',
+                'items' => ['Compte manager', 'Reinitialisation mot de passe', 'Activation compte', 'Rattachement tenant'],
+            ],
+            'roles' => [
+                'label' => 'Roles',
+                'title' => 'Roles et permissions',
+                'description' => 'Consultation des roles operationnels et configuration future des permissions par module.',
+                'items' => ['Roles disponibles', 'Permissions par module', 'Roles par tenant', 'Roles personnalises'],
+            ],
+            'modules' => [
+                'label' => 'Modules',
+                'title' => 'Modules plateforme',
+                'description' => 'Activation des modules disponibles selon les besoins de chaque etablissement.',
+                'items' => ['Hotel', 'Restaurant', 'Boutique', 'Housekeeping', 'Comptabilite', 'IA'],
+            ],
+            'support' => [
+                'label' => 'Support',
+                'title' => 'Support operationnel',
+                'description' => 'Lecture globale et futur mode assistance audite pour diagnostiquer un etablissement.',
+                'items' => ['Mode lecture', 'Mode assistance', 'Justification', 'Historique interventions'],
+            ],
+            'settings' => [
+                'label' => 'Configuration',
+                'title' => 'Configuration globale',
+                'description' => 'Parametres applicatifs, limites, integrations et statuts techniques de la plateforme.',
+                'items' => ['Parametres globaux', 'Limites tenant', 'Integrations', 'Etat technique'],
+            ],
+            'billing' => [
+                'label' => 'Licences',
+                'title' => 'Abonnements et licences',
+                'description' => 'Gestion future des plans, modules inclus, echeances et suspensions.',
+                'items' => ['Plan actif', 'Modules inclus', 'Expiration', 'Historique abonnement'],
+            ],
+            'imports' => [
+                'label' => 'Import/Export',
+                'title' => 'Import et export',
+                'description' => 'Zone dediee aux imports et exports de donnees sous forme de fichiers Excel.',
+                'items' => ['Import etablissements', 'Import utilisateurs', 'Export audit', 'Export supervision'],
+            ],
+            'system' => [
+                'label' => 'Systeme',
+                'title' => 'Sante systeme',
+                'description' => 'Surveillance technique des services, files, integrations et erreurs applicatives.',
+                'items' => ['Files attente', 'Erreurs API', 'Emails', 'Stockage'],
+            ],
+        ];
+    } else {
+        $tabs = [
+            'dashboard' => [
+                'label' => 'Vue d\'ensemble',
+                'title' => 'Tableau de bord Business',
+                'description' => 'Indicateurs consolidés de vos établissements.',
+                'items' => ['Revenus de l\'année', 'Taux d\'occupation', 'Réservations consolidées', 'Status opérationnel'],
+            ],
+            'establishments' => [
+                'label' => 'Mes Établissements',
+                'title' => 'Registre de mes établissements',
+                'description' => 'Consulter et accéder à vos établissements.',
+                'items' => ['Hôtels', 'Restaurants', 'Boutiques', 'Housekeeping'],
+            ],
+            'analytics' => [
+                'label' => 'Statistiques',
+                'title' => 'Analyses et statistiques',
+                'description' => 'Rapports détaillés de performance et croissance.',
+                'items' => ['Volume réservations', 'Fidélité client', 'Fréquentation'],
+            ],
+            'employees' => [
+                'label' => 'Employés',
+                'title' => 'Gestion des employés',
+                'description' => 'Registre des employés associés à vos établissements.',
+                'items' => ['Membres du personnel', 'Activités récentes', 'Permissions'],
+            ],
+            'revenue' => [
+                'label' => 'Revenus',
+                'title' => 'Suivi financier',
+                'description' => 'Détails des transactions et du chiffre d\'affaires consolidé.',
+                'items' => ['Chiffre d\'affaires', 'Dépenses', 'Bilan financier'],
+            ],
+        ];
+    }
 
     $activeTab = request('tab', 'dashboard');
     if (!array_key_exists($activeTab, $tabs)) {
@@ -87,13 +125,24 @@
     <header class="sticky top-0 z-30 w-full bg-[#0f172a] border-b border-slate-800 text-white shadow-md">
         <div class="mx-auto max-w-7xl px-5 lg:px-8 flex items-center justify-between h-16">
             <div class="flex items-center gap-8">
-                <div class="text-sm font-extrabold uppercase tracking-wider text-white">
-                    ADMIN GLOBAL
+                <div class="flex items-center gap-2">
+                    <div class="text-sm font-extrabold uppercase tracking-wider text-white">
+                        MEKA ERP
+                    </div>
+                    @if($isTech)
+                        <span class="inline-flex items-center rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-400 border border-emerald-500/30">
+                            TECH
+                        </span>
+                    @else
+                        <span class="inline-flex items-center rounded-full bg-indigo-500/20 px-2 py-0.5 text-[10px] font-bold text-indigo-400 border border-indigo-500/30">
+                            BUSINESS
+                        </span>
+                    @endif
                 </div>
                 <nav class="hidden md:flex items-center gap-1.5" aria-label="Navigation administration">
                     @foreach($tabs as $key => $tab)
                         <a
-                            href="{{ route('tech.dashboard', ['tab' => $key]) }}"
+                            href="{{ route($isTech ? 'tech.dashboard' : 'business.dashboard', ['tab' => $key]) }}"
                             class="rounded-md px-3 py-1.5 text-xs font-semibold tracking-wide transition {{ $activeTab === $key ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-300 hover:bg-slate-800 hover:text-white' }}"
                         >
                             {{ $tab['label'] }}
@@ -114,7 +163,7 @@
             <div class="flex gap-1.5 min-w-max">
                 @foreach($tabs as $key => $tab)
                     <a
-                        href="{{ route('tech.dashboard', ['tab' => $key]) }}"
+                        href="{{ route($isTech ? 'tech.dashboard' : 'business.dashboard', ['tab' => $key]) }}"
                         class="rounded-md px-2.5 py-1 text-xs font-semibold transition {{ $activeTab === $key ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white' }}"
                     >
                         {{ $tab['label'] }}
@@ -168,28 +217,30 @@
             </div>
         @endif
 
-        @if($activeTab === 'tenants')
+        @if($activeTab === 'tenants' || $activeTab === 'establishments')
             <!-- ================= GESTION DES ETABLISSEMENTS LAYOUT ================= -->
             
             <!-- Breadcrumb Path -->
-            <p class="text-[10px] font-bold tracking-widest text-indigo-600 uppercase">ETABLISSEMENTS</p>
+            <p class="text-[10px] font-bold tracking-widest text-indigo-600 uppercase">{{ $isTech ? 'ÉTABLISSEMENTS' : 'MES ÉTABLISSEMENTS' }}</p>
             
             <!-- Page Title and Subtitle Row -->
             <div class="mt-2 flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-2 border-b border-slate-200 pb-4">
                 <div>
-                    <h1 class="text-2xl font-extrabold tracking-tight text-slate-800 font-heading">Gestion des Établissements</h1>
-                    <p class="text-xs text-slate-500 mt-1">Gérer les informations générales, le statut et les paramètres des filiales de l'ONG.</p>
+                    <h1 class="text-2xl font-extrabold tracking-tight text-slate-800 font-heading">{{ $isTech ? 'Gestion des Établissements' : 'Mes Établissements' }}</h1>
+                    <p class="text-xs text-slate-500 mt-1">{{ $isTech ? 'Gérer les informations générales, le statut et les paramètres des filiales de l\'ONG.' : 'Consulter et accéder à vos établissements actifs.' }}</p>
                 </div>
-                <a href="{{ route('tech.establishments.create') }}" class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 transition group">
-                    <svg class="h-4 w-4 transition-transform group-hover:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                    </svg>
-                    Nouvel Établissement
-                </a>
+                @if($isTech)
+                    <a href="{{ route('tech.establishments.create') }}" class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 transition group">
+                        <svg class="h-4 w-4 transition-transform group-hover:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                        </svg>
+                        Nouvel Établissement
+                    </a>
+                @endif
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
-                @foreach($tenants as $tenant)
+                @forelse($tenants as $tenant)
                     <div class="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden flex flex-col justify-between group hover:shadow-md hover:border-slate-300 transition-all duration-200">
                         <div>
                             <!-- Header with logo / image placeholder -->
@@ -235,19 +286,36 @@
                         
                         <!-- Actions -->
                         <div class="bg-slate-50 px-5 py-3 border-t border-slate-100 flex justify-end">
-                            <a 
-                                href="{{ route('tech.establishments.show', $tenant) }}"
-                                class="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-sm"
-                            >
-                                <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28z" />
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                </svg>
-                                Gérer
-                            </a>
+                            @if($isTech)
+                                <a 
+                                    href="{{ route('tech.establishments.show', $tenant) }}"
+                                    class="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-sm"
+                                >
+                                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28z" />
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    </svg>
+                                    Gérer
+                                </a>
+                            @else
+                                <a 
+                                    href="http://{{ $tenant->slug }}.localhost:8080"
+                                    target="_blank"
+                                    class="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-sm"
+                                >
+                                    <span>Accéder</span>
+                                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                                    </svg>
+                                </a>
+                            @endif
                         </div>
                     </div>
-                @endforeach
+                @empty
+                    <div class="col-span-full py-12 text-center text-slate-400 italic text-xs bg-white rounded-lg border border-slate-200">
+                        Aucun établissement enregistré pour le moment.
+                    </div>
+                @endforelse
             </div>
         @elseif($activeTab === 'imports')
             <!-- ================= IMPORT & EXPORT LAYOUT ================= -->
