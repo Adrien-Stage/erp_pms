@@ -100,7 +100,7 @@
         ];
     }
 
-    $activeTab = request('tab', 'dashboard');
+    $activeTab = $activeTab ?? request('tab', 'dashboard');
     if (!array_key_exists($activeTab, $tabs)) {
         $activeTab = 'dashboard';
     }
@@ -278,7 +278,7 @@
                                     </div>
                                     <div class="flex justify-between items-center">
                                         <span class="text-slate-400">Utilisateurs :</span>
-                                        <span class="font-semibold text-slate-700">{{ $tenant->users_count ?? $tenant->users()->count() }}</span>
+                                        <span class="font-semibold text-slate-700">{{ $tenant->users_count ?? 0 }}</span>
                                     </div>
                                 </div>
                             </div>
