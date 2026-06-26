@@ -4,19 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\HasMany;
-
-/**
- * Tenant représente un établissement de l'ONG.
- * 
- * Architecture : Un tenant = un établissement physique (Villa Boutanga, 
- * futurs établissements). Toutes les données sont isolées par tenant_id.
- * 
- * @property string $name Nom de l'établissement
- * @property string $slug Identifiant unique URL-friendly
- * @property array $settings Configuration JSON par établissement
- * @property string $currency Devise par défaut (XAF/FCFA pour le Cameroun)
- */
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Tenant extends Model
 {
@@ -28,48 +16,47 @@ class Tenant extends Model
         'address',
         'phone',
         'email',
-        'settings',
-        'currency',
+        
+        // Configuration Docker / Base de données
+        'db_name',
+        'db_username',
+        'db_password',
+        'docker_app_container',
+        'docker_db_container',
+        'docker_status', // running, stopped, creating, error
+        'app_port',
+        'db_port',
+        
+        // Modules & Features
+        'api_enabled',
+        'website_enabled',
+        'modules',
+        
+        // Propriétaire et statut
         'is_active',
+        'owner_id',
+        
+        // Métadonnées
+        'settings',
+        'provisioned_at',
+        'last_health_check',
     ];
 
     protected $casts = [
-        'settings' => 'array', // PostgreSQL JSON column
+        'settings' => 'array',
+        'modules' => 'array',
         'is_active' => 'boolean',
+        'api_enabled' => 'boolean',
+        'website_enabled' => 'boolean',
+        'provisioned_at' => 'datetime',
+        'last_health_check' => 'datetime',
     ];
 
     /**
-     * Les utilisateurs de cet établissement
-     * Relation : Un tenant a plusieurs users
+     * Relation : L'établissement appartient à un propriétaire (owner/user).
      */
-    public function users(): HasMany
+    public function owner(): BelongsTo
     {
-        return $this->hasMany(User::class);
-    }
-
-    /**
-     * Les chambres de cet établissement
-     */
-    public function rooms(): HasMany
-    {
-        return $this->hasMany(Room::class);
-    }
-
-    /**
-     * Les réservations de cet établissement
-     */
-    public function bookings(): HasMany
-    {
-        return $this->hasMany(Booking::class);
-    }
-
-    /**
-     * Les clients de cet établissement
-     * Note : Un client peut être partagé entre tenants en V2, 
-     * mais pour l'MVP, isolation stricte.
-     */
-    public function customers(): HasMany
-    {
-        return $this->hasMany(Customer::class);
+        return $this->belongsTo(User::class, 'owner_id');
     }
 }

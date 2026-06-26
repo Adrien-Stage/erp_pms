@@ -10,24 +10,18 @@ use Illuminate\Support\Facades\Request;
 class AuditLog extends Model
 {
     protected $fillable = [
-        'tenant_id',
         'user_id',
         'event_type',
-        'action',
         'module',
+        'description',
+        'payload',
         'ip_address',
         'user_agent',
-        'payload',
     ];
 
     protected $casts = [
         'payload' => 'array',
     ];
-
-    public function tenant(): BelongsTo
-    {
-        return $this->belongsTo(Tenant::class);
-    }
 
     public function user(): BelongsTo
     {
@@ -37,28 +31,17 @@ class AuditLog extends Model
     /**
      * Helper static method to log audit events easily.
      */
-    public static function record(?int $userId, string $eventType, string $action, ?string $module = null, ?array $payload = null): self
+    public static function record(?int $userId, string $eventType, string $description, ?string $module = null, ?array $payload = null): self
     {
         if (!$userId && Auth::check()) {
             $userId = Auth::id();
         }
 
-        $tenantId = null;
-        if ($userId) {
-            $user = User::find($userId);
-            if ($user) {
-                $tenantId = $user->tenant_id;
-            }
-        } elseif (Auth::check()) {
-            $tenantId = Auth::user()->tenant_id;
-        }
-
         return self::create([
-            'tenant_id' => $tenantId,
             'user_id' => $userId,
             'event_type' => $eventType,
-            'action' => $action,
-            'module' => $module,
+            'module' => $module ?? 'system',
+            'description' => $description,
             'ip_address' => Request::ip(),
             'user_agent' => Request::userAgent(),
             'payload' => $payload,

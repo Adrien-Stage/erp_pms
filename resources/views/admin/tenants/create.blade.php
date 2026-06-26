@@ -39,7 +39,7 @@
                 <nav class="hidden md:flex items-center gap-1.5" aria-label="Navigation administration">
                     @foreach($tabs as $key => $tab)
                         <a
-                            href="{{ route('admin.dashboard', ['tab' => $key]) }}"
+                            href="{{ route('tech.dashboard', ['tab' => $key]) }}"
                             class="rounded-md px-3 py-1.5 text-xs font-semibold tracking-wide transition {{ $activeTab === $key ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-300 hover:bg-slate-800 hover:text-white' }}"
                         >
                             {{ $tab['label'] }}
@@ -97,7 +97,7 @@
 
         <!-- Breadcrumb -->
         <nav class="flex items-center gap-2 text-xs text-slate-400 mb-6">
-            <a href="{{ route('admin.dashboard', ['tab' => 'tenants']) }}" class="hover:text-indigo-600 transition font-semibold">Établissements</a>
+            <a href="{{ route('tech.dashboard', ['tab' => 'tenants']) }}" class="hover:text-indigo-600 transition font-semibold">Établissements</a>
             <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
             <span class="text-slate-600 font-bold">Nouvel Établissement</span>
         </nav>
@@ -127,7 +127,7 @@
             </div>
         @endif
 
-        <form action="{{ route('admin.tenants.store') }}" method="POST" enctype="multipart/form-data" class="space-y-8">
+        <form action="{{ route('tech.establishments.store') }}" method="POST" enctype="multipart/form-data" class="space-y-8">
             @csrf
 
             <!-- ======= SECTION 1: Identité ======= -->
@@ -405,7 +405,7 @@
 
             <!-- ======= ACTIONS ======= -->
             <div class="flex items-center justify-between pt-2 pb-12">
-                <a href="{{ route('admin.dashboard', ['tab' => 'tenants']) }}" class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition shadow-sm">
+                <a href="{{ route('tech.dashboard', ['tab' => 'tenants']) }}" class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition shadow-sm">
                     <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
                     </svg>

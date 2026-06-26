@@ -1,0 +1,54 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile
+    container_name: hotelixos-app
+    ports:
+      - "8080:80"
+    volumes:
+      - .:/var/www/html
+    depends_on:
+      - db
+    environment:
+      APP_URL: http://localhost:8080
+      APP_ENV: local
+      DB_CONNECTION: sqlite
+    networks:
+      - pms
+
+  vite:
+    profiles:
+      - dev
+    image: pms-app
+    container_name: pms-vite
+    working_dir: /var/www/html
+    command: npm run dev -- --host 0.0.0.0
+    ports:
+      - "5173:5173"
+    volumes:
+      - .:/var/www/html
+    depends_on:
+      - app
+    networks:
+      - pms
+
+  db:
+    image: postgres:16
+    container_name: pms-db
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: pms
+      POSTGRES_USER: pms
+      POSTGRES_PASSWORD: secret
+    volumes:
+      - pms_pgdata:/var/lib/postgresql/data
+    networks:
+      - pms
+
+networks:
+  pms:
+
+volumes:
+  pms_pgdata:

@@ -1,4 +1,4 @@
-﻿﻿@php
+@php
     $tabs = [
         'dashboard' => [
             'label' => 'Supervision',
@@ -29,12 +29,6 @@
             'title' => 'Modules plateforme',
             'description' => 'Activation des modules disponibles selon les besoins de chaque etablissement.',
             'items' => ['Hotel', 'Restaurant', 'Boutique', 'Housekeeping', 'Comptabilite', 'IA'],
-        ],
-        'audit' => [
-            'label' => 'Audit',
-            'title' => 'Audit et securite',
-            'description' => 'Suivi des connexions, acces refuses, actions sensibles et interventions admin.',
-            'items' => ['Logs acces', 'Acces refuses', 'Actions sensibles', 'Comptes compromis'],
         ],
         'support' => [
             'label' => 'Support',
@@ -99,7 +93,7 @@
                 <nav class="hidden md:flex items-center gap-1.5" aria-label="Navigation administration">
                     @foreach($tabs as $key => $tab)
                         <a
-                            href="{{ route('admin.dashboard', ['tab' => $key]) }}"
+                            href="{{ route('tech.dashboard', ['tab' => $key]) }}"
                             class="rounded-md px-3 py-1.5 text-xs font-semibold tracking-wide transition {{ $activeTab === $key ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-300 hover:bg-slate-800 hover:text-white' }}"
                         >
                             {{ $tab['label'] }}
@@ -120,7 +114,7 @@
             <div class="flex gap-1.5 min-w-max">
                 @foreach($tabs as $key => $tab)
                     <a
-                        href="{{ route('admin.dashboard', ['tab' => $key]) }}"
+                        href="{{ route('tech.dashboard', ['tab' => $key]) }}"
                         class="rounded-md px-2.5 py-1 text-xs font-semibold transition {{ $activeTab === $key ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white' }}"
                     >
                         {{ $tab['label'] }}
@@ -186,7 +180,7 @@
                     <h1 class="text-2xl font-extrabold tracking-tight text-slate-800 font-heading">Gestion des Établissements</h1>
                     <p class="text-xs text-slate-500 mt-1">Gérer les informations générales, le statut et les paramètres des filiales de l'ONG.</p>
                 </div>
-                <a href="{{ route('admin.tenants.create') }}" class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 transition group">
+                <a href="{{ route('tech.establishments.create') }}" class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 transition group">
                     <svg class="h-4 w-4 transition-transform group-hover:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                     </svg>
@@ -242,7 +236,7 @@
                         <!-- Actions -->
                         <div class="bg-slate-50 px-5 py-3 border-t border-slate-100 flex justify-end">
                             <a 
-                                href="{{ route('admin.tenants.show', $tenant) }}"
+                                href="{{ route('tech.establishments.show', $tenant) }}"
                                 class="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-sm"
                             >
                                 <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -302,7 +296,7 @@
                                     </p>
                                 </div>
                                 <div class="shrink-0">
-                                    <a href="{{ route('admin.export.supervision') }}" class="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-indigo-700 transition shadow-xs">
+                                    <a href="{{ route('tech.export.supervision') }}" class="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-indigo-700 transition shadow-xs">
                                         <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                             <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                                         </svg>
@@ -322,7 +316,7 @@
                                     </p>
                                 </div>
                                 <div class="shrink-0">
-                                    <a href="{{ route('admin.export.backup') }}" class="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-indigo-700 transition shadow-xs">
+                                    <a href="{{ route('tech.export.backup') }}" class="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-indigo-700 transition shadow-xs">
                                         <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                             <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                                         </svg>
@@ -556,13 +550,13 @@
             <div class="mt-8 border-b border-slate-200">
                 <div class="flex gap-6">
                     <a 
-                        href="{{ route('admin.dashboard', ['tab' => 'audit', 'sub' => 'logs']) }}" 
+                        href="{{ route('tech.dashboard', ['tab' => 'audit', 'sub' => 'logs']) }}" 
                         class="border-b-2 pb-3 text-sm font-semibold transition {{ $subTab === 'logs' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800' }}"
                     >
                         Journal d'Audit
                     </a>
                     <a 
-                        href="{{ route('admin.dashboard', ['tab' => 'audit', 'sub' => 'users']) }}" 
+                        href="{{ route('tech.dashboard', ['tab' => 'audit', 'sub' => 'users']) }}" 
                         class="border-b-2 pb-3 text-sm font-semibold transition {{ $subTab === 'users' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800' }}"
                     >
                         Sécurité des Comptes
@@ -574,7 +568,7 @@
                 <!-- ================= JOURNAL D'AUDIT TAB ================= -->
                 
                 <!-- Filters Grid Card -->
-                <form method="GET" action="{{ route('admin.dashboard') }}" class="mt-6 bg-white border border-slate-200 rounded-lg p-5 shadow-sm">
+                <form method="GET" action="{{ route('tech.dashboard') }}" class="mt-6 bg-white border border-slate-200 rounded-lg p-5 shadow-sm">
                     <input type="hidden" name="tab" value="audit">
                     <input type="hidden" name="sub" value="logs">
                     
@@ -642,7 +636,7 @@
                     </div>
                     
                     <div class="mt-4 flex items-center gap-2">
-                        <a href="{{ route('admin.dashboard', ['tab' => 'audit', 'sub' => 'logs']) }}" class="rounded-md border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition">
+                        <a href="{{ route('tech.dashboard', ['tab' => 'audit', 'sub' => 'logs']) }}" class="rounded-md border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition">
                             Réinitialiser
                         </a>
                         <button type="submit" class="rounded-md bg-indigo-600 px-4 py-2 text-xs font-semibold text-white hover:bg-indigo-700 transition">
@@ -793,7 +787,7 @@
                 <!-- ================= SECURITE DES COMPTES TAB ================= -->
                 
                 <!-- Search user bar -->
-                <form method="GET" action="{{ route('admin.dashboard') }}" class="mt-6 flex gap-2">
+                <form method="GET" action="{{ route('tech.dashboard') }}" class="mt-6 flex gap-2">
                     <input type="hidden" name="tab" value="audit">
                     <input type="hidden" name="sub" value="users">
                     <div class="relative flex-1">
@@ -814,7 +808,7 @@
                         Rechercher
                     </button>
                     @if(request()->filled('user_search'))
-                        <a href="{{ route('admin.dashboard', ['tab' => 'audit', 'sub' => 'users']) }}" class="rounded-md border border-slate-300 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition flex items-center">
+                        <a href="{{ route('tech.dashboard', ['tab' => 'audit', 'sub' => 'users']) }}" class="rounded-md border border-slate-300 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition flex items-center">
                             Effacer
                         </a>
                     @endif
@@ -882,7 +876,7 @@
                                 <div class="text-right whitespace-nowrap">
                                     @if($u->id !== Auth::id())
                                         <div class="flex md:justify-end gap-2">
-                                            <form method="POST" action="{{ route('admin.users.toggle-active', $u) }}" class="inline">
+                                            <form method="POST" action="{{ route('tech.users.toggle-active', $u) }}" class="inline">
                                                 @csrf
                                                 <button 
                                                     type="submit" 
@@ -892,7 +886,7 @@
                                                 </button>
                                             </form>
                                             
-                                            <form method="POST" action="{{ route('admin.users.reset-password', $u) }}" class="inline" onsubmit="return confirm('Voulez-vous vraiment forcer la réinitialisation du mot de passe de {{ $u->name }} ?')">
+                                            <form method="POST" action="{{ route('tech.users.reset-password', $u) }}" class="inline" onsubmit="return confirm('Voulez-vous vraiment forcer la réinitialisation du mot de passe de {{ $u->name }} ?')">
                                                 @csrf
                                                 <button 
                                                     type="submit" 
