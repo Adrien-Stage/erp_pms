@@ -96,6 +96,13 @@
         phone: '',
         email: '',
         logoPreview: null,
+        themePrimary: '#391F0E',
+        themeSecondary: '#CCAB87',
+        themeAccent: '#EED4A3',
+        themeDark: '#0F0201',
+        themeSurfaceDark: '#2C1810',
+        themeTextOnLight: '#391F0E',
+        themeTextOnDark: '#CCAB87',
         
         // Modules Selection
         modules: {
@@ -110,6 +117,15 @@
         },
 
         // Methods
+        applyPalette(p, s, a, d, sd, tl, td) {
+            this.themePrimary = p;
+            this.themeSecondary = s;
+            this.themeAccent = a;
+            this.themeDark = d;
+            this.themeSurfaceDark = sd;
+            this.themeTextOnLight = tl;
+            this.themeTextOnDark = td;
+        },
         handleLogoChange(e) {
             const file = e.target.files[0];
             if (file) {
@@ -602,6 +618,158 @@
                                 <label for="email" class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase">E-mail de contact</label>
                                 <input type="email" id="email" name="email" x-model="email" placeholder="contact@mekaresort.com"
                                        class="mt-1.5 block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 transition">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ======= SECTION 3: Thème & Couleurs ======= -->
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="bg-slate-900 px-6 py-4 flex items-center gap-3">
+                        <div class="rounded-lg bg-[#a21caf]/20 p-2">
+                            <svg class="h-5 w-5 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M4.098 19.902a3.75 3.75 0 005.304 0l6.401-6.402M6.75 21A3.75 3.75 0 013 17.25V4.125C3 3.504 3.504 3 4.125 3h5.25c.621 0 1.125.504 1.125 1.125v4.072M6.75 21a3.75 3.75 0 003.75-3.75V8.197M6.75 21h13.125c.621 0 1.125-.504 1.125-1.125v-5.25c0-.621-.504-1.125-1.125-1.125h-4.072M10.5 8.197l2.88-2.88c.438-.439 1.15-.439 1.59 0l3.712 3.713c.44.44.44 1.152 0 1.59l-2.879 2.88M6.75 17.25h.008v.008H6.75v-.008z" />
+                            </svg>
+                        </div>
+                        <div>
+                            <h2 class="text-sm font-bold text-white tracking-wide">Thème & Couleurs de la Filiale</h2>
+                            <p class="text-[10px] text-slate-400">Choisissez une palette ou personnalisez les couleurs de l'interface</p>
+                        </div>
+                    </div>
+                    <div class="p-6 space-y-5">
+                        <!-- Preset Palettes -->
+                        <div>
+                            <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-3">Palettes prédéfinies</label>
+                            <div class="flex items-center gap-3 flex-wrap">
+                                <!-- Terracotta -->
+                                <button type="button"
+                                    @click="applyPalette('#391F0E', '#CCAB87', '#EED4A3', '#0F0201', '#2C1810', '#391F0E', '#CCAB87')"
+                                    class="w-8 h-8 rounded-full border-2 border-slate-200 hover:border-indigo-400 relative focus:outline-none cursor-pointer transition-all hover:scale-110 shadow-sm animate-none"
+                                    style="background: linear-gradient(135deg, #391F0E 50%, #CCAB87 50%);"
+                                    title="Terracotta (Original)">
+                                    <span x-show="themePrimary === '#391F0E'" class="absolute inset-0 flex items-center justify-center text-white text-xs font-bold">✓</span>
+                                </button>
+                                <!-- Royal Blue -->
+                                <button type="button"
+                                    @click="applyPalette('#1E3A8A', '#3B82F6', '#93C5FD', '#0F172A', '#1E293B', '#FFFFFF', '#93C5FD')"
+                                    class="w-8 h-8 rounded-full border-2 border-slate-200 hover:border-indigo-400 relative focus:outline-none cursor-pointer transition-all hover:scale-110 shadow-sm animate-none"
+                                    style="background: linear-gradient(135deg, #1E3A8A 50%, #3B82F6 50%);"
+                                    title="Bleu Royal">
+                                    <span x-show="themePrimary === '#1E3A8A'" class="absolute inset-0 flex items-center justify-center text-white text-xs font-bold">✓</span>
+                                </button>
+                                <!-- Forest Green -->
+                                <button type="button"
+                                    @click="applyPalette('#064E3B', '#10B981', '#A7F3D0', '#022C22', '#064E3B', '#FFFFFF', '#A7F3D0')"
+                                    class="w-8 h-8 rounded-full border-2 border-slate-200 hover:border-indigo-400 relative focus:outline-none cursor-pointer transition-all hover:scale-110 shadow-sm animate-none"
+                                    style="background: linear-gradient(135deg, #064E3B 50%, #10B981 50%);"
+                                    title="Vert Forêt">
+                                    <span x-show="themePrimary === '#064E3B'" class="absolute inset-0 flex items-center justify-center text-white text-xs font-bold">✓</span>
+                                </button>
+                                <!-- Imperial Purple -->
+                                <button type="button"
+                                    @click="applyPalette('#4C1D95', '#8B5CF6', '#DDD6FE', '#1E1B4B', '#312E81', '#FFFFFF', '#DDD6FE')"
+                                    class="w-8 h-8 rounded-full border-2 border-slate-200 hover:border-indigo-400 relative focus:outline-none cursor-pointer transition-all hover:scale-110 shadow-sm animate-none"
+                                    style="background: linear-gradient(135deg, #4C1D95 50%, #8B5CF6 50%);"
+                                    title="Violet Impérial">
+                                    <span x-show="themePrimary === '#4C1D95'" class="absolute inset-0 flex items-center justify-center text-white text-xs font-bold">✓</span>
+                                </button>
+                                <!-- Rose -->
+                                <button type="button"
+                                    @click="applyPalette('#831843', '#EC4899', '#FCE7F3', '#500724', '#831843', '#FFFFFF', '#FCE7F3')"
+                                    class="w-8 h-8 rounded-full border-2 border-slate-200 hover:border-indigo-400 relative focus:outline-none cursor-pointer transition-all hover:scale-110 shadow-sm animate-none"
+                                    style="background: linear-gradient(135deg, #831843 50%, #EC4899 50%);"
+                                    title="Rose Vibrant">
+                                    <span x-show="themePrimary === '#831843'" class="absolute inset-0 flex items-center justify-center text-white text-xs font-bold">✓</span>
+                                </button>
+                                <!-- Sunset Orange -->
+                                <button type="button"
+                                    @click="applyPalette('#7C2D12', '#F97316', '#FFEDD5', '#431407', '#7C2D12', '#FFFFFF', '#FFEDD5')"
+                                    class="w-8 h-8 rounded-full border-2 border-slate-200 hover:border-indigo-400 relative focus:outline-none cursor-pointer transition-all hover:scale-110 shadow-sm animate-none"
+                                    style="background: linear-gradient(135deg, #7C2D12 50%, #F97316 50%);"
+                                    title="Orange Couchant">
+                                    <span x-show="themePrimary === '#7C2D12'" class="absolute inset-0 flex items-center justify-center text-white text-xs font-bold">✓</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Live Preview Card -->
+                        <div class="rounded-xl border border-slate-200 overflow-hidden">
+                            <div class="px-4 py-3 text-[10px] font-bold tracking-wider text-slate-400 uppercase bg-slate-50 border-b border-slate-200">Aperçu en temps réel</div>
+                            <div class="p-4 flex items-center gap-4">
+                                <div class="rounded-lg overflow-hidden shadow-md border border-slate-200 w-48 shrink-0">
+                                    <div class="h-10 flex items-center justify-center transition-colors duration-200" :style="'background-color:' + themePrimary">
+                                        <span class="text-[9px] font-bold tracking-widest uppercase transition-colors duration-200" :style="'color:' + themeTextOnDark" x-text="name || 'NOM ÉTABLISSEMENT'"></span>
+                                    </div>
+                                    <div class="h-6 flex items-center justify-center transition-colors duration-200" :style="'background-color:' + themeSecondary">
+                                        <span class="text-[8px] font-semibold transition-colors duration-200" :style="'color:' + themeTextOnLight">Menu Navigation</span>
+                                    </div>
+                                    <div class="h-10 bg-white flex items-center justify-center">
+                                        <span class="text-[8px] text-slate-400">Contenu principal</span>
+                                    </div>
+                                </div>
+                                <div class="text-xs text-slate-500 leading-relaxed">
+                                    <p class="font-semibold text-slate-700 mb-1">Aperçu du thème</p>
+                                    <p class="text-[10px]">Les couleurs sélectionnées seront appliquées à l'interface de l'établissement.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Color Pickers Grid -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                            <div>
+                                <label class="block text-[10px] text-slate-400 mb-1.5 font-semibold">Couleur Primaire</label>
+                                <div class="flex items-center gap-2">
+                                    <input type="color" x-model="themePrimary" class="h-8 w-8 rounded-lg cursor-pointer border border-slate-200 shrink-0">
+                                    <input type="text" name="theme[primary]" x-model="themePrimary" class="block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 font-mono outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 uppercase">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] text-slate-400 mb-1.5 font-semibold">Couleur Secondaire</label>
+                                <div class="flex items-center gap-2">
+                                    <input type="color" x-model="themeSecondary" class="h-8 w-8 rounded-lg cursor-pointer border border-slate-200 shrink-0">
+                                    <input type="text" name="theme[secondary]" x-model="themeSecondary" class="block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 font-mono outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 uppercase">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-3 gap-4">
+                            <div>
+                                <label class="block text-[10px] text-slate-400 mb-1.5 font-semibold">Accent</label>
+                                <div class="flex items-center gap-2">
+                                    <input type="color" x-model="themeAccent" class="h-7 w-7 rounded cursor-pointer border border-slate-200 shrink-0">
+                                    <input type="text" name="theme[accent]" x-model="themeAccent" class="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] text-slate-700 font-mono outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 uppercase">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] text-slate-400 mb-1.5 font-semibold">Fond Sombre</label>
+                                <div class="flex items-center gap-2">
+                                    <input type="color" x-model="themeDark" class="h-7 w-7 rounded cursor-pointer border border-slate-200 shrink-0">
+                                    <input type="text" name="theme[dark]" x-model="themeDark" class="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] text-slate-700 font-mono outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 uppercase">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] text-slate-400 mb-1.5 font-semibold">Surface Sombre</label>
+                                <div class="flex items-center gap-2">
+                                    <input type="color" x-model="themeSurfaceDark" class="h-7 w-7 rounded cursor-pointer border border-slate-200 shrink-0">
+                                    <input type="text" name="theme[surface_dark]" x-model="themeSurfaceDark" class="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] text-slate-700 font-mono outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 uppercase">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                            <div>
+                                <label class="block text-[10px] text-slate-400 mb-1.5 font-semibold">Texte sur Fond Clair</label>
+                                <div class="flex items-center gap-2">
+                                    <input type="color" x-model="themeTextOnLight" class="h-8 w-8 rounded-lg cursor-pointer border border-slate-200 shrink-0">
+                                    <input type="text" name="theme[text_on_light]" x-model="themeTextOnLight" class="block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 font-mono outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 uppercase">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] text-slate-400 mb-1.5 font-semibold">Texte sur Fond Sombre</label>
+                                <div class="flex items-center gap-2">
+                                    <input type="color" x-model="themeTextOnDark" class="h-8 w-8 rounded-lg cursor-pointer border border-slate-200 shrink-0">
+                                    <input type="text" name="theme[text_on_dark]" x-model="themeTextOnDark" class="block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 font-mono outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 uppercase">
+                                </div>
                             </div>
                         </div>
                     </div>
