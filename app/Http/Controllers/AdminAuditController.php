@@ -12,68 +12,58 @@ use Illuminate\Support\Str;
 
 class AdminAuditController extends Controller
 {
+    /**
+     * Dashboard TECH (Supervision globale)
+     */
     public function index(Request $request)
     {
-        abort_unless(Auth::check() && Auth::user()->isAdmin(), 403);
-
-        $activeTab = $request->input('tab', 'audit');
-        $subTab = $request->input('sub', 'logs'); // logs or users
-
-        // Logs Query with filters
-        $logsQuery = AuditLog::with(['user', 'tenant'])->latest();
-
-        if ($request->filled('tenant_id')) {
-            $logsQuery->where('tenant_id', $request->tenant_id);
+        $user = Auth::user();
+        if (!$user || !$user->isTechAdmin()) {
+            abort(403, "Accès interdit - Rôle TECH_ADMIN requis.");
         }
 
+        $activeTab = $request->input('tab', 'dashboard');
+        $subTab = $request->input('sub', 'logs');
+
+        // Logs d'audit (SQLite)
+        $logsQuery = AuditLog::with(['user'])->latest();
+        
         if ($request->filled('user_id')) {
             $logsQuery->where('user_id', $request->user_id);
         }
-
         if ($request->filled('event_type')) {
             $logsQuery->where('event_type', $request->event_type);
         }
-
         if ($request->filled('module')) {
             $logsQuery->where('module', $request->module);
         }
 
-        if ($request->filled('date_from')) {
-            $logsQuery->whereDate('created_at', '>=', $request->date_from);
-        }
-
-        if ($request->filled('date_to')) {
-            $logsQuery->whereDate('created_at', '<=', $request->date_to);
-        }
-
         $logs = $logsQuery->paginate(20, ['*'], 'logs_page')->withQueryString();
 
-        // Users Query with search
-        $usersQuery = User::with(['tenant', 'roles']);
-
+        // Utilisateurs (SQLite)
+        $usersQuery = User::query();
         if ($request->filled('user_search')) {
             $search = trim((string) $request->user_search);
             $usersQuery->where(function ($q) use ($search) {
-                $q->where('name', 'ilike', "%{$search}%")
-                  ->orWhere('email', 'ilike', "%{$search}%")
-                  ->orWhere('role', 'ilike', "%{$search}%");
+                $q->where('name', 'like', "%{$search}%")
+                  ->orWhere('email', 'like', "%{$search}%")
+                  ->orWhere('role', 'like', "%{$search}%");
             });
         }
-
         $users = $usersQuery->orderBy('name')->paginate(10, ['*'], 'users_page')->withQueryString();
 
-        // Fetch helper lists for filters
+        // Établissements (SQLite)
         $tenants = Tenant::orderBy('name')->get();
         $allUsers = User::orderBy('name')->get();
 
-        // Calculate statistics for the sidebar
+        // Statistiques d'administration
         $auditStats = [
             'total_logs' => AuditLog::count(),
-            'failed_logins' => AuditLog::where('event_type', 'failed_login')->count(),
-            'access_denied' => AuditLog::where('event_type', 'access_denied')->count(),
             'total_users' => User::count(),
             'active_users' => User::where('is_active', true)->count(),
             'inactive_users' => User::where('is_active', false)->count(),
+            'total_tenants' => Tenant::count(),
+            'active_tenants' => Tenant::where('is_active', true)->count(),
         ];
 
         return view('admin.dashboard', compact(
@@ -87,96 +77,60 @@ class AdminAuditController extends Controller
         ));
     }
 
-    public function toggleUserActive(User $user)
+    public function indexTenants()
     {
-        abort_unless(Auth::check() && Auth::user()->isAdmin(), 403);
-
-        if ($user->id === Auth::id()) {
-            return back()->with('error', 'Vous ne pouvez pas désactiver votre propre compte.');
-        }
-
-        $user->update([
-            'is_active' => !$user->is_active,
-        ]);
-
-        $statusStr = $user->is_active ? 'activé' : 'désactivé';
-        $actionMessage = "Le compte de l'utilisateur {$user->name} ({$user->email}) a été {$statusStr} par l'administrateur.";
-
-        AuditLog::record(
-            Auth::id(),
-            'user_management',
-            $actionMessage,
-            'security',
-            ['target_user_id' => $user->id, 'is_active' => $user->is_active]
-        );
-
-        return back()->with('success', "Le compte de {$user->name} a été {$statusStr} avec succès.");
-    }
-
-    public function forcePasswordReset(User $user)
-    {
-        abort_unless(Auth::check() && Auth::user()->isAdmin(), 403);
-
-        // Generate a secure temporary password
-        $tempPassword = Str::random(10) . '@B2026';
-
-        $user->update([
-            'password' => Hash::make($tempPassword),
-        ]);
-
-        $actionMessage = "Le mot de passe de l'utilisateur {$user->name} ({$user->email}) a été réinitialisé de force par l'administrateur.";
-
-        AuditLog::record(
-            Auth::id(),
-            'user_management',
-            $actionMessage,
-            'security',
-            ['target_user_id' => $user->id]
-        );
-
-        return back()->with('temp_password_info', [
-            'name' => $user->name,
-            'email' => $user->email,
-            'password' => $tempPassword,
-        ]);
+        return redirect()->route('tech.dashboard', ['tab' => 'tenants']);
     }
 
     public function createTenant()
     {
-        abort_unless(Auth::check() && Auth::user()->isAdmin(), 403);
-
-        return view('admin.tenants.create');
-    }
-
-    public function showTenant(Tenant $tenant)
-    {
-        abort_unless(Auth::check() && Auth::user()->isAdmin(), 403);
-
-        $tenant->loadCount(['users', 'rooms', 'bookings']);
-
-        $tenantUsers = User::where('tenant_id', $tenant->id)
-            ->with('roles')
-            ->orderBy('name')
-            ->get();
-
-        $section = request('section', 'overview');
-
-        return view('admin.tenants.show', compact('tenant', 'tenantUsers', 'section'));
+        $user = Auth::user();
+        if (!$user || !$user->isTechAdmin()) { abort(403); }
+        $owners = User::where('role', User::ROLE_OWNER)->orderBy('name')->get();
+        return view('admin.tenants.create', compact('owners'));
     }
 
     public function storeTenant(Request $request)
     {
-        abort_unless(Auth::check() && Auth::user()->isAdmin(), 403);
+        $user = Auth::user();
+        if (!$user || !$user->isTechAdmin()) { abort(403); }
+        
+        // 1. Initial Validation
+        $rules = [
+            'owner_type' => ['required', 'in:new,existing'],
+            
+            // If new owner
+            'owner_name' => ['required_if:owner_type,new', 'nullable', 'string', 'max:255'],
+            'owner_email' => ['required_if:owner_type,new', 'nullable', 'email', 'max:255', 'unique:users,email'],
+            'owner_phone' => ['nullable', 'string', 'max:30'],
+            'owner_company' => ['nullable', 'string', 'max:255'],
+            'owner_nationality' => ['required_if:owner_type,new', 'nullable', 'string', 'max:100'],
+            'owner_password' => ['required_if:owner_type,new', 'nullable', 'string', 'min:4'],
 
-        $validated = $request->validate([
+            // If existing owner
+            'owner_id' => ['required_if:owner_type,existing', 'nullable', 'exists:users,id'],
+
+            // Step 2: Technical Configuration
+            'db_name' => ['required', 'string', 'max:255', 'unique:tenants,db_name'],
+            'app_port' => ['required', 'integer', 'unique:tenants,app_port'],
+            'db_username' => ['nullable', 'string', 'max:255'],
+            'db_password' => ['nullable', 'string', 'max:255'],
+            'db_port' => ['nullable', 'string', 'max:10'],
+            'docker_app_container' => ['nullable', 'string', 'max:255'],
+            'docker_db_container' => ['nullable', 'string', 'max:255'],
+
+            // Step 3: Establishment Info
             'name' => ['required', 'string', 'max:255'],
-            'slug' => ['required', 'string', 'max:255', 'unique:tenants,slug', 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/'],
-            'country' => ['nullable', 'string', 'max:255'],
+            'slug' => ['required', 'string', 'max:255', 'unique:tenants,slug'],
+            'country' => ['nullable', 'string', 'max:100'],
+            'city' => ['nullable', 'string', 'max:100'],
+            'currency' => ['required', 'string', 'max:3'],
             'address' => ['nullable', 'string', 'max:255'],
             'phone' => ['nullable', 'string', 'max:30'],
             'email' => ['nullable', 'email', 'max:255'],
-            'currency' => ['required', 'string', 'size:3'],
             'logo' => ['nullable', 'image', 'max:2048'],
+            
+            // Theme Colors
             'theme' => ['nullable', 'array'],
             'theme.primary' => ['nullable', 'string', 'regex:/^#[0-9A-Fa-f]{6}$/'],
             'theme.secondary' => ['nullable', 'string', 'regex:/^#[0-9A-Fa-f]{6}$/'],
@@ -185,345 +139,423 @@ class AdminAuditController extends Controller
             'theme.surface_dark' => ['nullable', 'string', 'regex:/^#[0-9A-Fa-f]{6}$/'],
             'theme.text_on_light' => ['nullable', 'string', 'regex:/^#[0-9A-Fa-f]{6}$/'],
             'theme.text_on_dark' => ['nullable', 'string', 'regex:/^#[0-9A-Fa-f]{6}$/'],
-        ]);
 
-        $settings = [];
-        $settings['country'] = $validated['country'] ?? null;
+            // Modules
+            'modules' => ['nullable', 'array'],
+        ];
 
-        if ($request->has('theme')) {
-            $settings['theme'] = $validated['theme'];
+        $request->validate($rules);
+
+        // 2. Resolve Owner ID
+        $ownerId = null;
+        if ($request->owner_type === 'new') {
+            $newOwner = User::create([
+                'name' => $request->owner_name,
+                'email' => $request->owner_email,
+                'phone' => $request->owner_phone,
+                'company_name' => $request->owner_company,
+                'nationality' => $request->owner_nationality,
+                'password' => Hash::make($request->owner_password),
+                'role' => User::ROLE_OWNER,
+                'is_active' => true,
+            ]);
+            $ownerId = $newOwner->id;
+        } else {
+            $ownerId = $request->owner_id;
         }
 
+        // 3. Process Logo Upload
+        $logoPath = null;
         if ($request->hasFile('logo')) {
-            $settings['logo'] = $request->file('logo')->store('logos', 'public');
+            $logoPath = $request->file('logo')->store('logos', 'public');
         }
 
+        // 4. Form Settings JSON and Modules
+        $settings = [
+            'country' => $request->country ?? 'Cameroun',
+            'city' => $request->city ?? 'Douala',
+            'logo' => $logoPath,
+            'theme' => $request->theme ?? [
+                'primary' => '#391F0E',
+                'secondary' => '#CCAB87',
+                'accent' => '#EED4A3',
+                'dark' => '#0F0201',
+                'surface_dark' => '#2C1810',
+                'text_on_light' => '#391F0E',
+                'text_on_dark' => '#CCAB87',
+            ],
+        ];
+
+        $modules = [];
+        if ($request->has('modules') && is_array($request->modules)) {
+            $modules = array_keys($request->modules);
+        }
+
+        // 5. Database Provisioning in PostgreSQL
+        $dbName = $request->db_name;
+        try {
+            // Auto-detect container vs host environment
+            $dbHost = 'db';
+            $dbPort = '5432';
+            if (gethostbyname('db') === 'db') {
+                $dbHost = '127.0.0.1';
+                $dbPort = '5433';
+            }
+            
+            $dsn = "pgsql:host={$dbHost};port={$dbPort};dbname=postgres";
+            $pdo = new \PDO($dsn, 'pms', 'secret', [
+                \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION
+            ]);
+            
+            // Safe db name (letters, numbers and underscores only)
+            $safeDbName = preg_replace('/[^a-zA-Z0-9_]/', '', $dbName);
+            
+            // Check if database exists
+            $stmt = $pdo->prepare("SELECT 1 FROM pg_database WHERE datname = ?");
+            $stmt->execute([$safeDbName]);
+            if (!$stmt->fetch()) {
+                $pdo->exec("CREATE DATABASE {$safeDbName}");
+            }
+        } catch (\PDOException $e) {
+            \Illuminate\Support\Facades\Log::error("Failed to provision PostgreSQL database {$dbName}: " . $e->getMessage());
+            return back()->withInput()->withErrors([
+                'db_name' => "Impossible de provisionner la base de données PostgreSQL: " . $e->getMessage()
+            ]);
+        }
+
+        // 6. Create Tenant Record
         $tenant = Tenant::create([
-            'name' => $validated['name'],
-            'slug' => $validated['slug'],
-            'address' => $validated['address'] ?? null,
-            'phone' => $validated['phone'] ?? null,
-            'email' => $validated['email'] ?? null,
-            'currency' => $validated['currency'],
-            'settings' => $settings,
+            'name' => $request->name,
+            'slug' => $request->slug,
+            'address' => $request->address,
+            'phone' => $request->phone,
+            'email' => $request->email,
+            'currency' => $request->currency,
+            'owner_id' => $ownerId,
+            'db_name' => $dbName,
+            'db_username' => $request->db_username ?? 'postgres',
+            'db_password' => $request->db_password ?? 'secret',
+            'app_port' => $request->app_port,
+            'db_port' => $request->db_port ?? '5432',
+            'docker_app_container' => $request->docker_app_container,
+            'docker_db_container' => $request->docker_db_container,
+            'docker_status' => 'running',
             'is_active' => true,
+            'settings' => $settings,
+            'modules' => $modules,
         ]);
 
         AuditLog::record(
             Auth::id(),
-            'sensitive_action',
-            "Création d'un nouvel établissement : {$tenant->name} (slug: {$tenant->slug})",
-            'settings',
-            ['tenant_id' => $tenant->id, 'name' => $tenant->name, 'slug' => $tenant->slug]
+            'create_tenant',
+            "Création et provisioning de l'établissement {$tenant->name} (slug: {$tenant->slug})",
+            'tech_admin'
         );
 
-        return redirect()
-            ->route('admin.dashboard', ['tab' => 'tenants'])
-            ->with('success', "L'établissement « {$tenant->name} » a été créé avec succès.");
+        return redirect()->route('tech.dashboard', ['tab' => 'tenants'])
+            ->with('success', "L'établissement {$tenant->name} a été créé et sa base de données a été provisionnée avec succès.");
+    }
+
+    public function showTenant(Tenant $tenant)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isTechAdmin()) { abort(403); }
+
+        $section = request('section', 'overview');
+        $tenantUsers = collect();
+
+        if ($section === 'users') {
+            try {
+                $dbHost = 'db';
+                $dbPort = '5432';
+                if (gethostbyname('db') === 'db') {
+                    $dbHost = '127.0.0.1';
+                    $dbPort = '5433';
+                }
+                
+                $safeDbName = preg_replace('/[^a-zA-Z0-9_]/', '', $tenant->db_name);
+                $dsn = "pgsql:host={$dbHost};port={$dbPort};dbname={$safeDbName}";
+                
+                // Add short connection timeout (2 seconds) to avoid gateway timeouts
+                $pdo = new \PDO($dsn, $tenant->db_username ?? 'pms', $tenant->db_password ?? 'secret', [
+                    \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
+                    \PDO::ATTR_TIMEOUT => 2,
+                ]);
+                
+                $stmt = $pdo->query("SELECT id, name, email, phone, role, is_active FROM users ORDER BY name");
+                $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+                
+                $tenantUsers = collect($rows)->map(function ($row) {
+                    return (object) $row;
+                });
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::warning("Could not fetch tenant users for {$tenant->name}: " . $e->getMessage());
+                session()->now('error', "Impossible de se connecter à la base de données de l'établissement : " . $e->getMessage());
+            }
+        }
+
+        return view('admin.tenants.show', compact('tenant', 'tenantUsers', 'section'));
     }
 
     public function updateTenant(Request $request, Tenant $tenant)
     {
-        abort_unless(Auth::check() && Auth::user()->isAdmin(), 403);
-
+        $user = Auth::user();
+        if (!$user || !$user->isTechAdmin()) { abort(403); }
+        
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'slug' => ['required', 'string', 'max:255', 'unique:tenants,slug,' . $tenant->id],
-            'country' => ['nullable', 'string', 'max:255'],
             'address' => ['nullable', 'string', 'max:255'],
             'phone' => ['nullable', 'string', 'max:30'],
             'email' => ['nullable', 'email', 'max:255'],
-            'currency' => ['required', 'string', 'size:3'],
-            'logo' => ['nullable', 'image', 'max:2048'], // 2MB max
-            'theme' => ['nullable', 'array'],
-            'theme.primary' => ['nullable', 'string', 'regex:/^#[0-9A-Fa-f]{6}$/'],
-            'theme.secondary' => ['nullable', 'string', 'regex:/^#[0-9A-Fa-f]{6}$/'],
-            'theme.accent' => ['nullable', 'string', 'regex:/^#[0-9A-Fa-f]{6}$/'],
-            'theme.dark' => ['nullable', 'string', 'regex:/^#[0-9A-Fa-f]{6}$/'],
-            'theme.surface_dark' => ['nullable', 'string', 'regex:/^#[0-9A-Fa-f]{6}$/'],
-            'theme.text_on_light' => ['nullable', 'string', 'regex:/^#[0-9A-Fa-f]{6}$/'],
-            'theme.text_on_dark' => ['nullable', 'string', 'regex:/^#[0-9A-Fa-f]{6}$/'],
         ]);
 
-        $settings = $tenant->settings ?? [];
-        $settings['country'] = $validated['country'] ?? null;
-        
-        if ($request->has('theme')) {
-            $settings['theme'] = $validated['theme'];
-        }
+        $tenant->update($validated);
 
-        if ($request->hasFile('logo')) {
-            if (!empty($settings['logo'])) {
-                \Illuminate\Support\Facades\Storage::disk('public')->delete($settings['logo']);
-            }
-            $settings['logo'] = $request->file('logo')->store('logos', 'public');
-        }
-
-        $tenant->update([
-            'name' => $validated['name'],
-            'slug' => $validated['slug'],
-            'address' => $validated['address'],
-            'phone' => $validated['phone'],
-            'email' => $validated['email'],
-            'currency' => $validated['currency'],
-            'settings' => $settings,
-        ]);
-
-        AuditLog::record(
-            Auth::id(),
-            'sensitive_action',
-            "Modification des informations générales de l'établissement {$tenant->name}",
-            'settings',
-            ['tenant_id' => $tenant->id, 'changes' => array_diff_key($validated, ['logo' => ''])]
-        );
-
-        return back()->with('success', "Les informations de l'établissement {$tenant->name} ont été mises à jour avec succès.");
+        return back()->with('success', 'Établissement mis à jour.');
     }
 
-    public function exportSupervision()
+    public function startTenant(Tenant $tenant)
     {
-        abort_unless(Auth::check() && Auth::user()->isAdmin(), 403);
+        $user = Auth::user();
+        if (!$user || !$user->isTechAdmin()) { abort(403); }
 
-        AuditLog::record(
-            Auth::id(),
-            'sensitive_action',
-            "Export du rapport de supervision des établissements au format CSV",
-            'settings',
-            []
-        );
-
-        $headers = [
-            'Content-type'        => 'text/csv; charset=UTF-8',
-            'Content-Disposition' => 'attachment; filename=rapport_supervision_' . now()->format('Y-m-d_H-i-s') . '.csv',
-            'Pragma'              => 'no-cache',
-            'Cache-Control'       => 'must-revalidate, post-check=0, pre-check=0',
-            'Expires'             => '0'
-        ];
-
-        $callback = function() {
-            $file = fopen('php://output', 'w');
+        $containerName = "hotelixos-{$tenant->slug}-app";
+        
+        // Check if container already exists
+        $check = shell_exec("docker ps -a --filter name=^/{$containerName}$ --format '{{.Names}}'");
+        
+        if (empty(trim($check))) {
+            $dbName = preg_replace('/[^a-zA-Z0-9_]/', '', $tenant->db_name);
+            $appPort = $tenant->app_port;
+            $image = "pms-app";
             
-            // UTF-8 BOM
-            fwrite($file, "\xEF\xBB\xBF");
+            $cmd = "docker run -d " .
+                   "--name " . escapeshellarg($containerName) . " " .
+                   "--network pms " .
+                   "-p " . escapeshellarg("{$appPort}:80") . " " .
+                   "-v " . escapeshellarg("C:/Users/user/Herd/villab:/var/www/html") . " " .
+                   "-e DB_CONNECTION=pgsql " .
+                   "-e DB_HOST=db " .
+                   "-e DB_PORT=5432 " .
+                   "-e DB_DATABASE=" . escapeshellarg($dbName) . " " .
+                   "-e DB_USERNAME=" . escapeshellarg($tenant->db_username ?? 'pms') . " " .
+                   "-e DB_PASSWORD=" . escapeshellarg($tenant->db_password ?? 'secret') . " " .
+                   "-e APP_URL=" . escapeshellarg("http://{$tenant->slug}.localhost:8080") . " " .
+                   "-e APP_KEY=base64:d2Q4c3c3eDlhM2I0YzVkNmU3ZjhnOWgwaTFqMmszbG0= " .
+                   $image;
+            
+            shell_exec($cmd);
+        } else {
+            shell_exec("docker start " . escapeshellarg($containerName));
+        }
 
-            // Headers
-            fputcsv($file, [
-                'ID Établissement',
-                'Nom',
-                'Slug',
-                'Pays',
-                'Adresse',
-                'Téléphone',
-                'Email',
-                'Devise',
-                'Statut',
-                'Utilisateurs Rattachés',
-                'Réservations Totales'
-            ], ';');
-
-            $tenants = Tenant::withCount(['users', 'bookings'])->orderBy('name')->get();
-
-            foreach ($tenants as $tenant) {
-                fputcsv($file, [
-                    $tenant->id,
-                    $tenant->name,
-                    $tenant->slug,
-                    $tenant->settings['country'] ?? 'Cameroun',
-                    $tenant->address ?? 'N/A',
-                    $tenant->phone ?? 'N/A',
-                    $tenant->email ?? 'N/A',
-                    $tenant->currency,
-                    $tenant->is_active ? 'Actif' : 'Inactif',
-                    $tenant->users_count,
-                    $tenant->bookings_count
-                ], ';');
-            }
-
-            fclose($file);
-        };
-
-        return response()->stream($callback, 200, $headers);
-    }
-
-    public function exportBackup()
-    {
-        abort_unless(Auth::check() && Auth::user()->isAdmin(), 403);
+        $tenant->update(['docker_status' => 'running']);
 
         AuditLog::record(
             Auth::id(),
-            'sensitive_action',
-            "Exportation d'une sauvegarde complète de la base de données au format ZIP",
-            'settings',
-            []
+            'start_tenant',
+            "Démarrage du conteneur pour l'établissement {$tenant->name}",
+            'tech_admin'
         );
 
-        $connection = \Illuminate\Support\Facades\DB::connection();
-        $driver = $connection->getDriverName();
-        $pdo = $connection->getPdo();
+        return back()->with('success', "Le conteneur de l'établissement {$tenant->name} a été démarré.");
+    }
 
-        $sql = "-- Villa Boutanga Database Backup\n";
-        $sql .= "-- Driver: " . $driver . "\n";
-        $sql .= "-- Generated: " . now()->toDateTimeString() . "\n\n";
+    public function stopTenant(Tenant $tenant)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isTechAdmin()) { abort(403); }
 
-        if ($driver === 'sqlite') {
-            $sql .= "PRAGMA foreign_keys = OFF;\n\n";
+        $containerName = "hotelixos-{$tenant->slug}-app";
+        shell_exec("docker stop " . escapeshellarg($containerName));
+        
+        $tenant->update(['docker_status' => 'stopped']);
 
-            $tables = $pdo->query("
-                SELECT name 
-                FROM sqlite_master 
-                WHERE type='table' 
-                  AND name NOT LIKE 'sqlite_%'
-                ORDER BY name
-            ")->fetchAll(\PDO::FETCH_COLUMN);
+        AuditLog::record(
+            Auth::id(),
+            'stop_tenant',
+            "Arrêt du conteneur pour l'établissement {$tenant->name}",
+            'tech_admin'
+        );
 
-            foreach ($tables as $table) {
-                $sql .= "-- -----------------------------------------------------\n";
-                $sql .= "-- Structure de la table \"{$table}\"\n";
-                $sql .= "-- -----------------------------------------------------\n";
-                $sql .= "DROP TABLE IF EXISTS \"{$table}\";\n";
-                
-                $sqlStmt = $pdo->prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name = :table");
-                $sqlStmt->execute(['table' => $table]);
-                $createSql = $sqlStmt->fetchColumn();
-                
-                $sql .= $createSql . ";\n\n";
+        return back()->with('success', "Le conteneur de l'établissement {$tenant->name} a été arrêté.");
+    }
 
-                // Dump data
-                $sql .= "-- Contenu de la table \"{$table}\"\n";
-                $dataStmt = $pdo->query("SELECT * FROM \"{$table}\"");
-                $rows = $dataStmt->fetchAll(\PDO::FETCH_ASSOC);
+    public function restartTenant(Tenant $tenant)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isTechAdmin()) { abort(403); }
 
-                if (!empty($rows)) {
-                    foreach ($rows as $row) {
-                        $cols = array_keys($row);
-                        $vals = [];
-                        foreach ($row as $val) {
-                            if ($val === null) {
-                                $vals[] = 'NULL';
-                            } elseif (is_bool($val)) {
-                                $vals[] = $val ? '1' : '0';
-                            } elseif (is_numeric($val)) {
-                                $vals[] = $val;
-                            } else {
-                                $vals[] = "'" . str_replace("'", "''", $val) . "'";
-                            }
-                        }
-                        $sql .= "INSERT INTO \"{$table}\" (\"" . implode('", "', $cols) . "\") VALUES (" . implode(', ', $vals) . ");\n";
-                    }
-                }
-                $sql .= "\n";
-            }
+        $containerName = "hotelixos-{$tenant->slug}-app";
+        shell_exec("docker restart " . escapeshellarg($containerName));
+        
+        $tenant->update(['docker_status' => 'running']);
 
-            $sql .= "PRAGMA foreign_keys = ON;\n";
-        } else {
-            // PostgreSQL logic
-            $sql .= "SET session_replication_role = 'replica';\n\n";
+        AuditLog::record(
+            Auth::id(),
+            'restart_tenant',
+            "Redémarrage du conteneur pour l'établissement {$tenant->name}",
+            'tech_admin'
+        );
 
-            $tables = $pdo->query("
-                SELECT table_name 
-                FROM information_schema.tables 
-                WHERE table_schema = 'public' 
-                  AND table_type = 'BASE TABLE'
-                ORDER BY table_name
-            ")->fetchAll(\PDO::FETCH_COLUMN);
+        return back()->with('success', "Le conteneur de l'établissement {$tenant->name} a été redémarré.");
+    }
 
-            foreach ($tables as $table) {
-                $sql .= "-- -----------------------------------------------------\n";
-                $sql .= "-- Structure de la table \"{$table}\"\n";
-                $sql .= "-- -----------------------------------------------------\n";
-                $sql .= "DROP TABLE IF EXISTS \"{$table}\" CASCADE;\n";
-                $sql .= "CREATE TABLE \"{$table}\" (\n";
+    public function provisionTenant(Tenant $tenant)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isTechAdmin()) { abort(403); }
 
-                $colsStmt = $pdo->prepare("
-                    SELECT column_name, data_type, character_maximum_length, is_nullable, column_default 
-                    FROM information_schema.columns 
-                    WHERE table_schema = 'public' AND table_name = :table
-                    ORDER BY ordinal_position
-                ");
-                $colsStmt->execute(['table' => $table]);
-                $columns = $colsStmt->fetchAll(\PDO::FETCH_ASSOC);
-
-                $colDefinitions = [];
-                foreach ($columns as $col) {
-                    $def = '  "' . $col['column_name'] . '" ' . $col['data_type'];
-                    if ($col['character_maximum_length']) {
-                        $def .= '(' . $col['character_maximum_length'] . ')';
-                    }
-                    if ($col['is_nullable'] === 'NO') {
-                        $def .= ' NOT NULL';
-                    }
-                    if ($col['column_default'] !== null) {
-                        $def .= ' DEFAULT ' . $col['column_default'];
-                    }
-                    $colDefinitions[] = $def;
-                }
-
-                $pkStmt = $pdo->prepare("
-                    SELECT kcu.column_name
-                    FROM information_schema.table_constraints tc
-                    JOIN information_schema.key_column_usage kcu
-                      ON tc.constraint_name = kcu.constraint_name
-                      AND tc.table_schema = kcu.table_schema
-                    WHERE tc.constraint_type = 'PRIMARY KEY'
-                      AND tc.table_name = :table
-                ");
-                $pkStmt->execute(['table' => $table]);
-                $pks = $pkStmt->fetchAll(\PDO::FETCH_COLUMN);
-                if (!empty($pks)) {
-                    $colDefinitions[] = '  PRIMARY KEY ("' . implode('", "', $pks) . '")';
-                }
-
-                $sql .= implode(",\n", $colDefinitions);
-                $sql .= "\n);\n\n";
-
-                $sql .= "-- Contenu de la table \"{$table}\"\n";
-                $dataStmt = $pdo->query("SELECT * FROM \"{$table}\"");
-                $rows = $dataStmt->fetchAll(\PDO::FETCH_ASSOC);
-
-                if (!empty($rows)) {
-                    foreach ($rows as $row) {
-                        $cols = array_keys($row);
-                        $vals = [];
-                        foreach ($row as $val) {
-                            if ($val === null) {
-                                $vals[] = 'NULL';
-                            } elseif (is_bool($val)) {
-                                $vals[] = $val ? 'TRUE' : 'FALSE';
-                            } elseif (is_numeric($val)) {
-                                $vals[] = $val;
-                            } else {
-                                $vals[] = "'" . str_replace("'", "''", $val) . "'";
-                            }
-                        }
-                        $sql .= "INSERT INTO \"{$table}\" (\"" . implode('", "', $cols) . "\") VALUES (" . implode(', ', $vals) . ");\n";
-                    }
-                }
-                $sql .= "\n";
-            }
-
-            $sql .= "SET session_replication_role = 'origin';\n";
+        $containerName = "hotelixos-{$tenant->slug}-app";
+        
+        // Ensure container is running
+        $status = shell_exec("docker inspect -f '{{.State.Running}}' " . escapeshellarg($containerName) . " 2>&1");
+        if (trim($status) !== 'true') {
+            $this->startTenant($tenant);
         }
 
-        // Create temporary files
-        $tempSqlFile = tempnam(sys_get_temp_dir(), 'backup_');
-        file_put_contents($tempSqlFile, $sql);
+        // Run migrations inside the container
+        shell_exec("docker exec " . escapeshellarg($containerName) . " php artisan migrate --force");
+        // Run seeders inside the container
+        shell_exec("docker exec " . escapeshellarg($containerName) . " php artisan db:seed --force");
 
-        $zipFile = tempnam(sys_get_temp_dir(), 'backup_zip_');
-        $zip = new \ZipArchive();
+        $tenant->update(['provisioned_at' => now()]);
+
+        AuditLog::record(
+            Auth::id(),
+            'provision_tenant',
+            "Exécution des migrations et seeders pour l'établissement {$tenant->name}",
+            'tech_admin'
+        );
+
+        return back()->with('success', "Les migrations et seeders ont été exécutés avec succès pour {$tenant->name}.");
+    }
+
+    public function healthCheckTenant(Tenant $tenant)
+    {
+        $containerName = "hotelixos-{$tenant->slug}-app";
+        $status = shell_exec("docker inspect -f '{{.State.Status}}' " . escapeshellarg($containerName) . " 2>&1");
+        $status = trim($status);
         
-        $timestamp = now()->format('Y-m-d_H-i-s');
-        $sqlFilename = 'villa_boutanga_backup_' . $timestamp . '.sql';
-        $zipFilename = 'villa_boutanga_backup_' . $timestamp . '.zip';
-
-        if ($zip->open($zipFile, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) === true) {
-            $zip->addFile($tempSqlFile, $sqlFilename);
-            $zip->close();
+        if (str_contains($status, 'Error') || empty($status)) {
+            $status = 'stopped';
         }
         
-        @unlink($tempSqlFile);
+        return response()->json(['status' => $status]);
+    }
 
-        return response()->download($zipFile, $zipFilename)->deleteFileAfterSend(true);
+    public function toggleUserActive(User $user)
+    {
+        $admin = Auth::user();
+        if (!$admin || !$admin->isTechAdmin()) { abort(403); }
+        if ($user->id === $admin->id) { return back()->with('error', 'Auto-désactivation impossible.'); }
+        $user->update(['is_active' => !$user->is_active]);
+        return back()->with('success', 'Statut utilisateur modifié.');
+    }
+
+    public function forcePasswordReset(User $user)
+    {
+        $admin = Auth::user();
+        if (!$admin || !$admin->isTechAdmin()) { abort(403); }
+        $tempPassword = Str::random(10);
+        $user->update(['password' => Hash::make($tempPassword)]);
+        return back()->with('success', "Mot de passe réinitialisé en : {$tempPassword}");
+    }
+
+    public function exportSupervision() { return response()->json(['error' => 'Non implémenté']); }
+    public function exportBackupTenant(?Tenant $tenant = null) { return response()->json(['error' => 'Non implémenté']); }
+
+    // Espace BUSINESS
+    public function businessDashboard(Request $request)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isOwner()) { abort(403); }
+
+        $segment = $request->segment(2); // business/{segment}
+        $activeTab = $request->input('tab', $segment ?: 'dashboard');
+
+        if (!in_array($activeTab, ['dashboard', 'establishments', 'analytics', 'employees', 'revenue'])) {
+            $activeTab = 'dashboard';
+        }
+
+        // Charger uniquement les établissements appartenant à ce propriétaire
+        $tenants = $user->tenants()->orderBy('name')->get();
+
+        return view('admin.dashboard', compact('activeTab', 'tenants'));
+    }
+
+    public function createTenantManager(Request $request, Tenant $tenant)
+    {
+        $user = Auth::user();
+        if (!$user) { abort(401); }
+        if (!$user->isTechAdmin() && ($tenant->owner_id !== $user->id)) {
+            abort(403, "Vous n'avez pas l'autorisation de gérer cet établissement.");
+        }
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:30'],
+            'password' => ['required', 'string', 'min:4'],
+        ]);
+
+        try {
+            $dbHost = 'db';
+            $dbPort = '5432';
+            if (gethostbyname('db') === 'db') {
+                $dbHost = '127.0.0.1';
+                $dbPort = '5433';
+            }
+            
+            $safeDbName = preg_replace('/[^a-zA-Z0-9_]/', '', $tenant->db_name);
+            $dsn = "pgsql:host={$dbHost};port={$dbPort};dbname={$safeDbName}";
+            $pdo = new \PDO($dsn, $tenant->db_username ?? 'pms', $tenant->db_password ?? 'secret', [
+                \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION
+            ]);
+            
+            $stmt = $pdo->prepare("SELECT 1 FROM users WHERE email = ?");
+            $stmt->execute([$validated['email']]);
+            if ($stmt->fetch()) {
+                return response()->json([
+                    'message' => "Un utilisateur avec cet email existe déjà dans cet établissement."
+                ], 422);
+            }
+
+            $hashedPassword = Hash::make($validated['password']);
+
+            $stmt = $pdo->prepare("
+                INSERT INTO users (name, email, phone, password, role, is_active, created_at, updated_at) 
+                VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())
+            ");
+            
+            $stmt->execute([
+                $validated['name'],
+                $validated['email'],
+                $validated['phone'] ?? null,
+                $hashedPassword,
+                'manager',
+                true
+            ]);
+
+            $tenant->increment('users_count');
+
+            AuditLog::record(
+                Auth::id(),
+                'create_manager',
+                "Création du manager {$validated['name']} ({$validated['email']}) pour l'établissement {$tenant->name}",
+                $user->role
+            );
+
+            return response()->json([
+                'success' => true,
+                'message' => "Manager créé avec succès."
+            ], 201);
+
+        } catch (\PDOException $e) {
+            \Illuminate\Support\Facades\Log::error("Failed to connect or insert manager in tenant database {$tenant->db_name}: " . $e->getMessage());
+            return response()->json([
+                'message' => "Impossible de se connecter à la base de données de l'établissement: " . $e->getMessage()
+            ], 500);
+        }
     }
 }
-
-

@@ -7,6 +7,7 @@
         'modules' => ['label' => 'Modules', 'icon' => 'puzzle'],
         'settings' => ['label' => 'Paramètres', 'icon' => 'cog'],
     ];
+    $section = request('section', 'overview');
 @endphp
 
 <!DOCTYPE html>
@@ -27,7 +28,7 @@
     <header class="sticky top-0 z-30 w-full bg-[#0f172a] border-b border-slate-800 text-white shadow-md">
         <div class="mx-auto px-5 lg:px-8 flex items-center justify-between h-14">
             <div class="flex items-center gap-4">
-                <a href="{{ route('admin.dashboard', ['tab' => 'tenants']) }}" class="flex items-center gap-2 text-slate-400 hover:text-white transition text-xs font-semibold">
+                <a href="{{ route('tech.dashboard', ['tab' => 'tenants']) }}" class="flex items-center gap-2 text-slate-400 hover:text-white transition text-xs font-semibold">
                     <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
                     </svg>
@@ -71,7 +72,7 @@
             <nav class="p-4 space-y-1">
                 @foreach($sidebarMenus as $key => $menu)
                     <a 
-                        href="{{ route('admin.tenants.show', ['tenant' => $tenant, 'section' => $key]) }}"
+                        href="{{ route('tech.establishments.show', ['tenant' => $tenant, 'section' => $key]) }}"
                         class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold transition {{ $section === $key ? 'bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-sm' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 border border-transparent' }}"
                     >
                         @if($menu['icon'] === 'chart')
@@ -252,7 +253,7 @@
                     <p class="text-xs text-slate-500 mt-1">Modifier le nom, l'adresse et les coordonnées</p>
                 </div>
 
-                <form action="{{ route('admin.tenants.update', $tenant) }}" method="POST" enctype="multipart/form-data" class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <form action="{{ route('tech.establishments.update', $tenant) }}" method="POST" enctype="multipart/form-data" class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                     @csrf
                     <div class="p-6 space-y-5">
                         <!-- Logo -->
@@ -365,7 +366,7 @@
                     <p class="text-xs text-slate-500 mt-1">Personnalisez l'apparence de l'interface de {{ $tenant->name }}</p>
                 </div>
 
-                <form action="{{ route('admin.tenants.update', $tenant) }}" method="POST" class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden" x-data="{
+                <form action="{{ route('tech.establishments.update', $tenant) }}" method="POST" class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden" x-data="{
                     p: '{{ $tenant->settings['theme']['primary'] ?? '#391F0E' }}',
                     s: '{{ $tenant->settings['theme']['secondary'] ?? '#CCAB87' }}',
                     a: '{{ $tenant->settings['theme']['accent'] ?? '#EED4A3' }}',
