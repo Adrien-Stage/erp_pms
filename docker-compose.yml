@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: docker/app/Dockerfile
-    container_name: hotelixos-app
+    container_name: MEKA_ERP-app
     ports:
       - "8080:80"
     volumes:
