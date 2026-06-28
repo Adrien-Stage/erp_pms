@@ -3,10 +3,10 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Auth\LoginRequest;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class AuthenticatedSessionController extends Controller
@@ -16,38 +16,72 @@ class AuthenticatedSessionController extends Controller
      */
     public function create(): View|RedirectResponse
     {
-        if (Auth::check() && Auth::user()->isAdmin()) {
-            return redirect()->route('admin.dashboard');
+        if (Auth::check()) {
+            $user = Auth::user();
+            if ($user->isTechAdmin()) {
+                return redirect()->route('tech.dashboard');
+            }
+            if ($user->isOwner()) {
+                return redirect()->route('business.dashboard');
+            }
         }
 
-        return view('auth.login');
+        return view('admin.auth.login');
     }
 
     /**
      * Handle an incoming authentication request.
      */
-    public function store(LoginRequest $request): RedirectResponse
+    public function store(Request $request): RedirectResponse
     {
-        $request->authenticate();
+        $input = $request->validate([
+            'login' => ['required', 'string'],
+            'password' => ['required', 'string'],
+        ]);
+
+        $user = \App\Models\User::where('email', $input['login'])->first();
+
+        if ($user && !$user->is_active) {
+            throw ValidationException::withMessages([
+                'login' => 'Votre compte administrateur a été désactivé.',
+            ]);
+        }
+
+        $credentials = [
+            'email' => $input['login'],
+            'password' => $input['password'],
+        ];
+
+        if (!Auth::attempt($credentials, $request->boolean('remember'))) {
+            throw ValidationException::withMessages([
+                'login' => __('auth.failed'),
+            ]);
+        }
 
         $request->session()->regenerate();
 
         $user = Auth::user();
-        if ($user && !$user->isAdmin()) {
-            $pausedSession = \App\Models\CashRegisterSession::where('user_id', $user->id)
-                ->whereNull('closed_at')
-                ->where('status', 'paused')
-                ->first();
+        
+        // Mettre à jour la date de dernière connexion
+        $user->update(['last_login_at' => now()]);
+        
+        // Enregistrer dans l'audit log
+        \App\Models\AuditLog::record(
+            $user->id, 
+            'login', 
+            "Connexion de l'utilisateur {$user->name} au panneau d'administration", 
+            'auth'
+        );
 
-            if ($pausedSession) {
-                session(['paused_caisse_session' => [
-                    'id' => $pausedSession->id,
-                    'module' => $pausedSession->module,
-                ]]);
-            }
+        if ($user->isTechAdmin()) {
+            return redirect()->intended(route('tech.dashboard', absolute: false));
         }
 
-        return redirect()->intended(route('dashboard', absolute: false));
+        if ($user->isOwner()) {
+            return redirect()->intended(route('business.dashboard', absolute: false));
+        }
+
+        return redirect()->intended('/');
     }
 
     /**
@@ -56,26 +90,15 @@ class AuthenticatedSessionController extends Controller
     public function destroy(Request $request): RedirectResponse
     {
         $user = Auth::user();
-        if ($user && !$user->isAdmin()) {
-            $openSession = \App\Models\CashRegisterSession::where('user_id', $user->id)
-                ->whereNull('closed_at')
-                ->where('status', 'open')
-                ->first();
 
-            if ($openSession) {
-                if (!$request->has('force')) {
-                    return redirect()->back()->with([
-                        'confirm_logout_caisse_open' => true,
-                        'caisse_module' => $openSession->module,
-                        'caisse_id' => $openSession->id,
-                    ]);
-                } else {
-                    $openSession->update(['status' => 'paused']);
-                }
-            }
+        if ($user) {
+            \App\Models\AuditLog::record(
+                $user->id, 
+                'logout', 
+                "Déconnexion de l'utilisateur {$user->name}", 
+                'auth'
+            );
         }
-
-        $redirectTo = $user?->isAdmin() ? '/admin' : '/';
 
         Auth::guard('web')->logout();
 
@@ -83,6 +106,6 @@ class AuthenticatedSessionController extends Controller
 
         $request->session()->regenerateToken();
 
-        return redirect($redirectTo);
+        return redirect('/login');
     }
 }

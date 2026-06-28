@@ -1,74 +1,106 @@
-﻿﻿@php
-    $tabs = [
-        'dashboard' => [
-            'label' => 'Supervision',
-            'title' => 'Supervision multi-etablissements',
-            'description' => 'Vue globale des etablissements, utilisateurs, activite, alertes et indicateurs consolides.',
-            'items' => ['Etablissements actifs', 'Utilisateurs actifs', 'Reservations du jour', 'Alertes globales'],
-        ],
-        'tenants' => [
-            'label' => 'Etablissements',
-            'title' => 'Gestion des etablissements',
-            'description' => 'Creation, configuration, activation, suspension et diagnostic des tenants.',
-            'items' => ['Creation tenant', 'Configuration generale', 'Modules actifs', 'Etat onboarding'],
-        ],
-        'managers' => [
-            'label' => 'Managers',
-            'title' => 'Gestion des managers',
-            'description' => 'Creation, activation, reinitialisation et rattachement des managers aux etablissements.',
-            'items' => ['Compte manager', 'Reinitialisation mot de passe', 'Activation compte', 'Rattachement tenant'],
-        ],
-        'roles' => [
-            'label' => 'Roles',
-            'title' => 'Roles et permissions',
-            'description' => 'Consultation des roles operationnels et configuration future des permissions par module.',
-            'items' => ['Roles disponibles', 'Permissions par module', 'Roles par tenant', 'Roles personnalises'],
-        ],
-        'modules' => [
-            'label' => 'Modules',
-            'title' => 'Modules plateforme',
-            'description' => 'Activation des modules disponibles selon les besoins de chaque etablissement.',
-            'items' => ['Hotel', 'Restaurant', 'Boutique', 'Housekeeping', 'Comptabilite', 'IA'],
-        ],
-        'audit' => [
-            'label' => 'Audit',
-            'title' => 'Audit et securite',
-            'description' => 'Suivi des connexions, acces refuses, actions sensibles et interventions admin.',
-            'items' => ['Logs acces', 'Acces refuses', 'Actions sensibles', 'Comptes compromis'],
-        ],
-        'support' => [
-            'label' => 'Support',
-            'title' => 'Support operationnel',
-            'description' => 'Lecture globale et futur mode assistance audite pour diagnostiquer un etablissement.',
-            'items' => ['Mode lecture', 'Mode assistance', 'Justification', 'Historique interventions'],
-        ],
-        'settings' => [
-            'label' => 'Configuration',
-            'title' => 'Configuration globale',
-            'description' => 'Parametres applicatifs, limites, integrations et statuts techniques de la plateforme.',
-            'items' => ['Parametres globaux', 'Limites tenant', 'Integrations', 'Etat technique'],
-        ],
-        'billing' => [
-            'label' => 'Licences',
-            'title' => 'Abonnements et licences',
-            'description' => 'Gestion future des plans, modules inclus, echeances et suspensions.',
-            'items' => ['Plan actif', 'Modules inclus', 'Expiration', 'Historique abonnement'],
-        ],
-        'imports' => [
-            'label' => 'Import/Export',
-            'title' => 'Import et export',
-            'description' => 'Zone dediee aux imports et exports de donnees sous forme de fichiers Excel.',
-            'items' => ['Import etablissements', 'Import utilisateurs', 'Export audit', 'Export supervision'],
-        ],
-        'system' => [
-            'label' => 'Systeme',
-            'title' => 'Sante systeme',
-            'description' => 'Surveillance technique des services, files, integrations et erreurs applicatives.',
-            'items' => ['Files attente', 'Erreurs API', 'Emails', 'Stockage'],
-        ],
-    ];
+@php
+    $isTech = auth()->user()->isTechAdmin();
+    $isOwner = auth()->user()->isOwner();
 
-    $activeTab = request('tab', 'dashboard');
+    if ($isTech) {
+        $tabs = [
+            'dashboard' => [
+                'label' => 'Supervision',
+                'title' => 'Supervision multi-etablissements',
+                'description' => 'Vue globale des etablissements, utilisateurs, activite, alertes et indicateurs consolides.',
+                'items' => ['Etablissements actifs', 'Utilisateurs actifs', 'Reservations du jour', 'Alertes globales'],
+            ],
+            'tenants' => [
+                'label' => 'Etablissements',
+                'title' => 'Gestion des etablissements',
+                'description' => 'Creation, configuration, activation, suspension et diagnostic des tenants.',
+                'items' => ['Creation tenant', 'Configuration generale', 'Modules actifs', 'Etat onboarding'],
+            ],
+            'managers' => [
+                'label' => 'Managers',
+                'title' => 'Gestion des managers',
+                'description' => 'Creation, activation, reinitialisation et rattachement des managers aux etablissements.',
+                'items' => ['Compte manager', 'Reinitialisation mot de passe', 'Activation compte', 'Rattachement tenant'],
+            ],
+            'roles' => [
+                'label' => 'Roles',
+                'title' => 'Roles et permissions',
+                'description' => 'Consultation des roles operationnels et configuration future des permissions par module.',
+                'items' => ['Roles disponibles', 'Permissions par module', 'Roles par tenant', 'Roles personnalises'],
+            ],
+            'modules' => [
+                'label' => 'Modules',
+                'title' => 'Modules plateforme',
+                'description' => 'Activation des modules disponibles selon les besoins de chaque etablissement.',
+                'items' => ['Hotel', 'Restaurant', 'Boutique', 'Housekeeping', 'Comptabilite', 'IA'],
+            ],
+            'support' => [
+                'label' => 'Support',
+                'title' => 'Support operationnel',
+                'description' => 'Lecture globale et futur mode assistance audite pour diagnostiquer un etablissement.',
+                'items' => ['Mode lecture', 'Mode assistance', 'Justification', 'Historique interventions'],
+            ],
+            'settings' => [
+                'label' => 'Configuration',
+                'title' => 'Configuration globale',
+                'description' => 'Parametres applicatifs, limites, integrations et statuts techniques de la plateforme.',
+                'items' => ['Parametres globaux', 'Limites tenant', 'Integrations', 'Etat technique'],
+            ],
+            'billing' => [
+                'label' => 'Licences',
+                'title' => 'Abonnements et licences',
+                'description' => 'Gestion future des plans, modules inclus, echeances et suspensions.',
+                'items' => ['Plan actif', 'Modules inclus', 'Expiration', 'Historique abonnement'],
+            ],
+            'imports' => [
+                'label' => 'Import/Export',
+                'title' => 'Import et export',
+                'description' => 'Zone dediee aux imports et exports de donnees sous forme de fichiers Excel.',
+                'items' => ['Import etablissements', 'Import utilisateurs', 'Export audit', 'Export supervision'],
+            ],
+            'system' => [
+                'label' => 'Systeme',
+                'title' => 'Sante systeme',
+                'description' => 'Surveillance technique des services, files, integrations et erreurs applicatives.',
+                'items' => ['Files attente', 'Erreurs API', 'Emails', 'Stockage'],
+            ],
+        ];
+    } else {
+        $tabs = [
+            'dashboard' => [
+                'label' => 'Vue d\'ensemble',
+                'title' => 'Tableau de bord Business',
+                'description' => 'Indicateurs consolidés de vos établissements.',
+                'items' => ['Revenus de l\'année', 'Taux d\'occupation', 'Réservations consolidées', 'Status opérationnel'],
+            ],
+            'establishments' => [
+                'label' => 'Mes Établissements',
+                'title' => 'Registre de mes établissements',
+                'description' => 'Consulter et accéder à vos établissements.',
+                'items' => ['Hôtels', 'Restaurants', 'Boutiques', 'Housekeeping'],
+            ],
+            'analytics' => [
+                'label' => 'Statistiques',
+                'title' => 'Analyses et statistiques',
+                'description' => 'Rapports détaillés de performance et croissance.',
+                'items' => ['Volume réservations', 'Fidélité client', 'Fréquentation'],
+            ],
+            'employees' => [
+                'label' => 'Employés',
+                'title' => 'Gestion des employés',
+                'description' => 'Registre des employés associés à vos établissements.',
+                'items' => ['Membres du personnel', 'Activités récentes', 'Permissions'],
+            ],
+            'revenue' => [
+                'label' => 'Revenus',
+                'title' => 'Suivi financier',
+                'description' => 'Détails des transactions et du chiffre d\'affaires consolidé.',
+                'items' => ['Chiffre d\'affaires', 'Dépenses', 'Bilan financier'],
+            ],
+        ];
+    }
+
+    $activeTab = $activeTab ?? request('tab', 'dashboard');
     if (!array_key_exists($activeTab, $tabs)) {
         $activeTab = 'dashboard';
     }
@@ -93,13 +125,24 @@
     <header class="sticky top-0 z-30 w-full bg-[#0f172a] border-b border-slate-800 text-white shadow-md">
         <div class="mx-auto max-w-7xl px-5 lg:px-8 flex items-center justify-between h-16">
             <div class="flex items-center gap-8">
-                <div class="text-sm font-extrabold uppercase tracking-wider text-white">
-                    ADMIN GLOBAL
+                <div class="flex items-center gap-2">
+                    <div class="text-sm font-extrabold uppercase tracking-wider text-white">
+                        MEKA ERP
+                    </div>
+                    @if($isTech)
+                        <span class="inline-flex items-center rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-400 border border-emerald-500/30">
+                            TECH
+                        </span>
+                    @else
+                        <span class="inline-flex items-center rounded-full bg-indigo-500/20 px-2 py-0.5 text-[10px] font-bold text-indigo-400 border border-indigo-500/30">
+                            BUSINESS
+                        </span>
+                    @endif
                 </div>
                 <nav class="hidden md:flex items-center gap-1.5" aria-label="Navigation administration">
                     @foreach($tabs as $key => $tab)
                         <a
-                            href="{{ route('admin.dashboard', ['tab' => $key]) }}"
+                            href="{{ route($isTech ? 'tech.dashboard' : 'business.dashboard', ['tab' => $key]) }}"
                             class="rounded-md px-3 py-1.5 text-xs font-semibold tracking-wide transition {{ $activeTab === $key ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-300 hover:bg-slate-800 hover:text-white' }}"
                         >
                             {{ $tab['label'] }}
@@ -120,7 +163,7 @@
             <div class="flex gap-1.5 min-w-max">
                 @foreach($tabs as $key => $tab)
                     <a
-                        href="{{ route('admin.dashboard', ['tab' => $key]) }}"
+                        href="{{ route($isTech ? 'tech.dashboard' : 'business.dashboard', ['tab' => $key]) }}"
                         class="rounded-md px-2.5 py-1 text-xs font-semibold transition {{ $activeTab === $key ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white' }}"
                     >
                         {{ $tab['label'] }}
@@ -174,28 +217,30 @@
             </div>
         @endif
 
-        @if($activeTab === 'tenants')
+        @if($activeTab === 'tenants' || $activeTab === 'establishments')
             <!-- ================= GESTION DES ETABLISSEMENTS LAYOUT ================= -->
             
             <!-- Breadcrumb Path -->
-            <p class="text-[10px] font-bold tracking-widest text-indigo-600 uppercase">ETABLISSEMENTS</p>
+            <p class="text-[10px] font-bold tracking-widest text-indigo-600 uppercase">{{ $isTech ? 'ÉTABLISSEMENTS' : 'MES ÉTABLISSEMENTS' }}</p>
             
             <!-- Page Title and Subtitle Row -->
             <div class="mt-2 flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-2 border-b border-slate-200 pb-4">
                 <div>
-                    <h1 class="text-2xl font-extrabold tracking-tight text-slate-800 font-heading">Gestion des Établissements</h1>
-                    <p class="text-xs text-slate-500 mt-1">Gérer les informations générales, le statut et les paramètres des filiales de l'ONG.</p>
+                    <h1 class="text-2xl font-extrabold tracking-tight text-slate-800 font-heading">{{ $isTech ? 'Gestion des Établissements' : 'Mes Établissements' }}</h1>
+                    <p class="text-xs text-slate-500 mt-1">{{ $isTech ? 'Gérer les informations générales, le statut et les paramètres des filiales de l\'ONG.' : 'Consulter et accéder à vos établissements actifs.' }}</p>
                 </div>
-                <a href="{{ route('admin.tenants.create') }}" class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 transition group">
-                    <svg class="h-4 w-4 transition-transform group-hover:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                    </svg>
-                    Nouvel Établissement
-                </a>
+                @if($isTech)
+                    <a href="{{ route('tech.establishments.create') }}" class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 transition group">
+                        <svg class="h-4 w-4 transition-transform group-hover:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                        </svg>
+                        Nouvel Établissement
+                    </a>
+                @endif
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
-                @foreach($tenants as $tenant)
+                @forelse($tenants as $tenant)
                     <div class="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden flex flex-col justify-between group hover:shadow-md hover:border-slate-300 transition-all duration-200">
                         <div>
                             <!-- Header with logo / image placeholder -->
@@ -233,27 +278,60 @@
                                     </div>
                                     <div class="flex justify-between items-center">
                                         <span class="text-slate-400">Utilisateurs :</span>
-                                        <span class="font-semibold text-slate-700">{{ $tenant->users_count ?? $tenant->users()->count() }}</span>
+                                        <span class="font-semibold text-slate-700">{{ $tenant->users_count ?? 0 }}</span>
+                                    </div>
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-slate-400">Lien d'accès :</span>
+                                        <a href="http://{{ $tenant->slug }}.localhost:8080" target="_blank" class="font-semibold text-indigo-600 hover:text-indigo-850 hover:underline font-mono text-[10px] truncate max-w-[150px]" title="http://{{ $tenant->slug }}.localhost:8080">
+                                            {{ $tenant->slug }}.localhost:8080
+                                        </a>
                                     </div>
                                 </div>
                             </div>
                         </div>
                         
                         <!-- Actions -->
-                        <div class="bg-slate-50 px-5 py-3 border-t border-slate-100 flex justify-end">
-                            <a 
-                                href="{{ route('admin.tenants.show', $tenant) }}"
-                                class="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-sm"
-                            >
-                                <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28z" />
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                </svg>
-                                Gérer
-                            </a>
+                        <div class="bg-slate-50 px-5 py-3 border-t border-slate-100 flex justify-end gap-2" x-data="{}">
+                            @if($isTech)
+                                <a 
+                                    href="{{ route('tech.establishments.show', $tenant) }}"
+                                    class="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-sm"
+                                >
+                                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28z" />
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    </svg>
+                                    Gérer
+                                </a>
+                            @else
+                                <button 
+                                    @click="$dispatch('open-create-manager-modal', { tenant_id: {{ $tenant->id }}, tenant_name: '{{ addslashes($tenant->name) }}' })"
+                                    type="button"
+                                    class="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition shadow-sm cursor-pointer"
+                                >
+                                    <svg class="h-3.5 w-3.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                                    </svg>
+                                    Gérer
+                                </button>
+                                <a 
+                                    href="http://{{ $tenant->slug }}.localhost:8080"
+                                    target="_blank"
+                                    class="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-indigo-750 transition shadow-sm"
+                                >
+                                    <span>Accéder</span>
+                                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                                    </svg>
+                                </a>
+                            @endif
                         </div>
                     </div>
-                @endforeach
+                @empty
+                    <div class="col-span-full py-12 text-center text-slate-400 italic text-xs bg-white rounded-lg border border-slate-200">
+                        Aucun établissement enregistré pour le moment.
+                    </div>
+                @endforelse
             </div>
         @elseif($activeTab === 'imports')
             <!-- ================= IMPORT & EXPORT LAYOUT ================= -->
@@ -302,7 +380,7 @@
                                     </p>
                                 </div>
                                 <div class="shrink-0">
-                                    <a href="{{ route('admin.export.supervision') }}" class="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-indigo-700 transition shadow-xs">
+                                    <a href="{{ route('tech.export.supervision') }}" class="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-indigo-700 transition shadow-xs">
                                         <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                             <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                                         </svg>
@@ -322,7 +400,7 @@
                                     </p>
                                 </div>
                                 <div class="shrink-0">
-                                    <a href="{{ route('admin.export.backup') }}" class="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-indigo-700 transition shadow-xs">
+                                    <a href="{{ route('tech.export.backup') }}" class="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-indigo-700 transition shadow-xs">
                                         <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                             <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                                         </svg>
@@ -556,13 +634,13 @@
             <div class="mt-8 border-b border-slate-200">
                 <div class="flex gap-6">
                     <a 
-                        href="{{ route('admin.dashboard', ['tab' => 'audit', 'sub' => 'logs']) }}" 
+                        href="{{ route('tech.dashboard', ['tab' => 'audit', 'sub' => 'logs']) }}" 
                         class="border-b-2 pb-3 text-sm font-semibold transition {{ $subTab === 'logs' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800' }}"
                     >
                         Journal d'Audit
                     </a>
                     <a 
-                        href="{{ route('admin.dashboard', ['tab' => 'audit', 'sub' => 'users']) }}" 
+                        href="{{ route('tech.dashboard', ['tab' => 'audit', 'sub' => 'users']) }}" 
                         class="border-b-2 pb-3 text-sm font-semibold transition {{ $subTab === 'users' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800' }}"
                     >
                         Sécurité des Comptes
@@ -574,7 +652,7 @@
                 <!-- ================= JOURNAL D'AUDIT TAB ================= -->
                 
                 <!-- Filters Grid Card -->
-                <form method="GET" action="{{ route('admin.dashboard') }}" class="mt-6 bg-white border border-slate-200 rounded-lg p-5 shadow-sm">
+                <form method="GET" action="{{ route('tech.dashboard') }}" class="mt-6 bg-white border border-slate-200 rounded-lg p-5 shadow-sm">
                     <input type="hidden" name="tab" value="audit">
                     <input type="hidden" name="sub" value="logs">
                     
@@ -642,7 +720,7 @@
                     </div>
                     
                     <div class="mt-4 flex items-center gap-2">
-                        <a href="{{ route('admin.dashboard', ['tab' => 'audit', 'sub' => 'logs']) }}" class="rounded-md border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition">
+                        <a href="{{ route('tech.dashboard', ['tab' => 'audit', 'sub' => 'logs']) }}" class="rounded-md border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition">
                             Réinitialiser
                         </a>
                         <button type="submit" class="rounded-md bg-indigo-600 px-4 py-2 text-xs font-semibold text-white hover:bg-indigo-700 transition">
@@ -793,7 +871,7 @@
                 <!-- ================= SECURITE DES COMPTES TAB ================= -->
                 
                 <!-- Search user bar -->
-                <form method="GET" action="{{ route('admin.dashboard') }}" class="mt-6 flex gap-2">
+                <form method="GET" action="{{ route('tech.dashboard') }}" class="mt-6 flex gap-2">
                     <input type="hidden" name="tab" value="audit">
                     <input type="hidden" name="sub" value="users">
                     <div class="relative flex-1">
@@ -814,7 +892,7 @@
                         Rechercher
                     </button>
                     @if(request()->filled('user_search'))
-                        <a href="{{ route('admin.dashboard', ['tab' => 'audit', 'sub' => 'users']) }}" class="rounded-md border border-slate-300 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition flex items-center">
+                        <a href="{{ route('tech.dashboard', ['tab' => 'audit', 'sub' => 'users']) }}" class="rounded-md border border-slate-300 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition flex items-center">
                             Effacer
                         </a>
                     @endif
@@ -882,7 +960,7 @@
                                 <div class="text-right whitespace-nowrap">
                                     @if($u->id !== Auth::id())
                                         <div class="flex md:justify-end gap-2">
-                                            <form method="POST" action="{{ route('admin.users.toggle-active', $u) }}" class="inline">
+                                            <form method="POST" action="{{ route('tech.users.toggle-active', $u) }}" class="inline">
                                                 @csrf
                                                 <button 
                                                     type="submit" 
@@ -892,7 +970,7 @@
                                                 </button>
                                             </form>
                                             
-                                            <form method="POST" action="{{ route('admin.users.reset-password', $u) }}" class="inline" onsubmit="return confirm('Voulez-vous vraiment forcer la réinitialisation du mot de passe de {{ $u->name }} ?')">
+                                            <form method="POST" action="{{ route('tech.users.reset-password', $u) }}" class="inline" onsubmit="return confirm('Voulez-vous vraiment forcer la réinitialisation du mot de passe de {{ $u->name }} ?')">
                                                 @csrf
                                                 <button 
                                                     type="submit" 
@@ -924,5 +1002,126 @@
         @endif
 
      </main>
+
+    <!-- Modal: Créer un Manager pour un établissement ( BUSINESS / Owner space ) -->
+    <div 
+        x-data="{ 
+            open: false, 
+            tenantId: null, 
+            tenantName: '',
+            name: '',
+            email: '',
+            phone: '',
+            password: '',
+            errorMsg: '',
+            successMsg: '',
+            submitting: false
+        }"
+        @open-create-manager-modal.window="
+            open = true; 
+            tenantId = $event.detail.tenant_id; 
+            tenantName = $event.detail.tenant_name; 
+            name = ''; 
+            email = ''; 
+            phone = ''; 
+            password = ''; 
+            errorMsg = '';
+            successMsg = '';
+        "
+        x-show="open" 
+        class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4"
+        style="display: none;"
+        x-transition
+    >
+        <div class="bg-white rounded-xl border border-slate-200 w-full max-w-md shadow-2xl overflow-hidden" @click.away="if(!submitting) open = false">
+            <!-- Header -->
+            <div class="bg-slate-900 px-6 py-4 flex items-center justify-between">
+                <h3 class="text-sm font-bold text-white tracking-wide">Créer le Manager - <span x-text="tenantName"></span></h3>
+                <button type="button" @click="open = false" class="text-slate-400 hover:text-white text-lg font-bold" :disabled="submitting">&times;</button>
+            </div>
+            
+            <!-- Form -->
+            <form @submit.prevent="
+                submitting = true;
+                errorMsg = '';
+                successMsg = '';
+                fetch('/business/establishments/' + tenantId + '/create-manager', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({ name, email, phone, password })
+                })
+                .then(res => res.json().then(data => ({ status: res.status, body: data })))
+                .then(res => {
+                    submitting = false;
+                    if (res.status === 200 || res.status === 201) {
+                        successMsg = 'Le compte manager a été créé avec succès dans l\'établissement !';
+                        name = '';
+                        email = '';
+                        phone = '';
+                        password = '';
+                        setTimeout(() => { open = false; window.location.reload(); }, 1500);
+                    } else {
+                        errorMsg = res.body.message || 'Une erreur est survenue lors de la création du manager.';
+                    }
+                })
+                .catch(err => {
+                    submitting = false;
+                    errorMsg = 'Impossible de se connecter au serveur.';
+                });
+            " class="p-6 space-y-4">
+                
+                <template x-if="errorMsg">
+                    <div class="rounded-lg bg-red-50 border border-red-150 p-3 text-xs font-semibold text-red-700" x-text="errorMsg"></div>
+                </template>
+                
+                <template x-if="successMsg">
+                    <div class="rounded-lg bg-emerald-50 border border-emerald-150 p-3 text-xs font-semibold text-emerald-700" x-text="successMsg"></div>
+                </template>
+
+                <!-- Name -->
+                <div>
+                    <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase">Nom complet <span class="text-red-400">*</span></label>
+                    <input type="text" x-model="name" required placeholder="Ex: Jean Dupont"
+                           class="mt-1 block w-full rounded-lg border border-slate-205 bg-white px-3 py-2.5 text-xs text-slate-700 outline-none focus:border-indigo-500 transition">
+                </div>
+
+                <!-- Email -->
+                <div>
+                    <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase">Adresse e-mail <span class="text-red-400">*</span></label>
+                    <input type="email" x-model="email" required placeholder="manager@etablissement.com"
+                           class="mt-1 block w-full rounded-lg border border-slate-205 bg-white px-3 py-2.5 text-xs text-slate-700 outline-none focus:border-indigo-500 transition">
+                </div>
+
+                <!-- Phone -->
+                <div>
+                    <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase">Téléphone</label>
+                    <input type="text" x-model="phone" placeholder="+237 600 000 000"
+                           class="mt-1 block w-full rounded-lg border border-slate-205 bg-white px-3 py-2.5 text-xs text-slate-700 outline-none focus:border-indigo-500 transition">
+                </div>
+
+                <!-- Password -->
+                <div>
+                    <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase">Mot de passe temporaire <span class="text-red-400">*</span></label>
+                    <input type="password" x-model="password" required minlength="4" placeholder="••••••••"
+                           class="mt-1 block w-full rounded-lg border border-slate-205 bg-white px-3 py-2.5 text-xs text-slate-700 outline-none focus:border-indigo-500 transition">
+                </div>
+
+                <!-- Actions -->
+                <div class="flex items-center justify-end gap-2 pt-2">
+                    <button type="button" @click="open = false" class="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer" :disabled="submitting">
+                        Annuler
+                    </button>
+                    <button type="submit" class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-indigo-700 transition cursor-pointer" :disabled="submitting">
+                        <span x-show="submitting">Création...</span>
+                        <span x-show="!submitting">Créer le Manager</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
 </body>
 </html>

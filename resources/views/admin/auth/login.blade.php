@@ -11,15 +11,15 @@
         <section class="w-full max-w-sm">
             <div class="mb-8 text-center">
                 <p class="mb-3 text-xs font-semibold uppercase tracking-[0.22em] text-neutral-400">Admin global</p>
-                <h1 class="text-2xl font-semibold tracking-tight text-neutral-950">{{ \App\Models\Tenant::first()?->name ?? 'Villa Boutanga' }}</h1>
-                <p class="mt-2 text-sm leading-6 text-neutral-500">Acces administration plateforme.</p>
+                <h1 class="text-2xl font-semibold tracking-tight text-neutral-950">MEKA ERP</h1>
+                <p class="mt-2 text-sm leading-6 text-neutral-500">Accès administration plateforme.</p>
             </div>
 
-            <form method="POST" action="{{ route('admin.login.store') }}" class="rounded-lg border border-neutral-200 bg-white p-6 shadow-sm">
+            <form method="POST" action="{{ route('login') }}" class="rounded-lg border border-neutral-200 bg-white p-6 shadow-sm">
                 @csrf
 
                 <div>
-                    <label for="login" class="mb-2 block text-sm font-medium text-neutral-700">Login</label>
+                    <label for="login" class="mb-2 block text-sm font-medium text-neutral-700">Identifiant (Email ou admin)</label>
                     <input
                         id="login"
                         name="login"
