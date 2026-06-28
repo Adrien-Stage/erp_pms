@@ -148,6 +148,102 @@
                 </div>
             @endif
 
+            {{-- ==================== LOGS DE PROVISIONING (SSE) ==================== --}}
+            @if(session('start_provisioning') || $tenant->docker_status === 'creating')
+                <div class="mb-8 bg-slate-900 rounded-xl border border-slate-800 shadow-2xl overflow-hidden" id="provisioning-log-widget">
+                    <div class="bg-slate-950 px-6 py-4 flex items-center justify-between border-b border-slate-850">
+                        <div class="flex items-center gap-3">
+                            <span class="flex h-2.5 w-2.5 relative">
+                                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                                <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-indigo-500"></span>
+                            </span>
+                            <div>
+                                <h3 class="text-xs font-bold text-white uppercase tracking-wider">Provisioning Docker en cours…</h3>
+                                <p class="text-[10px] text-slate-400">Configuration de l'instance et exécution des migrations en direct</p>
+                            </div>
+                        </div>
+                        <span class="text-[10px] font-mono text-indigo-400 bg-indigo-950/50 border border-indigo-900/30 rounded px-2 py-0.5" id="provisioning-status">EN COURS</span>
+                    </div>
+                    <div class="p-6">
+                        <div id="log-output" class="font-mono text-xs text-slate-300 space-y-1.5 bg-slate-950/70 rounded-lg p-5 border border-slate-850 overflow-y-auto h-72 scrollbar-thin scrollbar-thumb-slate-800">
+                            <div class="text-slate-500 italic">[Connexion au flux de logs...]</div>
+                        </div>
+                        <div class="mt-4 flex items-center justify-between text-[10px] text-slate-400">
+                            <span>Veuillez ne pas fermer cette page pendant l'opération.</span>
+                            <span class="font-mono" id="log-time-elapsed">Durée : 0s</span>
+                        </div>
+                    </div>
+                </div>
+
+                <script>
+                document.addEventListener('DOMContentLoaded', function () {
+                    const logOutput = document.getElementById('log-output');
+                    const statusBadge = document.getElementById('provisioning-status');
+                    const timeElapsedSpan = document.getElementById('log-time-elapsed');
+                    const streamUrl = '{{ route("tech.establishments.provision.stream", $tenant) }}';
+                    
+                    let secondsElapsed = 0;
+                    const timer = setInterval(() => {
+                        secondsElapsed++;
+                        timeElapsedSpan.textContent = `Durée : ${secondsElapsed}s`;
+                    }, 1000);
+
+                    // Clear placeholder log
+                    logOutput.innerHTML = '';
+
+                    const evtSource = new EventSource(streamUrl);
+
+                    evtSource.onmessage = function (event) {
+                        try {
+                            const data = JSON.parse(event.data);
+                            const line = document.createElement('div');
+                            line.className = 'flex gap-2.5 items-start py-0.5 border-b border-slate-900/10';
+                            
+                            const timeSpan = document.createElement('span');
+                            timeSpan.className = 'text-slate-500 shrink-0 font-semibold select-none';
+                            timeSpan.textContent = `[${data.time}]`;
+                            
+                            const msgSpan = document.createElement('span');
+                            msgSpan.className = {
+                                'success': 'text-emerald-400 font-semibold',
+                                'error':   'text-red-400 font-semibold',
+                                'warning': 'text-amber-400',
+                                'info':    'text-slate-300',
+                            }[data.level] || 'text-slate-300';
+                            msgSpan.textContent = data.message;
+                            
+                            line.appendChild(timeSpan);
+                            line.appendChild(msgSpan);
+                            logOutput.appendChild(line);
+                            logOutput.scrollTop = logOutput.scrollHeight;
+
+                            if (data.step === 'done' || data.step === 'finished') {
+                                clearInterval(timer);
+                                statusBadge.textContent = 'TERMINÉ';
+                                statusBadge.className = 'text-[10px] font-mono text-emerald-400 bg-emerald-950/50 border border-emerald-900/30 rounded px-2 py-0.5';
+                                evtSource.close();
+                                setTimeout(() => location.reload(), 2000);
+                            }
+                            
+                            if (data.level === 'error' || data.step === 'error') {
+                                clearInterval(timer);
+                                statusBadge.textContent = 'ÉCHEC';
+                                statusBadge.className = 'text-[10px] font-mono text-red-400 bg-red-950/50 border border-red-900/30 rounded px-2 py-0.5';
+                                evtSource.close();
+                            }
+                        } catch (e) {
+                            console.error("Error parsing event stream payload:", e);
+                        }
+                    };
+
+                    evtSource.onerror = function () {
+                        clearInterval(timer);
+                        evtSource.close();
+                    };
+                });
+                </script>
+            @endif
+
             {{-- ==================== VUE D'ENSEMBLE ==================== --}}
             @if($section === 'overview')
                 <div class="mb-6">

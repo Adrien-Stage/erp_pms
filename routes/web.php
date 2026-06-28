@@ -32,6 +32,7 @@ Route::middleware(['auth', 'role:tech_admin'])->prefix('tech')->name('tech.')->g
     
     // Actions Docker pour les établissements
     Route::post('/establishments/{tenant}/provision', [AdminAuditController::class, 'provisionTenant'])->name('establishments.provision');
+    Route::get('/establishments/{tenant}/provision/stream', [AdminAuditController::class, 'provisionTenantStream'])->name('establishments.provision.stream');
     Route::post('/establishments/{tenant}/start', [AdminAuditController::class, 'startTenant'])->name('establishments.start');
     Route::post('/establishments/{tenant}/stop', [AdminAuditController::class, 'stopTenant'])->name('establishments.stop');
     Route::post('/establishments/{tenant}/restart', [AdminAuditController::class, 'restartTenant'])->name('establishments.restart');
