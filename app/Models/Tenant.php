@@ -34,6 +34,7 @@ class Tenant extends Model
         
         // Propriétaire et statut
         'is_active',
+        'users_count',
         'owner_id',
         
         // Métadonnées
@@ -46,6 +47,7 @@ class Tenant extends Model
         'settings' => 'array',
         'modules' => 'array',
         'is_active' => 'boolean',
+        'users_count' => 'integer',
         'api_enabled' => 'boolean',
         'website_enabled' => 'boolean',
         'provisioned_at' => 'datetime',

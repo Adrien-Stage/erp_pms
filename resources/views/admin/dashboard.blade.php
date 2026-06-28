@@ -280,12 +280,18 @@
                                         <span class="text-slate-400">Utilisateurs :</span>
                                         <span class="font-semibold text-slate-700">{{ $tenant->users_count ?? 0 }}</span>
                                     </div>
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-slate-400">Lien d'accès :</span>
+                                        <a href="http://{{ $tenant->slug }}.localhost:8080" target="_blank" class="font-semibold text-indigo-600 hover:text-indigo-850 hover:underline font-mono text-[10px] truncate max-w-[150px]" title="http://{{ $tenant->slug }}.localhost:8080">
+                                            {{ $tenant->slug }}.localhost:8080
+                                        </a>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                         
                         <!-- Actions -->
-                        <div class="bg-slate-50 px-5 py-3 border-t border-slate-100 flex justify-end">
+                        <div class="bg-slate-50 px-5 py-3 border-t border-slate-100 flex justify-end gap-2" x-data="{}">
                             @if($isTech)
                                 <a 
                                     href="{{ route('tech.establishments.show', $tenant) }}"
@@ -298,10 +304,20 @@
                                     Gérer
                                 </a>
                             @else
+                                <button 
+                                    @click="$dispatch('open-create-manager-modal', { tenant_id: {{ $tenant->id }}, tenant_name: '{{ addslashes($tenant->name) }}' })"
+                                    type="button"
+                                    class="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition shadow-sm cursor-pointer"
+                                >
+                                    <svg class="h-3.5 w-3.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                                    </svg>
+                                    Gérer
+                                </button>
                                 <a 
                                     href="http://{{ $tenant->slug }}.localhost:8080"
                                     target="_blank"
-                                    class="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-sm"
+                                    class="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-indigo-750 transition shadow-sm"
                                 >
                                     <span>Accéder</span>
                                     <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
@@ -986,5 +1002,126 @@
         @endif
 
      </main>
+
+    <!-- Modal: Créer un Manager pour un établissement ( BUSINESS / Owner space ) -->
+    <div 
+        x-data="{ 
+            open: false, 
+            tenantId: null, 
+            tenantName: '',
+            name: '',
+            email: '',
+            phone: '',
+            password: '',
+            errorMsg: '',
+            successMsg: '',
+            submitting: false
+        }"
+        @open-create-manager-modal.window="
+            open = true; 
+            tenantId = $event.detail.tenant_id; 
+            tenantName = $event.detail.tenant_name; 
+            name = ''; 
+            email = ''; 
+            phone = ''; 
+            password = ''; 
+            errorMsg = '';
+            successMsg = '';
+        "
+        x-show="open" 
+        class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4"
+        style="display: none;"
+        x-transition
+    >
+        <div class="bg-white rounded-xl border border-slate-200 w-full max-w-md shadow-2xl overflow-hidden" @click.away="if(!submitting) open = false">
+            <!-- Header -->
+            <div class="bg-slate-900 px-6 py-4 flex items-center justify-between">
+                <h3 class="text-sm font-bold text-white tracking-wide">Créer le Manager - <span x-text="tenantName"></span></h3>
+                <button type="button" @click="open = false" class="text-slate-400 hover:text-white text-lg font-bold" :disabled="submitting">&times;</button>
+            </div>
+            
+            <!-- Form -->
+            <form @submit.prevent="
+                submitting = true;
+                errorMsg = '';
+                successMsg = '';
+                fetch('/business/establishments/' + tenantId + '/create-manager', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({ name, email, phone, password })
+                })
+                .then(res => res.json().then(data => ({ status: res.status, body: data })))
+                .then(res => {
+                    submitting = false;
+                    if (res.status === 200 || res.status === 201) {
+                        successMsg = 'Le compte manager a été créé avec succès dans l\'établissement !';
+                        name = '';
+                        email = '';
+                        phone = '';
+                        password = '';
+                        setTimeout(() => { open = false; window.location.reload(); }, 1500);
+                    } else {
+                        errorMsg = res.body.message || 'Une erreur est survenue lors de la création du manager.';
+                    }
+                })
+                .catch(err => {
+                    submitting = false;
+                    errorMsg = 'Impossible de se connecter au serveur.';
+                });
+            " class="p-6 space-y-4">
+                
+                <template x-if="errorMsg">
+                    <div class="rounded-lg bg-red-50 border border-red-150 p-3 text-xs font-semibold text-red-700" x-text="errorMsg"></div>
+                </template>
+                
+                <template x-if="successMsg">
+                    <div class="rounded-lg bg-emerald-50 border border-emerald-150 p-3 text-xs font-semibold text-emerald-700" x-text="successMsg"></div>
+                </template>
+
+                <!-- Name -->
+                <div>
+                    <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase">Nom complet <span class="text-red-400">*</span></label>
+                    <input type="text" x-model="name" required placeholder="Ex: Jean Dupont"
+                           class="mt-1 block w-full rounded-lg border border-slate-205 bg-white px-3 py-2.5 text-xs text-slate-700 outline-none focus:border-indigo-500 transition">
+                </div>
+
+                <!-- Email -->
+                <div>
+                    <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase">Adresse e-mail <span class="text-red-400">*</span></label>
+                    <input type="email" x-model="email" required placeholder="manager@etablissement.com"
+                           class="mt-1 block w-full rounded-lg border border-slate-205 bg-white px-3 py-2.5 text-xs text-slate-700 outline-none focus:border-indigo-500 transition">
+                </div>
+
+                <!-- Phone -->
+                <div>
+                    <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase">Téléphone</label>
+                    <input type="text" x-model="phone" placeholder="+237 600 000 000"
+                           class="mt-1 block w-full rounded-lg border border-slate-205 bg-white px-3 py-2.5 text-xs text-slate-700 outline-none focus:border-indigo-500 transition">
+                </div>
+
+                <!-- Password -->
+                <div>
+                    <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase">Mot de passe temporaire <span class="text-red-400">*</span></label>
+                    <input type="password" x-model="password" required minlength="4" placeholder="••••••••"
+                           class="mt-1 block w-full rounded-lg border border-slate-205 bg-white px-3 py-2.5 text-xs text-slate-700 outline-none focus:border-indigo-500 transition">
+                </div>
+
+                <!-- Actions -->
+                <div class="flex items-center justify-end gap-2 pt-2">
+                    <button type="button" @click="open = false" class="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer" :disabled="submitting">
+                        Annuler
+                    </button>
+                    <button type="submit" class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-indigo-700 transition cursor-pointer" :disabled="submitting">
+                        <span x-show="submitting">Création...</span>
+                        <span x-show="!submitting">Créer le Manager</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
 </body>
 </html>

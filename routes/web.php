@@ -46,10 +46,10 @@ Route::middleware(['auth', 'role:tech_admin'])->prefix('tech')->name('tech.')->g
     Route::get('/export/backup/{tenant?}', [AdminAuditController::class, 'exportBackupTenant'])->name('export.backup');
 });
 
-// === ESPACE BUSINESS (Vue Propriétaire) ===
 Route::middleware(['auth', 'role:owner'])->prefix('business')->name('business.')->group(function () {
     Route::get('/dashboard', [AdminAuditController::class, 'businessDashboard'])->name('dashboard');
     Route::get('/establishments', [AdminAuditController::class, 'businessDashboard'])->name('establishments');
+    Route::post('/establishments/{tenant}/create-manager', [AdminAuditController::class, 'createTenantManager'])->name('establishments.create-manager');
     Route::get('/analytics', [AdminAuditController::class, 'businessDashboard'])->name('analytics');
     Route::get('/employees', [AdminAuditController::class, 'businessDashboard'])->name('employees');
     Route::get('/revenue', [AdminAuditController::class, 'businessDashboard'])->name('revenue');

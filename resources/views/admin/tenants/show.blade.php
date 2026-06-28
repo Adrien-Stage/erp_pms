@@ -7,6 +7,7 @@
         'modules' => ['label' => 'Modules', 'icon' => 'puzzle'],
         'settings' => ['label' => 'Paramètres', 'icon' => 'cog'],
     ];
+    $section = request('section', 'overview');
 @endphp
 
 <!DOCTYPE html>

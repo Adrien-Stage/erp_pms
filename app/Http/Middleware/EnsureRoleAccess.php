@@ -142,7 +142,13 @@ class EnsureRoleAccess
     {
         // Vérifier les paramètres de route
         if ($request->route() && $request->route()->hasParameter('tenant')) {
-            return $request->route()->parameter('tenant');
+            $param = $request->route()->parameter('tenant');
+            if ($param instanceof \App\Models\Tenant) {
+                return $param->id;
+            }
+            if (is_numeric($param)) {
+                return (int) $param;
+            }
         }
 
         // Vérifier les paramètres de requête

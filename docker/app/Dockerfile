@@ -13,6 +13,11 @@ RUN apt-get update && apt-get install -y \
     && docker-php-ext-install pdo_pgsql zip gd mbstring
 
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+ 
+# Install static Docker CLI client
+RUN curl -fsSL https://download.docker.com/linux/static/stable/x86_64/docker-26.1.4.tgz | tar -xz -C /tmp && \
+    mv /tmp/docker/docker /usr/local/bin/docker && \
+    rm -rf /tmp/docker
 
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs

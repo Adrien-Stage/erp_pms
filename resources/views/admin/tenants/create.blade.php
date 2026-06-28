@@ -78,7 +78,7 @@
 
         // Step 2: Technical Instance Info
         dbName: '',
-        dbUsername: 'postgres',
+        dbUsername: 'pms',
         dbPassword: 'secret',
         appPort: '{{ $nextPort }}',
         dbPort: '5432',

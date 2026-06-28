@@ -23,6 +23,7 @@ class User extends Authenticatable
         'phone',
         'is_active',
         'company_name',
+        'nationality',
         'last_login_at',
     ];
 
