@@ -135,13 +135,34 @@ class TenantProvisioningService
 
         if ($alreadyCloned === 'yes') {
             $log('source', "📁 Dossier déjà cloné, mise à jour (git pull)…", 'info');
-            $this->exec("git -C " . escapeshellarg($targetDir) . " pull --quiet 2>&1");
+            $pullCmd = "export GIT_TERMINAL_PROMPT=0 && git -C " . escapeshellarg($targetDir) . " pull --quiet 2>&1";
+            $pullResult = trim($this->exec($pullCmd));
+            if (str_contains($pullResult, 'Fatal') || str_contains($pullResult, 'fatal') || str_contains($pullResult, 'Could not resolve')) {
+                $log('source', "⚠️ Échec de la mise à jour (git pull) : Dépôt privé ou hors-ligne. Utilisation de la version existante.", 'warning');
+            }
         } else {
             $log('source', "⬇️  Clonage du template depuis GitHub…", 'info');
-            $this->execOrFail(
-                "git clone --depth=1 " . escapeshellarg($githubUrl) . " " . escapeshellarg($targetDir) . " 2>&1",
-                "Échec du git clone depuis {$githubUrl}"
-            );
+            
+            // Fail fast on credential prompt
+            $cloneCmd = "export GIT_TERMINAL_PROMPT=0 && git clone --depth=1 " . escapeshellarg($githubUrl) . " " . escapeshellarg($targetDir) . " 2>&1";
+            
+            try {
+                $this->execOrFail($cloneCmd, "Échec du git clone");
+            } catch (\Exception $e) {
+                // Check if local template fallback is available
+                $localFallback = '/c/Users/user/Herd/villab';
+                $hasFallback = trim($this->exec("test -d " . escapeshellarg($localFallback) . " && echo yes || echo no"));
+                
+                if ($hasFallback === 'yes') {
+                    $log('source', "⚠️ Échec du clone GitHub (dépôt privé ou hors-ligne). Repli automatique sur le template local...", 'warning');
+                    
+                    // Copy host folder files to target directory
+                    $this->exec("mkdir -p " . escapeshellarg($targetDir));
+                    $this->exec("cp -R " . escapeshellarg($localFallback) . "/. " . escapeshellarg($targetDir) . "/ 2>&1");
+                } else {
+                    throw $e; // Re-throw if no fallback
+                }
+            }
         }
 
         $log('source', "✅ Code source prêt dans : {$targetDir}", 'success');
