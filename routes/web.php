@@ -29,6 +29,7 @@ Route::middleware(['auth', 'role:tech_admin'])->prefix('tech')->name('tech.')->g
     Route::post('/establishments', [AdminAuditController::class, 'storeTenant'])->name('establishments.store');
     Route::get('/establishments/{tenant}', [AdminAuditController::class, 'showTenant'])->name('establishments.show');
     Route::post('/establishments/{tenant}', [AdminAuditController::class, 'updateTenant'])->name('establishments.update');
+    Route::delete('/establishments/{tenant}', [AdminAuditController::class, 'destroyTenant'])->name('establishments.destroy');
     
     // Actions Docker pour les établissements
     Route::post('/establishments/{tenant}/provision', [AdminAuditController::class, 'provisionTenant'])->name('establishments.provision');

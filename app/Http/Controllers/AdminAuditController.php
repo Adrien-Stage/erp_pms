@@ -291,6 +291,45 @@ class AdminAuditController extends Controller
         return back()->with('success', 'Établissement mis à jour.');
     }
 
+    public function destroyTenant(Tenant $tenant, \App\Services\TenantProvisioningService $provisioner)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isTechAdmin()) { abort(403); }
+
+        $logs = [];
+        $log  = function (string $step, string $message, string $level = 'info') use (&$logs) {
+            $logs[] = "[{$level}] {$message}";
+        };
+
+        try {
+            // 1. Nettoyer l'infrastructure Docker
+            $provisioner->delete($tenant, $log);
+
+            $tenantName = $tenant->name;
+            $tenantSlug = $tenant->slug;
+
+            // 2. Supprimer de la base globale SQLite
+            $tenant->delete();
+
+            // 3. Loguer dans l'audit log
+            AuditLog::record(
+                $user->id,
+                'delete_tenant',
+                "Suppression définitive de l'établissement {$tenantName} (slug: {$tenantSlug}) et de toutes ses ressources",
+                'tech_admin',
+                ['logs' => $logs]
+            );
+
+            return redirect()
+                ->route('tech.dashboard', ['tab' => 'tenants'])
+                ->with('success', "L'établissement « {$tenantName} » a été supprimé définitivement avec toutes ses ressources Docker.");
+
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error("Failed to delete tenant {$tenant->name}: " . $e->getMessage());
+            return back()->with('error', "Une erreur est survenue lors de la suppression : " . $e->getMessage());
+        }
+    }
+
     // ──────────────────────────────────────────────────────────────────────────
     // Actions Docker — déléguées à TenantProvisioningService
     // ──────────────────────────────────────────────────────────────────────────

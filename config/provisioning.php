@@ -27,6 +27,17 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Chemin de repli local (fallback)
+    |--------------------------------------------------------------------------
+    | Si le clone GitHub échoue (dépôt privé sans credentials, hors-ligne...),
+    | le provisioning copie le template depuis ce dossier hôte local.
+    | Chemin ABSOLU sur la machine hôte (pas dans le container).
+    | Windows/WSL2 ex : /c/Users/user/Herd/villab
+    */
+    'local_fallback_path' => env('LOCAL_FALLBACK_PATH', '/c/Users/user/Herd/villab'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Réseau Docker partagé
     |--------------------------------------------------------------------------
     | Tous les containers (admin + établissements) sont sur ce réseau.

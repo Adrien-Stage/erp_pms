@@ -50,7 +50,10 @@ services:
       - pms
 
 networks:
+  # Réseau externe partagé entre l'admin et tous les établissements provisionnés.
+  # Doit être créé une fois sur l'hôte :  docker network create pms
   pms:
+    external: true
 
 volumes:
   pms_pgdata:

@@ -150,12 +150,17 @@ class TenantProvisioningService
                 $this->execOrFail($cloneCmd, "Échec du git clone");
             } catch (\Exception $e) {
                 // Check if local template fallback is available
-                $localFallback = '/c/Users/user/Herd/villab';
-                $hasFallback = trim($this->exec("test -d " . escapeshellarg($localFallback) . " && echo yes || echo no"));
-                
+                $localFallback = rtrim((string) config('provisioning.local_fallback_path', ''), '/\\');
+
+                if ($localFallback !== '') {
+                    $hasFallback = trim($this->exec("test -d " . escapeshellarg($localFallback) . " && echo yes || echo no"));
+                } else {
+                    $hasFallback = 'no';
+                }
+
                 if ($hasFallback === 'yes') {
-                    $log('source', "⚠️ Échec du clone GitHub (dépôt privé ou hors-ligne). Repli automatique sur le template local...", 'warning');
-                    
+                    $log('source', "⚠️ Échec du clone GitHub (dépôt privé ou hors-ligne). Repli automatique sur le template local : {$localFallback}", 'warning');
+
                     // Copy host folder files to target directory
                     $this->exec("mkdir -p " . escapeshellarg($targetDir));
                     $this->exec("cp -R " . escapeshellarg($localFallback) . "/. " . escapeshellarg($targetDir) . "/ 2>&1");
@@ -502,6 +507,50 @@ YAML;
             'healthy'       => $appRunning && $dbRunning,
             'url'           => $appRunning ? "http://{$tenant->slug}.localhost" : null,
         ];
+    }
+
+    /**
+     * Supprime complètement un établissement (conteneurs Docker, volumes et configuration compose).
+     */
+    public function delete(Tenant $tenant, callable $log): void
+    {
+        $slug = $tenant->slug;
+        $log('delete', "Suppression de l'établissement « {$tenant->name} » (slug: {$slug})");
+
+        $baseDir     = rtrim(config('provisioning.tenants_base_path'), '/\\');
+        $composePath = "{$baseDir}/.compose/{$slug}.yml";
+
+        // 1. Arrêt et suppression des conteneurs et des volumes Docker
+        $log('docker', "Arrêt et destruction des conteneurs app/db et des volumes associés…", 'info');
+        $hasComposeFile = trim($this->exec("test -f " . escapeshellarg($composePath) . " && echo yes || echo no"));
+
+        if ($hasComposeFile === 'yes') {
+            $this->exec("docker compose -f " . escapeshellarg($composePath) . " down -v 2>&1");
+            $this->exec("rm -f " . escapeshellarg($composePath));
+            $log('compose', "Configuration docker-compose supprimée.", 'success');
+        } else {
+            // Repli au cas où : on force la suppression des conteneurs par nom
+            $appContainer = $this->containerName($slug, 'app');
+            $dbContainer  = $this->containerName($slug, 'db');
+            $this->exec("docker rm -f " . escapeshellarg($appContainer) . " 2>/dev/null || true");
+            $this->exec("docker rm -f " . escapeshellarg($dbContainer)  . " 2>/dev/null || true");
+            $this->exec("docker volume rm hotelixos_{$slug}_pgdata 2>/dev/null || true");
+            $log('docker', "Conteneurs orphelins et volume PostgreSQL supprimés par force.", 'warning');
+        }
+
+        // 2. Supprimer le dossier du code source local uniquement s'il est sous tenants_base_path
+        $targetDir = "{$baseDir}/{$slug}";
+        $isManagedPath = str_starts_with($targetDir, $baseDir) && ($slug !== '') && ($slug !== '.compose');
+        if ($isManagedPath) {
+            $hasTargetDir = trim($this->exec("test -d " . escapeshellarg($targetDir) . " && echo yes || echo no"));
+            if ($hasTargetDir === 'yes') {
+                $log('source', "Suppression du répertoire des sources : {$targetDir}…", 'info');
+                $this->exec("rm -rf " . escapeshellarg($targetDir));
+                $log('source', "Répertoire des sources supprimé.", 'success');
+            }
+        }
+
+        $log('done', "✅ Établissement « {$tenant->name} » supprimé de l'infrastructure Docker.", 'success');
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
