@@ -6,15 +6,15 @@ return [
     |--------------------------------------------------------------------------
     | Chemin de base des tenants sur l'hôte
     |--------------------------------------------------------------------------
-    | Chemin ABSOLU sur la machine hôte (pas dans le container) où HotelixOS
+    | Chemin ABSOLU sur la machine hôte (pas dans le container) où MEKA ERP
     | stocke le code source cloné de chaque établissement.
     |
     | Windows/WSL2 exemple : /c/Users/user/Herd/tenants
-    | Linux exemple         : /home/ubuntu/hotelixos/tenants
+    | Linux exemple         : /home/ubuntu/meka-erp/tenants
     |
     | Ce chemin est aussi utilisé pour monter les volumes Docker.
     */
-    'tenants_base_path' => env('TENANTS_BASE_PATH', '/var/hotelixos/tenants'),
+    'tenants_base_path' => env('TENANTS_BASE_PATH', '/var/meka-erp/tenants'),
 
     /*
     |--------------------------------------------------------------------------

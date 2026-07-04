@@ -119,9 +119,8 @@ class AdminAuditController extends Controller
             'docker_app_container' => ['nullable', 'string', 'max:255'],
             'docker_db_container' => ['nullable', 'string', 'max:255'],
 
-            // Source du template applicatif
-            'source_type' => ['required', 'in:local,github'],
-            'source_path' => ['required_if:source_type,local', 'nullable', 'string', 'max:500'],
+            // Source du template applicatif (toujours GitHub)
+
 
             // Step 3: Establishment Info
             'name' => ['required', 'string', 'max:255'],
@@ -209,11 +208,10 @@ class AdminAuditController extends Controller
             'db_password'          => $request->db_password ?? 'secret',
             'app_port'             => $request->app_port,
             'db_port'              => $request->db_port ?? 5434,
-            'docker_app_container' => 'hotelixos-' . $request->slug . '-app',
-            'docker_db_container'  => 'hotelixos-' . $request->slug . '-db',
+            'docker_app_container' => 'meka-erp-' . $request->slug . '-app',
+            'docker_db_container'  => 'meka-erp-' . $request->slug . '-db',
             'docker_status'        => 'creating',
-            'source_type'          => $request->source_type ?? 'github',
-            'source_path'          => $request->source_type === 'local' ? $request->source_path : null,
+            'source_type'          => 'github',
             'is_active'            => true,
             'settings'             => $settings,
             'modules'              => $modules,
@@ -222,7 +220,7 @@ class AdminAuditController extends Controller
         AuditLog::record(
             Auth::id(),
             'create_tenant',
-            "Création de l'établissement {$tenant->name} (slug: {$tenant->slug}, source: {$tenant->source_type})",
+            "Création de l'établissement {$tenant->name} (slug: {$tenant->slug})",
             'tech_admin'
         );
 
@@ -343,8 +341,22 @@ class AdminAuditController extends Controller
         $user = Auth::user();
         if (!$user || !$user->isTechAdmin()) { abort(403); }
 
+        // Augmenter le temps d'exécution max pour le provisioning (10 min)
+        set_time_limit(600);
+        ini_set('max_execution_time', '600');
+
         return response()->stream(function () use ($tenant, $provisioner) {
+            // Désactiver le buffering de sortie pour SSE
+            if (ob_get_level()) {
+                ob_end_clean();
+            }
+            ob_implicit_flush(true);
+
             $send = function (string $step, string $message, string $level = 'info') {
+                // Tronquer les messages très longs pour éviter le débordement du cadre de logs
+                if (mb_strlen($message) > 500) {
+                    $message = mb_substr($message, 0, 500) . '…';
+                }
                 $payload = json_encode([
                     'step'    => $step,
                     'message' => $message,
@@ -352,7 +364,9 @@ class AdminAuditController extends Controller
                     'time'    => now()->format('H:i:s'),
                 ]);
                 echo "data: {$payload}\n\n";
-                ob_flush();
+                if (ob_get_level()) {
+                    ob_flush();
+                }
                 flush();
             };
 

@@ -165,7 +165,7 @@
                         <span class="text-[10px] font-mono text-indigo-400 bg-indigo-950/50 border border-indigo-900/30 rounded px-2 py-0.5" id="provisioning-status">EN COURS</span>
                     </div>
                     <div class="p-6">
-                        <div id="log-output" class="font-mono text-xs text-slate-300 space-y-1.5 bg-slate-950/70 rounded-lg p-5 border border-slate-850 overflow-y-auto h-72 scrollbar-thin scrollbar-thumb-slate-800">
+                        <div id="log-output" class="font-mono text-xs text-slate-300 space-y-1.5 bg-slate-950/70 rounded-lg p-5 border border-slate-850 overflow-y-auto h-72 scrollbar-thin scrollbar-thumb-slate-800" style="word-break: break-word; overflow-wrap: break-word;">
                             <div class="text-slate-500 italic">[Connexion au flux de logs...]</div>
                         </div>
                         <div class="mt-4 flex items-center justify-between text-[10px] text-slate-400">
@@ -606,10 +606,7 @@
                                     <span class="text-slate-450 font-semibold">Utilisateur DB :</span>
                                     <span class="font-mono ml-2">{{ $tenant->db_username ?? 'pms' }}</span>
                                 </div>
-                                <div>
-                                    <span class="text-slate-450 font-semibold">Source du code :</span>
-                                    <span class="ml-2 font-semibold text-indigo-600 bg-indigo-50 border border-indigo-100 rounded px-1.5 py-0.5 uppercase text-[9px]">{{ $tenant->source_type ?? 'github' }}</span>
-                                </div>
+
                             </div>
                         </div>
                     </div>

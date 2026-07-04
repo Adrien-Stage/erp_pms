@@ -84,8 +84,7 @@
         dbPort: '5432',
         dockerAppContainer: '',
         dockerDbContainer: '',
-        sourceType: 'github',
-        sourcePath: '/c/Users/user/Herd/villab',
+
 
         // Step 3: Establishment Info
         name: '',
@@ -476,48 +475,7 @@
                     </div>
                 </div>
 
-                <!-- Source du Code Applicatif -->
-                <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                    <div class="bg-slate-900 px-6 py-4 flex items-center gap-3">
-                        <div class="rounded-lg bg-indigo-600/20 p-2">
-                            <svg class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3" />
-                            </svg>
-                        </div>
-                        <div>
-                            <h2 class="text-sm font-bold text-white tracking-wide">Source du Code Applicatif</h2>
-                            <p class="text-[10px] text-slate-400">Origine des fichiers hôteliers de l'établissement</p>
-                        </div>
-                    </div>
-                    
-                    <div class="p-6 space-y-4">
-                        <div>
-                            <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase">Type de Source</label>
-                            <div class="mt-2.5 flex flex-wrap gap-5">
-                                <label class="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
-                                    <input type="radio" name="source_type" value="github" x-model="sourceType" class="h-4 w-4 border-slate-300 text-indigo-600 focus:ring-indigo-500">
-                                    <span>GitHub (Clone automatique depuis le dépôt privé)</span>
-                                </label>
-                                <label class="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
-                                    <input type="radio" name="source_type" value="local" x-model="sourceType" class="h-4 w-4 border-slate-300 text-indigo-600 focus:ring-indigo-500">
-                                    <span>Local (Dossier existant sur la machine hôte)</span>
-                                </label>
-                            </div>
-                        </div>
-
-                        <!-- Champ conditionnel : visible uniquement si sourceType === 'local' -->
-                        <div x-show="sourceType === 'local'" x-transition x-cloak class="border-t border-slate-100 pt-4">
-                            <label for="source_path" class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase">Chemin Absolu sur l'Hôte</label>
-                            <input type="text" id="source_path" name="source_path" x-model="sourcePath" placeholder="Ex: /c/Users/user/Herd/villab"
-                                   class="mt-1.5 block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-700 font-mono outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition">
-                            <p class="mt-1.5 text-[10px] text-slate-400 leading-relaxed">
-                                Indiquez le chemin d'accès absolu sur le système hôte. Sous Windows, utilisez le format compatible Linux/WSL : <code>/c/chemin/vers/dossier</code>.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+<div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                     <div class="bg-slate-900 px-6 py-4 flex items-center gap-3">
                         <div class="rounded-lg bg-blue-600/20 p-2">
                             <svg class="h-5 w-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
