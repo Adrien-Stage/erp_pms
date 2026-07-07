@@ -4,14 +4,21 @@
 > Ces instructions décrivent tout ce qui a été conçu dans cette session de travail.
 > Applique-les dans l'ordre dans ton environnement local (Antigravity / Herd / Windows).
 
+> ⚠️ **Document historique.** Ce fichier décrit la version initiale du provisioning
+> (clone GitHub + build local). Cette approche a depuis été remplacée par un pull
+> d'image prébuildée depuis GHCR (voir `PLAN_REALISATION_ARCHITECTURE.md`, section
+> **Phase 2bis**, pour l'état actuel). Les sections mentionnant `source_type`,
+> `source_path` ou `TEMPLATE_GITHUB_URL` ne reflètent plus le code en place —
+> conservées ici pour l'historique de conception.
+
 ---
 
 ## Contexte
 
 Le système de provisioning permet de créer un établissement hôtelier depuis l'interface admin en :
-1. Choisissant la source du code applicatif : **local** (projet déjà sur la machine) ou **GitHub** (clone automatique du repo `villa_b`)
+1. Récupérant l'image applicative prébuildée depuis le registre `ghcr.io/adrien-stage/villa_b` *(à l'origine : en choisissant une source locale ou en clonant `villa_b` depuis GitHub — voir note ci-dessus)*
 2. Générant automatiquement un `docker-compose.yml` dédié (containers `app` + `db` isolés par établissement)
-3. Démarrant les containers et exécutant les migrations/seeders
+3. Démarrant les containers et exécutant les migrations/seeders (automatique via l'entrypoint)
 4. Diffusant les logs en temps réel dans l'UI via **Server-Sent Events (SSE)**
 
 ---
@@ -312,7 +319,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
 ---
 
-## Flux complet (rappel)
+## Flux complet (état actuel — voir aussi Phase 2bis dans PLAN_REALISATION_ARCHITECTURE.md)
 
 ```
 Admin TECH remplit le formulaire
@@ -322,14 +329,28 @@ storeTenant() → crée Tenant (docker_status='creating') → redirect show
 show.blade.php détecte start_provisioning → ouvre EventSource SSE
     ↓
 provisionTenantStream() → TenantProvisioningService::provision()
-    ├─ resolveSourcePath()     → local: vérifie chemin / github: git clone
-    ├─ ensureDockerImage()     → docker build hotelixos-template (si absent)
+    ├─ pullDockerImage()       → 1er provisioning : pinToTag(tenant, 'latest') résout
+    │                            le digest exact via l'API registre GHCR et le fige
+    │                            sur le tenant, puis docker pull par digest
     ├─ generateDockerCompose() → écrit TENANTS_BASE_PATH/.compose/{slug}.yml
+    │                            (réutilise l'APP_KEY existante si déjà générée)
     ├─ startContainers()       → docker compose up -d (app + db)
-    ├─ waitForDatabase()       → pg_isready jusqu'à 2 min
-    └─ runMigrations()         → php artisan migrate + db:seed dans le container
+    ├─ waitForDatabase()       → docker inspect .State.Health.Status jusqu'à 2 min
+    └─ runMigrations()         → attend que l'entrypoint (migrate --force + seed
+                                  conditionnel) ait démarré l'app, poll HTTP
     ↓
 Tenant mis à jour (docker_status='running', provisioned_at=now)
     ↓
 SSE envoie 'finished' → JS recharge la page
+
+--- Mise à jour d'un établissement existant (TenantProvisioningService::update()) ---
+
+TECH choisit une version dans la carte "Version de l'application" (Paramètres)
+    ↓
+updateTenantVersionStream() → TenantProvisioningService::update(tenant, tag)
+    ├─ pinToTag(tenant, tag)   → résout et fige le nouveau digest choisi
+    ├─ pullPinnedImage()       → docker pull par digest
+    ├─ generateDockerCompose() → régénère le compose avec la nouvelle image
+    ├─ docker compose up -d    → recrée UNIQUEMENT le container app (DB/volume intacts)
+    └─ runMigrations()         → idem provisioning
 ```
