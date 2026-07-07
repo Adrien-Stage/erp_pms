@@ -381,7 +381,7 @@ class AdminAuditController extends Controller
 
                 $send('finished', 'Provisioning terminé avec succès.', 'success');
 
-            } catch (\RuntimeException $e) {
+            } catch (\Throwable $e) {
                 $tenant->update(['docker_status' => 'error']);
                 $send('error', $e->getMessage(), 'error');
 
@@ -464,7 +464,7 @@ class AdminAuditController extends Controller
 
                 $send('finished', 'Mise à jour terminée avec succès.', 'success');
 
-            } catch (\RuntimeException $e) {
+            } catch (\Throwable $e) {
                 $tenant->update(['docker_status' => 'error']);
                 $send('error', $e->getMessage(), 'error');
 
@@ -501,7 +501,7 @@ class AdminAuditController extends Controller
 
             return back()->with('success', "Container de « {$tenant->name} » démarré.");
 
-        } catch (\RuntimeException $e) {
+        } catch (\Throwable $e) {
             $tenant->update(['docker_status' => 'error']);
             return back()->with('error', "Erreur au démarrage : " . $e->getMessage());
         }
