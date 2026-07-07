@@ -289,28 +289,30 @@ YAML;
 
     // ── Étape 5 : Attendre la DB ──────────────────────────────────────────────
 
+    /**
+     * S'appuie sur le HEALTHCHECK Docker déjà défini pour le container DB dans
+     * le compose généré (pg_isready), plutôt que de relancer un check via un
+     * "docker exec" imbriqué depuis ce container admin — jugé peu fiable dans
+     * ce contexte (nested docker exec via le socket partagé).
+     */
     private function waitForDatabase(Tenant $tenant, callable $log): void
     {
         $dbContainer = 'meka-erp-' . $tenant->slug . '-db';
-        $dbUser      = $tenant->db_username ?? 'pms';
-        $dbName      = preg_replace('/[^a-zA-Z0-9_]/', '', $tenant->db_name);
 
         $log('db', "⏳ Attente de la disponibilité de PostgreSQL…", 'info');
 
         for ($i = 1; $i <= 24; $i++) {
-            $ready = trim($this->exec(
-                'docker exec ' . escapeshellarg($dbContainer) .
-                ' pg_isready -U ' . escapeshellarg($dbUser) .
-                ' -d ' . escapeshellarg($dbName) . ' 2>nul && echo ok || echo wait'
+            $status = trim($this->exec(
+                'docker inspect -f "{{.State.Health.Status}}" ' . escapeshellarg($dbContainer) . ' 2>&1'
             ));
 
-            if ($ready === 'ok') {
+            if ($status === 'healthy') {
                 $log('db', "✅ PostgreSQL prêt après {$i} tentative(s).", 'success');
                 return;
             }
 
             if ($i < 24) {
-                $log('db', "  Tentative {$i}/24 — pas encore prêt, attente 5s…", 'info');
+                $log('db', "  Tentative {$i}/24 — statut « {$status} », attente 5s…", 'info');
                 sleep(5);
             }
         }
