@@ -208,7 +208,13 @@ class TenantProvisioningService
         $appKey       = $this->resolveAppKey($composePath);
         $appUrl       = 'http://' . $tenant->slug . '.localhost';
         $currency     = $tenant->currency ?? 'XAF';
-        $settingsJson = addslashes(json_encode($tenant->settings ?? []));
+        $settings     = $tenant->settings ?? [];
+        if (!empty($settings['logo'])) {
+            // Le logo vit dans le storage de l'admin (pas du tenant) : on passe
+            // une URL absolue, exploitable depuis le container de l'établissement.
+            $settings['logo'] = rtrim(config('app.url'), '/') . '/storage/' . ltrim($settings['logo'], '/');
+        }
+        $settingsJson = addslashes(json_encode($settings));
         $modulesJson  = addslashes(json_encode($tenant->modules  ?? []));
 
         $yaml = <<<YAML
