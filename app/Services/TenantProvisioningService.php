@@ -53,40 +53,15 @@ class TenantProvisioningService
         return $result === 'yes';
     }
 
-    // ── Création dossier (cross-platform) ─────────────────────────────────────
-
-    private function ensureDir(string $path): void
-    {
-        $quoted = escapeshellarg($path);
-        if (self::isWindows()) {
-            $this->exec('if not exist ' . $quoted . ' mkdir ' . $quoted);
-        } else {
-            $this->exec('mkdir -p ' . $quoted);
-        }
-    }
-
     // ── Suppression fichier (cross-platform) ──────────────────────────────────
 
     private function rmFile(string $path): void
     {
         $quoted = escapeshellarg($path);
         if (self::isWindows()) {
-            $this->exec('del /F /Q ' . $quoted . ' 2>nul');
+            $this->exec('del /F /Q ' . $quoted . ' 2>/dev/null');
         } else {
             $this->exec('rm -f ' . $quoted);
-        }
-    }
-
-    // ── Copie fichier (cross-platform) ────────────────────────────────────────
-
-    private function copyFile(string $from, string $to): void
-    {
-        $qFrom = escapeshellarg($from);
-        $qTo   = escapeshellarg($to);
-        if (self::isWindows()) {
-            $this->exec('copy /Y ' . $qFrom . ' ' . $qTo . ' >nul 2>&1');
-        } else {
-            $this->exec('cp ' . $qFrom . ' ' . $qTo);
         }
     }
 
@@ -218,7 +193,9 @@ class TenantProvisioningService
         $composeDir  = $baseDir . '/.compose';
         $composePath = $composeDir . '/' . $tenant->slug . '.yml';
 
-        $this->ensureDir($composeDir);
+        if (!is_dir($composeDir) && !mkdir($composeDir, 0777, true) && !is_dir($composeDir)) {
+            throw new RuntimeException("Impossible de créer le répertoire : {$composeDir}");
+        }
 
         $appContainer = 'meka-erp-' . $tenant->slug . '-app';
         $dbContainer  = 'meka-erp-' . $tenant->slug . '-db';
@@ -297,9 +274,9 @@ volumes:
 
 YAML;
 
-        $tmp = sys_get_temp_dir() . '/' . $tenant->slug . '.yml';
-        file_put_contents($tmp, $yaml);
-        $this->copyFile($tmp, $composePath);
+        if (file_put_contents($composePath, $yaml) === false) {
+            throw new RuntimeException("Impossible d'écrire le fichier docker-compose : {$composePath}");
+        }
 
         $log('compose', "📄 docker-compose généré : {$composePath}", 'info');
         return $composePath;
@@ -321,8 +298,8 @@ YAML;
         $appContainer = 'meka-erp-' . $tenant->slug . '-app';
         $dbContainer  = 'meka-erp-' . $tenant->slug . '-db';
 
-        $this->exec('docker rm -f ' . escapeshellarg($appContainer) . ' 2>nul');
-        $this->exec('docker rm -f ' . escapeshellarg($dbContainer)  . ' 2>nul');
+        $this->exec('docker rm -f ' . escapeshellarg($appContainer) . ' 2>/dev/null');
+        $this->exec('docker rm -f ' . escapeshellarg($dbContainer)  . ' 2>/dev/null');
 
         $output = $this->execOrFail(
             'docker compose -f ' . escapeshellarg($composePath) . ' up -d 2>&1',
@@ -481,15 +458,15 @@ YAML;
 
     public function stop(Tenant $tenant, callable $log): void
     {
-        $this->exec('docker stop ' . escapeshellarg('meka-erp-' . $tenant->slug . '-app') . ' 2>nul');
-        $this->exec('docker stop ' . escapeshellarg('meka-erp-' . $tenant->slug . '-db') . ' 2>nul');
+        $this->exec('docker stop ' . escapeshellarg('meka-erp-' . $tenant->slug . '-app') . ' 2>/dev/null');
+        $this->exec('docker stop ' . escapeshellarg('meka-erp-' . $tenant->slug . '-db') . ' 2>/dev/null');
         $log('stop', "✅ Containers arrêtés.", 'success');
     }
 
     public function restart(Tenant $tenant, callable $log): void
     {
-        $this->exec('docker restart ' . escapeshellarg('meka-erp-' . $tenant->slug . '-db') . ' 2>nul');
-        $this->exec('docker restart ' . escapeshellarg('meka-erp-' . $tenant->slug . '-app') . ' 2>nul');
+        $this->exec('docker restart ' . escapeshellarg('meka-erp-' . $tenant->slug . '-db') . ' 2>/dev/null');
+        $this->exec('docker restart ' . escapeshellarg('meka-erp-' . $tenant->slug . '-app') . ' 2>/dev/null');
         $log('restart', "✅ Containers redémarrés.", 'success');
     }
 
@@ -499,10 +476,10 @@ YAML;
         $dbContainer  = 'meka-erp-' . $tenant->slug . '-db';
 
         $appStatus = trim($this->exec(
-            'docker inspect -f "{{.State.Status}}" ' . escapeshellarg($appContainer) . ' 2>nul'
+            'docker inspect -f "{{.State.Status}}" ' . escapeshellarg($appContainer) . ' 2>/dev/null'
         ));
         $dbStatus  = trim($this->exec(
-            'docker inspect -f "{{.State.Status}}" ' . escapeshellarg($dbContainer) . ' 2>nul'
+            'docker inspect -f "{{.State.Status}}" ' . escapeshellarg($dbContainer) . ' 2>/dev/null'
         ));
 
         if ($appStatus === '') { $appStatus = 'absent'; }
@@ -535,9 +512,9 @@ YAML;
         } else {
             $appContainer = 'meka-erp-' . $slug . '-app';
             $dbContainer  = 'meka-erp-' . $slug . '-db';
-            $this->exec('docker rm -f ' . escapeshellarg($appContainer) . ' 2>nul');
-            $this->exec('docker rm -f ' . escapeshellarg($dbContainer)  . ' 2>nul');
-            $this->exec('docker volume rm meka_erp_' . $slug . '_pgdata 2>nul');
+            $this->exec('docker rm -f ' . escapeshellarg($appContainer) . ' 2>/dev/null');
+            $this->exec('docker rm -f ' . escapeshellarg($dbContainer)  . ' 2>/dev/null');
+            $this->exec('docker volume rm meka_erp_' . $slug . '_pgdata 2>/dev/null');
             $log('docker', "Conteneurs orphelins et volume supprimés.", 'warning');
         }
 
