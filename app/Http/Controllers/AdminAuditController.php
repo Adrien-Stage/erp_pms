@@ -353,8 +353,8 @@ class AdminAuditController extends Controller
 
             $send = function (string $step, string $message, string $level = 'info') {
                 // Tronquer les messages très longs pour éviter le débordement du cadre de logs
-                if (mb_strlen($message) > 500) {
-                    $message = mb_substr($message, 0, 500) . '…';
+                if (mb_strlen($message) > 3000) {
+                    $message = mb_substr($message, 0, 3000) . '…';
                 }
                 $payload = json_encode([
                     'step'    => $step,
@@ -436,8 +436,8 @@ class AdminAuditController extends Controller
             ob_implicit_flush(true);
 
             $send = function (string $step, string $message, string $level = 'info') {
-                if (mb_strlen($message) > 500) {
-                    $message = mb_substr($message, 0, 500) . '…';
+                if (mb_strlen($message) > 3000) {
+                    $message = mb_substr($message, 0, 3000) . '…';
                 }
                 $payload = json_encode([
                     'step'    => $step,

@@ -186,7 +186,13 @@
                         </div>
                         <div class="mt-4 flex items-center justify-between text-[10px] text-slate-400">
                             <span>Veuillez ne pas fermer cette page pendant l'opération.</span>
-                            <span class="font-mono" id="log-time-elapsed">Durée : 0s</span>
+                            <div class="flex items-center gap-3">
+                                <button type="button" onclick="copyLogText('log-output', this)"
+                                        class="rounded border border-slate-700 bg-slate-800 px-2.5 py-1 text-[10px] font-bold text-slate-300 hover:bg-slate-700 hover:text-white transition cursor-pointer">
+                                    Copier les logs
+                                </button>
+                                <span class="font-mono" id="log-time-elapsed">Durée : 0s</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -792,6 +798,12 @@
                             <!-- Logs en direct (pendant la mise à jour) -->
                             <div x-show="updating" class="p-6">
                                 <div id="update-log-output" class="font-mono text-xs text-slate-300 space-y-1.5 bg-slate-950/70 rounded-lg p-5 border border-slate-850 overflow-y-auto h-64" style="word-break: break-word; overflow-wrap: break-word;"></div>
+                                <div class="mt-3 flex justify-end">
+                                    <button type="button" onclick="copyLogText('update-log-output', this)"
+                                            class="rounded border border-slate-700 bg-slate-800 px-2.5 py-1 text-[10px] font-bold text-slate-300 hover:bg-slate-700 hover:text-white transition cursor-pointer">
+                                        Copier les logs
+                                    </button>
+                                </div>
                             </div>
 
                             <!-- Footer Actions -->
@@ -874,5 +886,26 @@
             @endif
         </main>
     </div>
+
+    <script>
+    function copyLogText(containerId, buttonEl) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+
+        const text = Array.from(container.children)
+            .map(line => line.textContent)
+            .join('\n');
+
+        navigator.clipboard.writeText(text).then(() => {
+            const original = buttonEl.textContent;
+            buttonEl.textContent = 'Copié !';
+            setTimeout(() => { buttonEl.textContent = original; }, 1500);
+        }).catch(() => {
+            const original = buttonEl.textContent;
+            buttonEl.textContent = 'Échec de la copie';
+            setTimeout(() => { buttonEl.textContent = original; }, 1500);
+        });
+    }
+    </script>
 </body>
 </html>
