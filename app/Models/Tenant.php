@@ -24,9 +24,10 @@ class Tenant extends Model
         'docker_app_container',
         'docker_db_container',
         'docker_status', // running, stopped, creating, error
+        'docker_image_tag', // digest (sha256:...) de l'image ghcr.io figé pour ce tenant
         'app_port',
         'db_port',
-        
+
         // Source du code applicatif
         'source_type',  // 'local' | 'github'
         'source_path',  // chemin absolu hôte (uniquement si source_type = 'local')

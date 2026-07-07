@@ -211,7 +211,6 @@ class AdminAuditController extends Controller
             'docker_app_container' => 'meka-erp-' . $request->slug . '-app',
             'docker_db_container'  => 'meka-erp-' . $request->slug . '-db',
             'docker_status'        => 'creating',
-            'source_type'          => 'github',
             'is_active'            => true,
             'settings'             => $settings,
             'modules'              => $modules,

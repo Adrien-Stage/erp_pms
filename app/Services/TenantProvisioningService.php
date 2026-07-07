@@ -8,9 +8,6 @@ use RuntimeException;
 
 class TenantProvisioningService
 {
-    private const GITHUB_URL_DEFAULT  = 'https://github.com/Adrien-Stage/villa_b.git';
-    private const DOCKER_IMAGE_PREFIX = 'meka-erp-template';
-
     // ── Détection OS ─────────────────────────────────────────────────────────
 
     private static function isWindows(): bool
@@ -40,18 +37,6 @@ class TenantProvisioningService
         return $output;
     }
 
-    // ── Vérification existence dossier (cross-platform) ───────────────────────
-
-    private function dirExists(string $path): bool
-    {
-        if (self::isWindows()) {
-            $result = trim($this->exec('if exist ' . escapeshellarg(rtrim($path, '\\/') . '\\') . ' (echo yes) else echo no'));
-        } else {
-            $result = trim($this->exec('test -d ' . escapeshellarg($path) . ' && echo yes || echo no'));
-        }
-        return $result === 'yes';
-    }
-
     // ── Vérification existence fichier (cross-platform) ───────────────────────
 
     private function fileExists(string $path): bool
@@ -73,18 +58,6 @@ class TenantProvisioningService
             $this->exec('if not exist ' . $quoted . ' mkdir ' . $quoted);
         } else {
             $this->exec('mkdir -p ' . $quoted);
-        }
-    }
-
-    // ── Suppression dossier récursive (cross-platform) ────────────────────────
-
-    private function rmDir(string $path): void
-    {
-        $quoted = escapeshellarg($path);
-        if (self::isWindows()) {
-            $this->exec('rmdir /S /Q ' . $quoted . ' 2>nul');
-        } else {
-            $this->exec('rm -rf ' . $quoted);
         }
     }
 
@@ -113,29 +86,6 @@ class TenantProvisioningService
         }
     }
 
-    // ── Copie dossier récursive (cross-platform) ──────────────────────────────
-
-    private function copyDir(string $from, string $to): void
-    {
-        $qFrom = escapeshellarg(rtrim($from, '\\/'));
-        $qTo   = escapeshellarg($to);
-        if (self::isWindows()) {
-            $this->exec('xcopy ' . $qFrom . ' ' . $qTo . ' /E /I /Y >nul 2>&1');
-        } else {
-            $this->exec('cp -R ' . $qFrom . '/. ' . $qTo . '/ 2>&1');
-        }
-    }
-
-    // ── Set env + run sur Windows ─────────────────────────────────────────────
-
-    private function withGitEnv(string $cmd): string
-    {
-        if (self::isWindows()) {
-            return 'set GIT_TERMINAL_PROMPT=0 && ' . $cmd;
-        }
-        return 'export GIT_TERMINAL_PROMPT=0 && ' . $cmd;
-    }
-
     // ── Entrée principale ─────────────────────────────────────────────────────
 
     public function provision(Tenant $tenant, callable $log): void
@@ -144,9 +94,8 @@ class TenantProvisioningService
 
         $log('start', "Démarrage du provisioning pour « {$tenant->name} » (slug: {$slug})");
 
-        $sourcePath = $this->resolveSourcePath($tenant, $log);
-        $imageName  = $this->ensureDockerImage($sourcePath, $log);
-        $composePath = $this->generateDockerCompose($tenant, $sourcePath, $imageName, $log);
+        $imageRef    = $this->pullDockerImage($tenant, $log);
+        $composePath = $this->generateDockerCompose($tenant, $imageRef, $log);
         $this->startContainers($tenant, $composePath, $log);
         $this->waitForDatabase($tenant, $log);
         $this->runMigrations($tenant, $log);
@@ -161,97 +110,58 @@ class TenantProvisioningService
         $log('done', "✅ Établissement « {$tenant->name} » provisionné et opérationnel sur le port {$tenant->app_port}", 'success');
     }
 
-    // ── Étape 1 : Source du code (clone GitHub) ───────────────────────────────
+    // ── Étape 1 : Image Docker (pull depuis le registre GHCR) ─────────────────
 
-    private function resolveSourcePath(Tenant $tenant, callable $log): string
+    private function pullDockerImage(Tenant $tenant, callable $log): string
     {
-        return $this->resolveGithub($tenant, $log);
-    }
+        $registryImage = config('provisioning.registry_image');
 
-    private function resolveGithub(Tenant $tenant, callable $log): string
-    {
-        $baseDir   = rtrim(config('provisioning.tenants_base_path'), '/\\');
-        $targetDir = $baseDir . '/' . $tenant->slug;
-        $githubUrl = config('provisioning.template_github_url', self::GITHUB_URL_DEFAULT);
-
-        $alreadyCloned = $this->dirExists($targetDir . '/.git');
-
-        if ($alreadyCloned) {
-            $log('source', "📁 Dossier déjà cloné, mise à jour (git pull)…", 'info');
-            $pullCmd    = $this->withGitEnv('git -C ' . escapeshellarg($targetDir) . ' pull --quiet 2>&1');
-            $pullResult = trim($this->exec($pullCmd));
-            if (str_contains($pullResult, 'Fatal') || str_contains($pullResult, 'fatal') || str_contains($pullResult, 'Could not resolve')) {
-                $log('source', "⚠️ Échec de la mise à jour (git pull). Utilisation de la version existante.", 'warning');
-            }
-        } else {
-            $log('source', "⬇️  Clonage du template depuis GitHub…", 'info');
-
-            $cloneCmd = $this->withGitEnv(
-                'git clone --depth=1 ' . escapeshellarg($githubUrl) . ' ' . escapeshellarg($targetDir) . ' 2>&1'
-            );
-
-            try {
-                $this->execOrFail($cloneCmd, "Échec du git clone");
-            } catch (\Exception $e) {
-                $localFallback = rtrim((string) config('provisioning.local_fallback_path', ''), '/\\');
-                $hasFallback   = $localFallback !== '' && $this->dirExists($localFallback);
-
-                if ($hasFallback) {
-                    $log('source', "⚠️ Échec du clone GitHub. Repli sur le template local : {$localFallback}", 'warning');
-                    $this->ensureDir($targetDir);
-                    $this->copyDir($localFallback, $targetDir);
-                } else {
-                    throw $e;
-                }
-            }
+        if (empty($tenant->docker_image_tag)) {
+            $this->pinLatestDigest($tenant, $registryImage, $log);
         }
 
-        $log('source', "✅ Code source prêt dans : {$targetDir}", 'success');
-        return $targetDir;
+        $imageRef = $registryImage . '@' . $tenant->docker_image_tag;
+
+        $log('image', "⬇️  Récupération de l'image « {$imageRef} »…", 'info');
+        $this->execOrFail('docker pull ' . escapeshellarg($imageRef) . ' 2>&1', "Échec du docker pull de l'image");
+        $log('image', "✅ Image prête.", 'success');
+
+        return $imageRef;
     }
 
-    // ── Étape 2 : Image Docker ────────────────────────────────────────────────
-
-    private function ensureDockerImage(string $sourcePath, callable $log): string
+    /**
+     * Résout le tag "latest" du registre vers son digest exact et le fige
+     * sur le tenant, pour que cet établissement ne soit plus jamais impacté
+     * par un futur build (mise à jour = action explicite, voir update()).
+     */
+    private function pinLatestDigest(Tenant $tenant, string $registryImage, callable $log): void
     {
-        $imageName     = self::DOCKER_IMAGE_PREFIX;
-        $dockerfilePath = $sourcePath . '/Dockerfile';
+        $log('image', "📌 Résolution de la version actuelle du template (latest)…", 'info');
 
-        if (!$this->fileExists($dockerfilePath)) {
+        $this->execOrFail(
+            'docker pull ' . escapeshellarg($registryImage . ':latest') . ' 2>&1',
+            "Échec du docker pull de « {$registryImage}:latest »"
+        );
+
+        $digest = trim($this->exec(
+            'docker inspect --format="{{index .RepoDigests 0}}" ' . escapeshellarg($registryImage . ':latest') . ' 2>&1'
+        ));
+
+        $sha256 = str_contains($digest, '@sha256:') ? substr($digest, strpos($digest, '@') + 1) : null;
+
+        if (!$sha256) {
             throw new RuntimeException(
-                "Aucun Dockerfile trouvé dans « {$sourcePath} ». " .
-                "Vérifiez que le Dockerfile du template est bien commité."
+                "Impossible de résoudre le digest de l'image « {$registryImage}:latest » (sortie: {$digest})."
             );
         }
 
-        $imageExists = trim($this->exec('docker images -q ' . escapeshellarg($imageName) . ' 2>nul'));
-        if (!empty($imageExists)) {
-            $log('image', "🐳 Image Docker « {$imageName} » déjà présente — réutilisation.", 'info');
-            return $imageName;
-        }
-
-        $log('image', "🔨 Construction de l'image Docker « {$imageName} »…", 'info');
-
-        $buildCmd = 'docker build -t ' . escapeshellarg($imageName) .
-                    ' -f ' . escapeshellarg($dockerfilePath) .
-                    ' ' . escapeshellarg($sourcePath) . ' 2>&1';
-
-        $output = $this->execOrFail($buildCmd, "Échec du docker build");
-
-        $lines = array_filter(explode("\n", $output));
-        foreach (array_slice($lines, -5) as $line) {
-            if (!empty(trim($line))) {
-                $log('image', "  » {$line}", 'info');
-            }
-        }
-
-        $log('image', "✅ Image « {$imageName} » construite avec succès.", 'success');
-        return $imageName;
+        $tenant->update(['docker_image_tag' => $sha256]);
+        $log('image', "✅ Version figée pour cet établissement : {$sha256}", 'success');
     }
 
-    // ── Étape 3 : docker-compose par tenant ──────────────────────────────────
+    // ── Étape 2 : docker-compose par tenant ──────────────────────────────────
 
-    private function generateDockerCompose(Tenant $tenant, string $sourcePath, string $imageName, callable $log): string
+    private function generateDockerCompose(Tenant $tenant, string $imageRef, callable $log): string
     {
         $baseDir     = rtrim(config('provisioning.tenants_base_path'), '/\\');
         $composeDir  = $baseDir . '/.compose';
@@ -277,7 +187,7 @@ class TenantProvisioningService
 services:
 
   {$appContainer}:
-    image: {$imageName}
+    image: {$imageRef}
     container_name: {$appContainer}
     restart: unless-stopped
     ports:
@@ -529,15 +439,6 @@ YAML;
             $this->exec('docker rm -f ' . escapeshellarg($dbContainer)  . ' 2>nul');
             $this->exec('docker volume rm meka_erp_' . $slug . '_pgdata 2>nul');
             $log('docker', "Conteneurs orphelins et volume supprimés.", 'warning');
-        }
-
-        $targetDir = $baseDir . '/' . $slug;
-        if (str_starts_with($targetDir, $baseDir) && $slug !== '' && $slug !== '.compose') {
-            if ($this->dirExists($targetDir)) {
-                $log('source', "Suppression du répertoire des sources : {$targetDir}…", 'info');
-                $this->rmDir($targetDir);
-                $log('source', "Répertoire des sources supprimé.", 'success');
-            }
         }
 
         $log('done', "✅ Établissement « {$tenant->name} » supprimé.", 'success');

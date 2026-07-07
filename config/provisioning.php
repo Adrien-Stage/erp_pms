@@ -6,35 +6,24 @@ return [
     |--------------------------------------------------------------------------
     | Chemin de base des tenants sur l'hôte
     |--------------------------------------------------------------------------
-    | Chemin ABSOLU sur la machine hôte (pas dans le container) où MEKA ERP
-    | stocke le code source cloné de chaque établissement.
+    | Chemin ABSOLU sur la machine hôte (pas dans le container). Utilisé pour
+    | stocker les docker-compose générés par établissement (dossier .compose).
     |
     | Windows/WSL2 exemple : /c/Users/user/Herd/tenants
     | Linux exemple         : /home/ubuntu/meka-erp/tenants
-    |
-    | Ce chemin est aussi utilisé pour monter les volumes Docker.
     */
     'tenants_base_path' => env('TENANTS_BASE_PATH', '/var/meka-erp/tenants'),
 
     /*
     |--------------------------------------------------------------------------
-    | URL du dépôt GitHub template
+    | Image Docker du template applicatif (registre)
     |--------------------------------------------------------------------------
-    | Dépôt cloné lorsque source_type = 'github'.
-    | Peut être un repo privé si les credentials Git sont configurés sur l'hôte.
+    | Image publiée automatiquement par la CI du repo villa_b (GitHub Actions
+    | -> GHCR). Package public : aucune authentification requise pour le pull.
+    | Le provisioning épingle chaque établissement sur un digest précis
+    | (voir Tenant::docker_image_tag) plutôt que de suivre "latest" en continu.
     */
-    'template_github_url' => env('TEMPLATE_GITHUB_URL', 'https://github.com/Adrien-Stage/villa_b.git'),
-
-    /*
-    |--------------------------------------------------------------------------
-    | Chemin de repli local (fallback)
-    |--------------------------------------------------------------------------
-    | Si le clone GitHub échoue (dépôt privé sans credentials, hors-ligne...),
-    | le provisioning copie le template depuis ce dossier hôte local.
-    | Chemin ABSOLU sur la machine hôte (pas dans le container).
-    | Windows/WSL2 ex : /c/Users/user/Herd/villab
-    */
-    'local_fallback_path' => env('LOCAL_FALLBACK_PATH', '/c/Users/user/Herd/villab'),
+    'registry_image' => env('REGISTRY_IMAGE', 'ghcr.io/adrien-stage/villa_b'),
 
     /*
     |--------------------------------------------------------------------------
