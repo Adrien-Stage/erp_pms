@@ -119,6 +119,9 @@ class AdminAuditController extends Controller
             'docker_app_container' => ['nullable', 'string', 'max:255'],
             'docker_db_container' => ['nullable', 'string', 'max:255'],
 
+            // Source du template applicatif (toujours GitHub)
+
+
             // Step 3: Establishment Info
             'name' => ['required', 'string', 'max:255'],
             'slug' => ['required', 'string', 'max:255', 'unique:tenants,slug'],
@@ -191,69 +194,40 @@ class AdminAuditController extends Controller
             $modules = array_keys($request->modules);
         }
 
-        // 5. Database Provisioning in PostgreSQL
-        $dbName = $request->db_name;
-        try {
-            // Auto-detect container vs host environment
-            $dbHost = 'db';
-            $dbPort = '5432';
-            if (gethostbyname('db') === 'db') {
-                $dbHost = '127.0.0.1';
-                $dbPort = '5433';
-            }
-            
-            $dsn = "pgsql:host={$dbHost};port={$dbPort};dbname=postgres";
-            $pdo = new \PDO($dsn, 'pms', 'secret', [
-                \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION
-            ]);
-            
-            // Safe db name (letters, numbers and underscores only)
-            $safeDbName = preg_replace('/[^a-zA-Z0-9_]/', '', $dbName);
-            
-            // Check if database exists
-            $stmt = $pdo->prepare("SELECT 1 FROM pg_database WHERE datname = ?");
-            $stmt->execute([$safeDbName]);
-            if (!$stmt->fetch()) {
-                $pdo->exec("CREATE DATABASE {$safeDbName}");
-            }
-        } catch (\PDOException $e) {
-            \Illuminate\Support\Facades\Log::error("Failed to provision PostgreSQL database {$dbName}: " . $e->getMessage());
-            return back()->withInput()->withErrors([
-                'db_name' => "Impossible de provisionner la base de données PostgreSQL: " . $e->getMessage()
-            ]);
-        }
-
-        // 6. Create Tenant Record
+        // 5. Créer le Tenant en base (statut 'creating' — le provisioning Docker suit via SSE)
         $tenant = Tenant::create([
-            'name' => $request->name,
-            'slug' => $request->slug,
-            'address' => $request->address,
-            'phone' => $request->phone,
-            'email' => $request->email,
-            'currency' => $request->currency,
-            'owner_id' => $ownerId,
-            'db_name' => $dbName,
-            'db_username' => $request->db_username ?? 'postgres',
-            'db_password' => $request->db_password ?? 'secret',
-            'app_port' => $request->app_port,
-            'db_port' => $request->db_port ?? '5432',
-            'docker_app_container' => $request->docker_app_container,
-            'docker_db_container' => $request->docker_db_container,
-            'docker_status' => 'running',
-            'is_active' => true,
-            'settings' => $settings,
-            'modules' => $modules,
+            'name'                 => $request->name,
+            'slug'                 => $request->slug,
+            'address'              => $request->address,
+            'phone'                => $request->phone,
+            'email'                => $request->email,
+            'currency'             => $request->currency,
+            'owner_id'             => $ownerId,
+            'db_name'              => $request->db_name,
+            'db_username'          => $request->db_username ?? 'pms',
+            'db_password'          => $request->db_password ?? 'secret',
+            'app_port'             => $request->app_port,
+            'db_port'              => $request->db_port ?? 5434,
+            'docker_app_container' => 'meka-erp-' . $request->slug . '-app',
+            'docker_db_container'  => 'meka-erp-' . $request->slug . '-db',
+            'docker_status'        => 'creating',
+            'is_active'            => true,
+            'settings'             => $settings,
+            'modules'              => $modules,
         ]);
 
         AuditLog::record(
             Auth::id(),
             'create_tenant',
-            "Création et provisioning de l'établissement {$tenant->name} (slug: {$tenant->slug})",
+            "Création de l'établissement {$tenant->name} (slug: {$tenant->slug})",
             'tech_admin'
         );
 
-        return redirect()->route('tech.dashboard', ['tab' => 'tenants'])
-            ->with('success', "L'établissement {$tenant->name} a été créé et sa base de données a été provisionnée avec succès.");
+        // Rediriger vers la page de l'établissement — le provisioning démarre via SSE
+        return redirect()
+            ->route('tech.establishments.show', $tenant)
+            ->with('start_provisioning', true)
+            ->with('success', "Établissement \u00ab {$tenant->name} \u00bb créé. Le provisioning Docker va démarrer.");
     }
 
     public function showTenant(Tenant $tenant)
@@ -314,135 +288,190 @@ class AdminAuditController extends Controller
         return back()->with('success', 'Établissement mis à jour.');
     }
 
-    public function startTenant(Tenant $tenant)
+    public function destroyTenant(Tenant $tenant, \App\Services\TenantProvisioningService $provisioner)
     {
         $user = Auth::user();
         if (!$user || !$user->isTechAdmin()) { abort(403); }
 
-        $containerName = "hotelixos-{$tenant->slug}-app";
-        
-        // Check if container already exists
-        $check = shell_exec("docker ps -a --filter name=^/{$containerName}$ --format '{{.Names}}'");
-        
-        if (empty(trim($check))) {
-            $dbName = preg_replace('/[^a-zA-Z0-9_]/', '', $tenant->db_name);
-            $appPort = $tenant->app_port;
-            $image = "pms-app";
-            
-            $cmd = "docker run -d " .
-                   "--name " . escapeshellarg($containerName) . " " .
-                   "--network pms " .
-                   "-p " . escapeshellarg("{$appPort}:80") . " " .
-                   "-v " . escapeshellarg("C:/Users/user/Herd/villab:/var/www/html") . " " .
-                   "-e DB_CONNECTION=pgsql " .
-                   "-e DB_HOST=db " .
-                   "-e DB_PORT=5432 " .
-                   "-e DB_DATABASE=" . escapeshellarg($dbName) . " " .
-                   "-e DB_USERNAME=" . escapeshellarg($tenant->db_username ?? 'pms') . " " .
-                   "-e DB_PASSWORD=" . escapeshellarg($tenant->db_password ?? 'secret') . " " .
-                   "-e APP_URL=" . escapeshellarg("http://{$tenant->slug}.localhost:8080") . " " .
-                   "-e APP_KEY=base64:d2Q4c3c3eDlhM2I0YzVkNmU3ZjhnOWgwaTFqMmszbG0= " .
-                   $image;
-            
-            shell_exec($cmd);
-        } else {
-            shell_exec("docker start " . escapeshellarg($containerName));
+        $logs = [];
+        $log  = function (string $step, string $message, string $level = 'info') use (&$logs) {
+            $logs[] = "[{$level}] {$message}";
+        };
+
+        try {
+            // 1. Nettoyer l'infrastructure Docker
+            $provisioner->delete($tenant, $log);
+
+            $tenantName = $tenant->name;
+            $tenantSlug = $tenant->slug;
+
+            // 2. Supprimer de la base globale SQLite
+            $tenant->delete();
+
+            // 3. Loguer dans l'audit log
+            AuditLog::record(
+                $user->id,
+                'delete_tenant',
+                "Suppression définitive de l'établissement {$tenantName} (slug: {$tenantSlug}) et de toutes ses ressources",
+                'tech_admin',
+                ['logs' => $logs]
+            );
+
+            return redirect()
+                ->route('tech.dashboard', ['tab' => 'tenants'])
+                ->with('success', "L'établissement « {$tenantName} » a été supprimé définitivement avec toutes ses ressources Docker.");
+
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error("Failed to delete tenant {$tenant->name}: " . $e->getMessage());
+            return back()->with('error', "Une erreur est survenue lors de la suppression : " . $e->getMessage());
         }
-
-        $tenant->update(['docker_status' => 'running']);
-
-        AuditLog::record(
-            Auth::id(),
-            'start_tenant',
-            "Démarrage du conteneur pour l'établissement {$tenant->name}",
-            'tech_admin'
-        );
-
-        return back()->with('success', "Le conteneur de l'établissement {$tenant->name} a été démarré.");
     }
 
-    public function stopTenant(Tenant $tenant)
+    // ──────────────────────────────────────────────────────────────────────────
+    // Actions Docker — déléguées à TenantProvisioningService
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /**
+     * SSE endpoint : provisionne un tenant en temps réel.
+     * Le client JS se connecte à cette route après la création du tenant.
+     */
+    public function provisionTenantStream(Tenant $tenant, \App\Services\TenantProvisioningService $provisioner)
     {
         $user = Auth::user();
         if (!$user || !$user->isTechAdmin()) { abort(403); }
 
-        $containerName = "hotelixos-{$tenant->slug}-app";
-        shell_exec("docker stop " . escapeshellarg($containerName));
-        
+        // Augmenter le temps d'exécution max pour le provisioning (10 min)
+        set_time_limit(600);
+        ini_set('max_execution_time', '600');
+
+        return response()->stream(function () use ($tenant, $provisioner) {
+            // Désactiver le buffering de sortie pour SSE
+            if (ob_get_level()) {
+                ob_end_clean();
+            }
+            ob_implicit_flush(true);
+
+            $send = function (string $step, string $message, string $level = 'info') {
+                // Tronquer les messages très longs pour éviter le débordement du cadre de logs
+                if (mb_strlen($message) > 500) {
+                    $message = mb_substr($message, 0, 500) . '…';
+                }
+                $payload = json_encode([
+                    'step'    => $step,
+                    'message' => $message,
+                    'level'   => $level,
+                    'time'    => now()->format('H:i:s'),
+                ]);
+                echo "data: {$payload}\n\n";
+                if (ob_get_level()) {
+                    ob_flush();
+                }
+                flush();
+            };
+
+            try {
+                $provisioner->provision($tenant, $send);
+
+                AuditLog::record(
+                    Auth::id(),
+                    'provision_tenant',
+                    "Provisioning Docker terminé pour l'établissement {$tenant->name}",
+                    'tech_admin'
+                );
+
+                $send('finished', 'Provisioning terminé avec succès.', 'success');
+
+            } catch (\RuntimeException $e) {
+                $tenant->update(['docker_status' => 'error']);
+                $send('error', $e->getMessage(), 'error');
+
+                AuditLog::record(
+                    Auth::id(),
+                    'provision_error',
+                    "Échec du provisioning pour {$tenant->name} : " . $e->getMessage(),
+                    'tech_admin'
+                );
+            }
+        }, 200, [
+            'Content-Type'      => 'text/event-stream',
+            'Cache-Control'     => 'no-cache',
+            'X-Accel-Buffering' => 'no',
+        ]);
+    }
+
+    public function startTenant(Tenant $tenant, \App\Services\TenantProvisioningService $provisioner)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isTechAdmin()) { abort(403); }
+
+        $logs = [];
+        $log  = function (string $step, string $message, string $level = 'info') use (&$logs) {
+            $logs[] = "[{$level}] {$message}";
+        };
+
+        try {
+            $provisioner->start($tenant, $log);
+            $tenant->update(['docker_status' => 'running']);
+
+            AuditLog::record(Auth::id(), 'start_tenant',
+                "Démarrage du container pour l'établissement {$tenant->name}", 'tech_admin');
+
+            return back()->with('success', "Container de « {$tenant->name} » démarré.");
+
+        } catch (\RuntimeException $e) {
+            $tenant->update(['docker_status' => 'error']);
+            return back()->with('error', "Erreur au démarrage : " . $e->getMessage());
+        }
+    }
+
+    public function stopTenant(Tenant $tenant, \App\Services\TenantProvisioningService $provisioner)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isTechAdmin()) { abort(403); }
+
+        $log = fn() => null;
+        $provisioner->stop($tenant, $log);
         $tenant->update(['docker_status' => 'stopped']);
 
-        AuditLog::record(
-            Auth::id(),
-            'stop_tenant',
-            "Arrêt du conteneur pour l'établissement {$tenant->name}",
-            'tech_admin'
-        );
+        AuditLog::record(Auth::id(), 'stop_tenant',
+            "Arrêt du container pour l'établissement {$tenant->name}", 'tech_admin');
 
-        return back()->with('success', "Le conteneur de l'établissement {$tenant->name} a été arrêté.");
+        return back()->with('success', "Container de « {$tenant->name} » arrêté.");
     }
 
-    public function restartTenant(Tenant $tenant)
+    public function restartTenant(Tenant $tenant, \App\Services\TenantProvisioningService $provisioner)
     {
         $user = Auth::user();
         if (!$user || !$user->isTechAdmin()) { abort(403); }
 
-        $containerName = "hotelixos-{$tenant->slug}-app";
-        shell_exec("docker restart " . escapeshellarg($containerName));
-        
+        $log = fn() => null;
+        $provisioner->restart($tenant, $log);
         $tenant->update(['docker_status' => 'running']);
 
-        AuditLog::record(
-            Auth::id(),
-            'restart_tenant',
-            "Redémarrage du conteneur pour l'établissement {$tenant->name}",
-            'tech_admin'
-        );
+        AuditLog::record(Auth::id(), 'restart_tenant',
+            "Redémarrage du container pour l'établissement {$tenant->name}", 'tech_admin');
 
-        return back()->with('success', "Le conteneur de l'établissement {$tenant->name} a été redémarré.");
+        return back()->with('success', "Container de « {$tenant->name} » redémarré.");
     }
 
     public function provisionTenant(Tenant $tenant)
     {
-        $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) { abort(403); }
-
-        $containerName = "hotelixos-{$tenant->slug}-app";
-        
-        // Ensure container is running
-        $status = shell_exec("docker inspect -f '{{.State.Running}}' " . escapeshellarg($containerName) . " 2>&1");
-        if (trim($status) !== 'true') {
-            $this->startTenant($tenant);
-        }
-
-        // Run migrations inside the container
-        shell_exec("docker exec " . escapeshellarg($containerName) . " php artisan migrate --force");
-        // Run seeders inside the container
-        shell_exec("docker exec " . escapeshellarg($containerName) . " php artisan db:seed --force");
-
-        $tenant->update(['provisioned_at' => now()]);
-
-        AuditLog::record(
-            Auth::id(),
-            'provision_tenant',
-            "Exécution des migrations et seeders pour l'établissement {$tenant->name}",
-            'tech_admin'
-        );
-
-        return back()->with('success', "Les migrations et seeders ont été exécutés avec succès pour {$tenant->name}.");
+        // Redirige vers le stream SSE (ancienne méthode conservée pour compatibilité)
+        return redirect()->route('tech.establishments.provision.stream', $tenant);
     }
 
-    public function healthCheckTenant(Tenant $tenant)
+    public function healthCheckTenant(Tenant $tenant, \App\Services\TenantProvisioningService $provisioner)
     {
-        $containerName = "hotelixos-{$tenant->slug}-app";
-        $status = shell_exec("docker inspect -f '{{.State.Status}}' " . escapeshellarg($containerName) . " 2>&1");
-        $status = trim($status);
-        
-        if (str_contains($status, 'Error') || empty($status)) {
-            $status = 'stopped';
-        }
-        
-        return response()->json(['status' => $status]);
+        $health = $provisioner->health($tenant);
+
+        // Sync docker_status en base
+        $newStatus = $health['healthy'] ? 'running' : ($health['app_status'] === 'absent' ? 'stopped' : $health['app_status']);
+        $tenant->update(['docker_status' => $newStatus, 'last_health_check' => now()]);
+
+        return response()->json($health);
     }
+
+
 
     public function toggleUserActive(User $user)
     {

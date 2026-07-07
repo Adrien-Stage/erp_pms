@@ -148,6 +148,102 @@
                 </div>
             @endif
 
+            {{-- ==================== LOGS DE PROVISIONING (SSE) ==================== --}}
+            @if(session('start_provisioning') || $tenant->docker_status === 'creating')
+                <div class="mb-8 bg-slate-900 rounded-xl border border-slate-800 shadow-2xl overflow-hidden" id="provisioning-log-widget">
+                    <div class="bg-slate-950 px-6 py-4 flex items-center justify-between border-b border-slate-850">
+                        <div class="flex items-center gap-3">
+                            <span class="flex h-2.5 w-2.5 relative">
+                                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                                <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-indigo-500"></span>
+                            </span>
+                            <div>
+                                <h3 class="text-xs font-bold text-white uppercase tracking-wider">Provisioning Docker en cours…</h3>
+                                <p class="text-[10px] text-slate-400">Configuration de l'instance et exécution des migrations en direct</p>
+                            </div>
+                        </div>
+                        <span class="text-[10px] font-mono text-indigo-400 bg-indigo-950/50 border border-indigo-900/30 rounded px-2 py-0.5" id="provisioning-status">EN COURS</span>
+                    </div>
+                    <div class="p-6">
+                        <div id="log-output" class="font-mono text-xs text-slate-300 space-y-1.5 bg-slate-950/70 rounded-lg p-5 border border-slate-850 overflow-y-auto h-72 scrollbar-thin scrollbar-thumb-slate-800" style="word-break: break-word; overflow-wrap: break-word;">
+                            <div class="text-slate-500 italic">[Connexion au flux de logs...]</div>
+                        </div>
+                        <div class="mt-4 flex items-center justify-between text-[10px] text-slate-400">
+                            <span>Veuillez ne pas fermer cette page pendant l'opération.</span>
+                            <span class="font-mono" id="log-time-elapsed">Durée : 0s</span>
+                        </div>
+                    </div>
+                </div>
+
+                <script>
+                document.addEventListener('DOMContentLoaded', function () {
+                    const logOutput = document.getElementById('log-output');
+                    const statusBadge = document.getElementById('provisioning-status');
+                    const timeElapsedSpan = document.getElementById('log-time-elapsed');
+                    const streamUrl = '{{ route("tech.establishments.provision.stream", $tenant) }}';
+                    
+                    let secondsElapsed = 0;
+                    const timer = setInterval(() => {
+                        secondsElapsed++;
+                        timeElapsedSpan.textContent = `Durée : ${secondsElapsed}s`;
+                    }, 1000);
+
+                    // Clear placeholder log
+                    logOutput.innerHTML = '';
+
+                    const evtSource = new EventSource(streamUrl);
+
+                    evtSource.onmessage = function (event) {
+                        try {
+                            const data = JSON.parse(event.data);
+                            const line = document.createElement('div');
+                            line.className = 'flex gap-2.5 items-start py-0.5 border-b border-slate-900/10';
+                            
+                            const timeSpan = document.createElement('span');
+                            timeSpan.className = 'text-slate-500 shrink-0 font-semibold select-none';
+                            timeSpan.textContent = `[${data.time}]`;
+                            
+                            const msgSpan = document.createElement('span');
+                            msgSpan.className = {
+                                'success': 'text-emerald-400 font-semibold',
+                                'error':   'text-red-400 font-semibold',
+                                'warning': 'text-amber-400',
+                                'info':    'text-slate-300',
+                            }[data.level] || 'text-slate-300';
+                            msgSpan.textContent = data.message;
+                            
+                            line.appendChild(timeSpan);
+                            line.appendChild(msgSpan);
+                            logOutput.appendChild(line);
+                            logOutput.scrollTop = logOutput.scrollHeight;
+
+                            if (data.step === 'done' || data.step === 'finished') {
+                                clearInterval(timer);
+                                statusBadge.textContent = 'TERMINÉ';
+                                statusBadge.className = 'text-[10px] font-mono text-emerald-400 bg-emerald-950/50 border border-emerald-900/30 rounded px-2 py-0.5';
+                                evtSource.close();
+                                setTimeout(() => location.reload(), 2000);
+                            }
+                            
+                            if (data.level === 'error' || data.step === 'error') {
+                                clearInterval(timer);
+                                statusBadge.textContent = 'ÉCHEC';
+                                statusBadge.className = 'text-[10px] font-mono text-red-400 bg-red-950/50 border border-red-900/30 rounded px-2 py-0.5';
+                                evtSource.close();
+                            }
+                        } catch (e) {
+                            console.error("Error parsing event stream payload:", e);
+                        }
+                    };
+
+                    evtSource.onerror = function () {
+                        clearInterval(timer);
+                        evtSource.close();
+                    };
+                });
+                </script>
+            @endif
+
             {{-- ==================== VUE D'ENSEMBLE ==================== --}}
             @if($section === 'overview')
                 <div class="mb-6">
@@ -463,6 +559,147 @@
                         </button>
                     </div>
                 </form>
+
+            {{-- ==================== PARAMÈTRES (SETTINGS) ==================== --}}
+            @elseif($section === 'settings')
+                <div class="mb-6">
+                    <h2 class="text-xl font-extrabold text-slate-800 tracking-tight">Paramètres</h2>
+                    <p class="text-xs text-slate-500 mt-1">Gérer les configurations et la suppression de l'établissement {{ $tenant->name }}</p>
+                </div>
+
+                <div class="space-y-6" x-data="{ showDeleteModal: false, confirmSlug: '' }">
+                    <!-- Technical details card (read-only) -->
+                    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div class="bg-slate-900 px-6 py-4 flex items-center gap-3">
+                            <div class="rounded-lg bg-indigo-600/20 p-2">
+                                <svg class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28z" />
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-white tracking-wide">Configuration de l'instance</h3>
+                                <p class="text-[10px] text-slate-400">Paramètres de base et infrastructure associée</p>
+                            </div>
+                        </div>
+                        <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-6 text-xs border-b border-slate-100">
+                            <div class="space-y-3">
+                                <div>
+                                    <span class="text-slate-450 font-semibold">Identifiant système (Slug) :</span>
+                                    <span class="font-mono bg-slate-50 border border-slate-200 px-2 py-0.5 rounded ml-2">{{ $tenant->slug }}</span>
+                                </div>
+                                <div>
+                                    <span class="text-slate-450 font-semibold">Port applicatif (Hôte) :</span>
+                                    <span class="font-mono bg-slate-50 border border-slate-200 px-2 py-0.5 rounded ml-2">{{ $tenant->app_port }}</span>
+                                </div>
+                                <div>
+                                    <span class="text-slate-450 font-semibold">Port PostgreSQL (Hôte) :</span>
+                                    <span class="font-mono bg-slate-50 border border-slate-200 px-2 py-0.5 rounded ml-2">{{ $tenant->db_port ?? 5432 }}</span>
+                                </div>
+                            </div>
+                            <div class="space-y-3">
+                                <div>
+                                    <span class="text-slate-450 font-semibold">Base de données :</span>
+                                    <span class="font-mono ml-2">{{ $tenant->db_name }}</span>
+                                </div>
+                                <div>
+                                    <span class="text-slate-450 font-semibold">Utilisateur DB :</span>
+                                    <span class="font-mono ml-2">{{ $tenant->db_username ?? 'pms' }}</span>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Danger Zone Card -->
+                    <div class="bg-white rounded-xl border border-red-200 shadow-sm overflow-hidden">
+                        <div class="bg-red-500/5 px-6 py-4 flex items-center gap-3 border-b border-red-100">
+                            <div class="rounded-lg bg-red-100 p-2">
+                                <svg class="h-5 w-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-red-850 tracking-wide font-heading">Zone de Danger</h3>
+                                <p class="text-[10px] text-red-500/80">Actions irréversibles et critiques</p>
+                            </div>
+                        </div>
+                        <div class="p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
+                            <div class="max-w-lg">
+                                <h4 class="text-xs font-bold text-slate-800">Supprimer cet établissement</h4>
+                                <p class="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                                    Cette opération arrêtera et supprimera définitivement les conteneurs Docker (applicatif et base de données) ainsi que toutes les données associées de l'établissement. L'enregistrement système SQLite sera également supprimé.
+                                </p>
+                            </div>
+                            <button @click="showDeleteModal = true" type="button" class="shrink-0 rounded-lg bg-red-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-red-700 transition shadow-sm hover:shadow-md cursor-pointer">
+                                Supprimer l'établissement
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Alpine.js Confirmation Modal -->
+                    <div x-show="showDeleteModal" 
+                         class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+                         x-transition:enter="transition ease-out duration-300"
+                         x-transition:enter-start="opacity-0"
+                         x-transition:enter-end="opacity-100"
+                         x-transition:leave="transition ease-in duration-200"
+                         x-transition:leave-start="opacity-100"
+                         x-transition:leave-end="opacity-0"
+                         x-cloak>
+                        
+                        <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden max-w-md w-full"
+                             @click.away="showDeleteModal = false; confirmSlug = ''"
+                             x-transition:enter="transition ease-out duration-300 transform scale-95"
+                             x-transition:enter-start="opacity-0 scale-95"
+                             x-transition:enter-end="opacity-100 scale-100"
+                             x-transition:leave="transition ease-in duration-200 transform scale-100"
+                             x-transition:leave-start="opacity-100 scale-100"
+                             x-transition:leave-end="opacity-0 scale-95">
+                            
+                            <!-- Header -->
+                            <div class="bg-slate-950 px-6 py-5 flex items-center gap-3">
+                                <div class="rounded-lg bg-red-500/20 p-2">
+                                    <svg class="h-5 w-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                </div>
+                                <h3 class="text-sm font-bold text-white tracking-wide">Confirmation de suppression</h3>
+                            </div>
+
+                            <!-- Form -->
+                            <form action="{{ route('tech.establishments.destroy', $tenant) }}" method="POST">
+                                @csrf
+                                @method('DELETE')
+
+                                <div class="p-6 space-y-4">
+                                    <p class="text-xs text-slate-600 leading-relaxed">
+                                        Êtes-vous absolument sûr ? Cette action est définitive.
+                                        Pour confirmer la suppression de <strong>{{ $tenant->name }}</strong>, veuillez saisir son identifiant unique <strong><span class="font-mono bg-slate-50 border border-slate-200 px-1 rounded">{{ $tenant->slug }}</span></strong> ci-dessous :
+                                    </p>
+
+                                    <div>
+                                        <input type="text" x-model="confirmSlug" placeholder="Ex: {{ $tenant->slug }}"
+                                               class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-700 font-mono outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20 transition uppercase">
+                                    </div>
+                                </div>
+
+                                <!-- Footer Actions -->
+                                <div class="bg-slate-50 px-6 py-4 border-t border-slate-100 flex items-center justify-end gap-3">
+                                    <button @click="showDeleteModal = false; confirmSlug = ''" type="button" 
+                                            class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer">
+                                        Annuler
+                                    </button>
+                                    <button type="submit" 
+                                            :disabled="confirmSlug.trim().toLowerCase() !== '{{ $tenant->slug }}'"
+                                            class="rounded-lg bg-red-600 px-4 py-2 text-xs font-bold text-white hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-sm shadow-red-200">
+                                        Confirmer la suppression
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
 
             {{-- ==================== MODULES / SETTINGS (placeholder) ==================== --}}
             @else
