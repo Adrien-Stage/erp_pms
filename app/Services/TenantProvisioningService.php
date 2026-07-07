@@ -208,12 +208,10 @@ class TenantProvisioningService
         $appKey       = $this->resolveAppKey($composePath);
         $appUrl       = 'http://' . $tenant->slug . '.localhost';
         $currency     = $tenant->currency ?? 'XAF';
-        $settings     = $tenant->settings ?? [];
-        if (!empty($settings['logo'])) {
-            // Le logo vit dans le storage de l'admin (pas du tenant) : on passe
-            // une URL absolue, exploitable depuis le container de l'établissement.
-            $settings['logo'] = rtrim(config('app.url'), '/') . '/storage/' . ltrim($settings['logo'], '/');
-        }
+        // Le logo importé côté admin reste côté admin (storage propre à erp_pms) :
+        // pas de lien inter-conteneurs. Le manager importe son propre logo depuis
+        // les paramètres de l'application (stocké dans le storage du tenant).
+        $settings     = collect($tenant->settings ?? [])->except('logo')->all();
         $settingsJson = addslashes(json_encode($settings));
         $modulesJson  = addslashes(json_encode($tenant->modules  ?? []));
 
