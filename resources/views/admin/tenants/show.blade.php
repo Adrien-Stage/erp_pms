@@ -432,10 +432,155 @@
 
             {{-- ==================== UTILISATEURS ==================== --}}
             @elseif($section === 'users')
-                <div class="mb-6 flex items-baseline justify-between">
+                <div class="mb-6 flex items-baseline justify-between" x-data="{
+                    showCreateManagerModal: false,
+                    submitting: false,
+                    errorMsg: '',
+                    generatedPassword: null,
+                    name: '', email: '', phone: '',
+                    resetForm() { this.name = ''; this.email = ''; this.phone = ''; this.errorMsg = ''; this.generatedPassword = null; },
+                    submit() {
+                        this.submitting = true;
+                        this.errorMsg = '';
+                        fetch('{{ route('tech.establishments.create-manager', $tenant) }}', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                                'Accept': 'application/json'
+                            },
+                            body: JSON.stringify({ name: this.name, email: this.email, phone: this.phone })
+                        })
+                        .then(res => res.json().then(data => ({ status: res.status, body: data })))
+                        .then(res => {
+                            this.submitting = false;
+                            if (res.status === 201) {
+                                this.generatedPassword = res.body.generated_password;
+                            } else {
+                                this.errorMsg = res.body.message || 'Une erreur est survenue lors de la création du manager.';
+                            }
+                        })
+                        .catch(() => {
+                            this.submitting = false;
+                            this.errorMsg = 'Impossible de se connecter au serveur.';
+                        });
+                    }
+                }">
                     <div>
                         <h2 class="text-xl font-extrabold text-slate-800 tracking-tight">Utilisateurs</h2>
                         <p class="text-xs text-slate-500 mt-1">{{ $tenantUsers->count() }} utilisateur(s) rattaché(s) à {{ $tenant->name }}</p>
+                    </div>
+                    <button type="button" @click="showCreateManagerModal = true; resetForm()"
+                            class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 transition cursor-pointer">
+                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                        </svg>
+                        Créer un manager
+                    </button>
+
+                    <!-- Create Manager Modal -->
+                    <div x-show="showCreateManagerModal"
+                         class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+                         x-transition:enter="transition ease-out duration-300"
+                         x-transition:enter-start="opacity-0"
+                         x-transition:enter-end="opacity-100"
+                         x-transition:leave="transition ease-in duration-200"
+                         x-transition:leave-start="opacity-100"
+                         x-transition:leave-end="opacity-0"
+                         x-cloak>
+                        <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden max-w-md w-full"
+                             @click.away="if (!submitting) { showCreateManagerModal = generatedPassword ? showCreateManagerModal : false }">
+
+                            <!-- Header -->
+                            <div class="bg-slate-950 px-6 py-5 flex items-center gap-3">
+                                <div class="rounded-lg bg-indigo-500/20 p-2">
+                                    <svg class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 19.235V18a3.75 3.75 0 013.75-3.75h1.5A3.75 3.75 0 0112 18v1.235" />
+                                    </svg>
+                                </div>
+                                <h3 class="text-sm font-bold text-white tracking-wide">Créer un manager — <span class="font-mono">{{ $tenant->slug }}</span></h3>
+                            </div>
+
+                            <!-- Formulaire (avant création) -->
+                            <template x-if="!generatedPassword">
+                                <form @submit.prevent="submit()" class="p-6 space-y-4">
+                                    <p class="text-xs text-slate-600 leading-relaxed">
+                                        Crée un compte manager (directeur) directement dans la base applicative de cet établissement. Un mot de passe sera généré automatiquement.
+                                    </p>
+
+                                    <template x-if="errorMsg">
+                                        <div class="rounded-lg bg-red-50 border border-red-150 p-3 text-xs font-semibold text-red-700" x-text="errorMsg"></div>
+                                    </template>
+
+                                    <div>
+                                        <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Nom complet <span class="text-red-400">*</span></label>
+                                        <input type="text" x-model="name" required placeholder="Ex: Jean Dupont"
+                                               class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Adresse e-mail <span class="text-red-400">*</span></label>
+                                        <input type="email" x-model="email" required placeholder="manager@etablissement.com"
+                                               class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Téléphone</label>
+                                        <input type="text" x-model="phone" placeholder="+237 600 000 000"
+                                               class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition">
+                                    </div>
+
+                                    <div class="flex items-center justify-end gap-2 pt-2">
+                                        <button type="button" @click="showCreateManagerModal = false" :disabled="submitting"
+                                                class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer">
+                                            Annuler
+                                        </button>
+                                        <button type="submit" :disabled="submitting"
+                                                class="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-sm">
+                                            <span x-show="submitting">Création…</span>
+                                            <span x-show="!submitting">Créer le manager</span>
+                                        </button>
+                                    </div>
+                                </form>
+                            </template>
+
+                            <!-- Succès : identifiants générés -->
+                            <template x-if="generatedPassword">
+                                <div class="p-6 space-y-4">
+                                    <div class="rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-xs font-semibold text-emerald-700 flex items-center gap-2">
+                                        <svg class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                        <span>Manager créé. Transmets-lui ces identifiants — le mot de passe ne sera plus jamais affiché.</span>
+                                    </div>
+                                    <div class="space-y-2">
+                                        <div>
+                                            <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1">Email</label>
+                                            <div class="font-mono text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-800" x-text="email"></div>
+                                        </div>
+                                        <div>
+                                            <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1">Mot de passe généré</label>
+                                            <div class="flex items-center gap-2">
+                                                <div class="font-mono text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-800 flex-1" x-text="generatedPassword"></div>
+                                                <button type="button"
+                                                        @click="navigator.clipboard.writeText(generatedPassword); $el.textContent = 'Copié !'; setTimeout(() => $el.textContent = 'Copier', 1500)"
+                                                        class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-[10px] font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer shrink-0">
+                                                    Copier
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1">Accès applicatif</label>
+                                            <a href="http://localhost:{{ $tenant->app_port }}/login" target="_blank" class="font-mono text-xs text-indigo-600 hover:text-indigo-800 hover:underline">
+                                                http://localhost:{{ $tenant->app_port }}/login
+                                            </a>
+                                        </div>
+                                    </div>
+                                    <div class="flex justify-end pt-2">
+                                        <button type="button" @click="showCreateManagerModal = false; window.location.reload();"
+                                                class="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 transition cursor-pointer shadow-sm">
+                                            Terminer
+                                        </button>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
                     </div>
                 </div>
 
