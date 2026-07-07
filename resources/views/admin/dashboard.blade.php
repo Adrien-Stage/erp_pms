@@ -282,8 +282,8 @@
                                     </div>
                                     <div class="flex justify-between items-center">
                                         <span class="text-slate-400">Lien d'accès :</span>
-                                        <a href="http://{{ $tenant->slug }}.localhost:8080" target="_blank" class="font-semibold text-indigo-600 hover:text-indigo-850 hover:underline font-mono text-[10px] truncate max-w-[150px]" title="http://{{ $tenant->slug }}.localhost:8080">
-                                            {{ $tenant->slug }}.localhost:8080
+                                        <a href="http://localhost:{{ $tenant->app_port }}" target="_blank" class="font-semibold text-indigo-600 hover:text-indigo-850 hover:underline font-mono text-[10px] truncate max-w-[150px]" title="http://localhost:{{ $tenant->app_port }}">
+                                            localhost:{{ $tenant->app_port }}
                                         </a>
                                     </div>
                                 </div>
@@ -314,8 +314,8 @@
                                     </svg>
                                     Gérer
                                 </button>
-                                <a 
-                                    href="http://{{ $tenant->slug }}.localhost:8080"
+                                <a
+                                    href="http://localhost:{{ $tenant->app_port }}"
                                     target="_blank"
                                     class="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-indigo-750 transition shadow-sm"
                                 >
