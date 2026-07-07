@@ -85,6 +85,7 @@
         dockerAppContainer: '',
         dockerDbContainer: '',
 
+
         // Step 3: Establishment Info
         name: '',
         slug: '',
@@ -474,7 +475,7 @@
                     </div>
                 </div>
 
-                <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+<div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                     <div class="bg-slate-900 px-6 py-4 flex items-center gap-3">
                         <div class="rounded-lg bg-blue-600/20 p-2">
                             <svg class="h-5 w-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
