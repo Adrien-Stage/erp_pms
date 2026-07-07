@@ -567,7 +567,10 @@
                     <p class="text-xs text-slate-500 mt-1">Gérer les configurations et la suppression de l'établissement {{ $tenant->name }}</p>
                 </div>
 
-                <div class="space-y-6" x-data="{ showDeleteModal: false, confirmSlug: '' }">
+                <div class="space-y-6" x-data="{
+                    showDeleteModal: false, confirmSlug: '',
+                    showUpdateModal: false, availableTags: [], selectedTag: '', loadingTags: false, updating: false
+                }">
                     <!-- Technical details card (read-only) -->
                     <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                         <div class="bg-slate-900 px-6 py-4 flex items-center gap-3">
@@ -608,6 +611,27 @@
                                 </div>
 
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- Version Card -->
+                    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div class="px-6 py-4 border-b border-slate-100">
+                            <h3 class="text-sm font-bold text-slate-800">Version de l'application</h3>
+                            <p class="text-[10px] text-slate-500 mt-0.5">Image Docker (GHCR) figée pour cet établissement</p>
+                        </div>
+                        <div class="p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
+                            <div class="text-xs">
+                                <span class="text-slate-450 font-semibold">Digest actuel :</span>
+                                <span class="font-mono bg-slate-50 border border-slate-200 px-2 py-0.5 rounded ml-2">
+                                    {{ $tenant->docker_image_tag ? \Illuminate\Support\Str::limit($tenant->docker_image_tag, 22, '…') : 'Non résolu' }}
+                                </span>
+                            </div>
+                            <button type="button"
+                                    @click="showUpdateModal = true; loadingTags = true; fetch('{{ route('tech.establishments.versions', $tenant) }}').then(r => r.json()).then(data => { availableTags = data.tags; selectedTag = data.tags[0] ?? ''; loadingTags = false; })"
+                                    class="shrink-0 rounded-lg bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-sm cursor-pointer">
+                                Vérifier les mises à jour
+                            </button>
                         </div>
                     </div>
 
@@ -699,7 +723,126 @@
                             </form>
                         </div>
                     </div>
+
+                    <!-- Update Version Modal -->
+                    <div x-show="showUpdateModal"
+                         class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+                         x-transition:enter="transition ease-out duration-300"
+                         x-transition:enter-start="opacity-0"
+                         x-transition:enter-end="opacity-100"
+                         x-transition:leave="transition ease-in duration-200"
+                         x-transition:leave-start="opacity-100"
+                         x-transition:leave-end="opacity-0"
+                         x-cloak>
+
+                        <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden max-w-lg w-full"
+                             @click.away="if (!updating) { showUpdateModal = false }"
+                             x-transition:enter="transition ease-out duration-300 transform scale-95"
+                             x-transition:enter-start="opacity-0 scale-95"
+                             x-transition:enter-end="opacity-100 scale-100"
+                             x-transition:leave="transition ease-in duration-200 transform scale-100"
+                             x-transition:leave-start="opacity-100 scale-100"
+                             x-transition:leave-end="opacity-0 scale-95">
+
+                            <!-- Header -->
+                            <div class="bg-slate-950 px-6 py-5 flex items-center gap-3">
+                                <div class="rounded-lg bg-indigo-500/20 p-2">
+                                    <svg class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                                    </svg>
+                                </div>
+                                <h3 class="text-sm font-bold text-white tracking-wide">Mettre à jour la version</h3>
+                            </div>
+
+                            <!-- Form (avant lancement) -->
+                            <div class="p-6 space-y-4" x-show="!updating">
+                                <p class="text-xs text-slate-600 leading-relaxed">
+                                    Le container applicatif sera recréé avec la nouvelle image. La base de données et son volume ne sont pas affectés. Les migrations s'exécutent automatiquement au démarrage.
+                                </p>
+
+                                <div x-show="loadingTags" class="text-xs text-slate-400 italic">Chargement des versions disponibles…</div>
+
+                                <div x-show="!loadingTags">
+                                    <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Version cible</label>
+                                    <select x-model="selectedTag" class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-700 font-mono outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">
+                                        <template x-for="t in availableTags" :key="t">
+                                            <option :value="t" x-text="t === 'latest' ? 'latest (dernière version publiée)' : t"></option>
+                                        </template>
+                                    </select>
+                                    <p x-show="availableTags.length === 0" class="text-xs text-red-500 mt-2">Aucune version disponible sur le registre.</p>
+                                </div>
+                            </div>
+
+                            <!-- Logs en direct (pendant la mise à jour) -->
+                            <div x-show="updating" class="p-6">
+                                <div id="update-log-output" class="font-mono text-xs text-slate-300 space-y-1.5 bg-slate-950/70 rounded-lg p-5 border border-slate-850 overflow-y-auto h-64" style="word-break: break-word; overflow-wrap: break-word;"></div>
+                            </div>
+
+                            <!-- Footer Actions -->
+                            <div class="bg-slate-50 px-6 py-4 border-t border-slate-100 flex items-center justify-end gap-3">
+                                <button @click="showUpdateModal = false" type="button" x-show="!updating"
+                                        class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer">
+                                    Annuler
+                                </button>
+                                <button type="button" x-show="!updating"
+                                        :disabled="!selectedTag"
+                                        @click="updating = true; startUpdateStream(selectedTag)"
+                                        class="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-sm">
+                                    Lancer la mise à jour
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
+
+                <script>
+                function startUpdateStream(tag) {
+                    const logOutput = document.getElementById('update-log-output');
+                    logOutput.innerHTML = '';
+                    const streamUrl = '{{ route("tech.establishments.update-version.stream", $tenant) }}?tag=' + encodeURIComponent(tag);
+                    const evtSource = new EventSource(streamUrl);
+
+                    evtSource.onmessage = function (event) {
+                        try {
+                            const data = JSON.parse(event.data);
+                            const line = document.createElement('div');
+                            line.className = 'flex gap-2.5 items-start py-0.5 border-b border-slate-900/10';
+
+                            const timeSpan = document.createElement('span');
+                            timeSpan.className = 'text-slate-500 shrink-0 font-semibold select-none';
+                            timeSpan.textContent = `[${data.time}]`;
+
+                            const msgSpan = document.createElement('span');
+                            msgSpan.className = {
+                                'success': 'text-emerald-400 font-semibold',
+                                'error':   'text-red-400 font-semibold',
+                                'warning': 'text-amber-400',
+                                'info':    'text-slate-300',
+                            }[data.level] || 'text-slate-300';
+                            msgSpan.textContent = data.message;
+
+                            line.appendChild(timeSpan);
+                            line.appendChild(msgSpan);
+                            logOutput.appendChild(line);
+                            logOutput.scrollTop = logOutput.scrollHeight;
+
+                            if (data.step === 'done' || data.step === 'finished') {
+                                evtSource.close();
+                                setTimeout(() => location.reload(), 1500);
+                            }
+                            if (data.level === 'error' || data.step === 'error') {
+                                evtSource.close();
+                            }
+                        } catch (e) {
+                            console.error('Error parsing update stream payload:', e);
+                        }
+                    };
+
+                    evtSource.onerror = function () {
+                        evtSource.close();
+                    };
+                }
+                </script>
 
             {{-- ==================== MODULES / SETTINGS (placeholder) ==================== --}}
             @else

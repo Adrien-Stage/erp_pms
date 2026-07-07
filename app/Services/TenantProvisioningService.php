@@ -8,6 +8,10 @@ use RuntimeException;
 
 class TenantProvisioningService
 {
+    public function __construct(private DockerRegistryService $registry)
+    {
+    }
+
     // ── Détection OS ─────────────────────────────────────────────────────────
 
     private static function isWindows(): bool
@@ -117,9 +121,14 @@ class TenantProvisioningService
         $registryImage = config('provisioning.registry_image');
 
         if (empty($tenant->docker_image_tag)) {
-            $this->pinLatestDigest($tenant, $registryImage, $log);
+            $this->pinToTag($tenant, $registryImage, 'latest', $log);
         }
 
+        return $this->pullPinnedImage($tenant, $registryImage, $log);
+    }
+
+    private function pullPinnedImage(Tenant $tenant, string $registryImage, callable $log): string
+    {
         $imageRef = $registryImage . '@' . $tenant->docker_image_tag;
 
         $log('image', "⬇️  Récupération de l'image « {$imageRef} »…", 'info');
@@ -130,36 +139,47 @@ class TenantProvisioningService
     }
 
     /**
-     * Résout le tag "latest" du registre vers son digest exact et le fige
-     * sur le tenant, pour que cet établissement ne soit plus jamais impacté
-     * par un futur build (mise à jour = action explicite, voir update()).
+     * Résout un tag du registre (ex: "latest" ou "sha-abc1234") vers son
+     * digest exact via l'API de distribution, et le fige sur le tenant —
+     * pour que cet établissement ne soit plus jamais impacté par un futur
+     * build tant qu'une mise à jour explicite n'est pas demandée (update()).
      */
-    private function pinLatestDigest(Tenant $tenant, string $registryImage, callable $log): void
+    private function pinToTag(Tenant $tenant, string $registryImage, string $tag, callable $log): void
     {
-        $log('image', "📌 Résolution de la version actuelle du template (latest)…", 'info');
+        $log('image', "📌 Résolution de la version « {$tag} »…", 'info');
 
-        $this->execOrFail(
-            'docker pull ' . escapeshellarg($registryImage . ':latest') . ' 2>&1',
-            "Échec du docker pull de « {$registryImage}:latest »"
-        );
+        $imagePath = $this->registry->imagePath($registryImage);
+        $digest    = $this->registry->resolveDigest($imagePath, $tag);
 
-        $digest = trim($this->exec(
-            'docker inspect --format="{{index .RepoDigests 0}}" ' . escapeshellarg($registryImage . ':latest') . ' 2>&1'
-        ));
-
-        $sha256 = str_contains($digest, '@sha256:') ? substr($digest, strpos($digest, '@') + 1) : null;
-
-        if (!$sha256) {
+        if (!$digest) {
             throw new RuntimeException(
-                "Impossible de résoudre le digest de l'image « {$registryImage}:latest » (sortie: {$digest})."
+                "Impossible de résoudre le digest de l'image « {$registryImage}:{$tag} » sur le registre."
             );
         }
 
-        $tenant->update(['docker_image_tag' => $sha256]);
-        $log('image', "✅ Version figée pour cet établissement : {$sha256}", 'success');
+        $tenant->update(['docker_image_tag' => $digest]);
+        $log('image', "✅ Version figée pour cet établissement : {$digest}", 'success');
     }
 
     // ── Étape 2 : docker-compose par tenant ──────────────────────────────────
+
+    /**
+     * Réutilise l'APP_KEY déjà présente dans un compose précédemment généré
+     * pour ce tenant, sinon en génère une nouvelle (premier provisioning).
+     * Indispensable pour update() : régénérer l'APP_KEY à chaque mise à jour
+     * invaliderait sessions et données chiffrées existantes.
+     */
+    private function resolveAppKey(string $composePath): string
+    {
+        if (file_exists($composePath)) {
+            $existing = file_get_contents($composePath);
+            if ($existing !== false && preg_match('/APP_KEY:\s*"([^"]+)"/', $existing, $matches)) {
+                return $matches[1];
+            }
+        }
+
+        return 'base64:' . base64_encode(random_bytes(32));
+    }
 
     private function generateDockerCompose(Tenant $tenant, string $imageRef, callable $log): string
     {
@@ -177,7 +197,7 @@ class TenantProvisioningService
         $dbPass       = $tenant->db_password  ?? 'secret';
         $appPort      = $tenant->app_port;
         $dbPort       = $tenant->db_port ?? 5432;
-        $appKey       = 'base64:' . base64_encode(random_bytes(32));
+        $appKey       = $this->resolveAppKey($composePath);
         $appUrl       = 'http://' . $tenant->slug . '.localhost';
         $currency     = $tenant->currency ?? 'XAF';
         $settingsJson = addslashes(json_encode($tenant->settings ?? []));
@@ -359,6 +379,53 @@ YAML;
         // Même si le health check n'est pas concluant, on continue
         // (les migrations peuvent prendre du temps avec les seeders)
         $log('migrate', "⚠️ Timeout du health check — le container est peut-être encore en cours d'initialisation.", 'warning');
+    }
+
+    // ── Mise à jour vers une nouvelle version ─────────────────────────────────
+
+    /**
+     * Liste les tags disponibles sur le registre, pour le sélecteur de
+     * version côté UI TECH ("latest" en premier, comme choix par défaut).
+     */
+    public function listAvailableVersions(): array
+    {
+        $registryImage = config('provisioning.registry_image');
+        $imagePath     = $this->registry->imagePath($registryImage);
+        $tags          = $this->registry->listTags($imagePath);
+
+        usort($tags, fn ($a, $b) => ($b === 'latest') <=> ($a === 'latest') ?: strcmp($b, $a));
+
+        return $tags;
+    }
+
+    /**
+     * Met à jour un établissement déjà provisionné vers un tag choisi
+     * explicitement par TECH. Ne touche pas à la base de données ni à son
+     * volume — seul le container applicatif est recréé avec la nouvelle
+     * image, ce qui déclenche les migrations via l'entrypoint.
+     */
+    public function update(Tenant $tenant, string $tag, callable $log): void
+    {
+        $log('start', "Démarrage de la mise à jour de « {$tenant->name} » vers « {$tag} »");
+
+        $registryImage = config('provisioning.registry_image');
+        $this->pinToTag($tenant, $registryImage, $tag, $log);
+
+        $imageRef    = $this->pullPinnedImage($tenant, $registryImage, $log);
+        $composePath = $this->generateDockerCompose($tenant, $imageRef, $log);
+
+        $log('docker', "🔄 Recréation du container applicatif…", 'info');
+        $this->execOrFail(
+            'docker compose -f ' . escapeshellarg($composePath) . ' up -d 2>&1',
+            "Échec du docker compose up"
+        );
+        $log('docker', "✅ Container mis à jour.", 'success');
+
+        $this->runMigrations($tenant, $log);
+
+        $tenant->update(['docker_status' => 'running']);
+
+        $log('done', "✅ Établissement « {$tenant->name} » mis à jour avec succès.", 'success');
     }
 
     // ── Actions post-provisioning ─────────────────────────────────────────────
