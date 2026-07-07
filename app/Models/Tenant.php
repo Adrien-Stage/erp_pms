@@ -28,10 +28,6 @@ class Tenant extends Model
         'app_port',
         'db_port',
 
-        // Source du code applicatif
-        'source_type',  // 'local' | 'github'
-        'source_path',  // chemin absolu hôte (uniquement si source_type = 'local')
-        
         // Modules & Features
         'api_enabled',
         'website_enabled',

@@ -399,6 +399,89 @@ class AdminAuditController extends Controller
         ]);
     }
 
+    /**
+     * Liste les versions (tags) disponibles sur le registre GHCR, pour le
+     * sélecteur de mise à jour côté UI TECH.
+     */
+    public function availableVersions(Tenant $tenant, \App\Services\TenantProvisioningService $provisioner)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isTechAdmin()) { abort(403); }
+
+        return response()->json([
+            'current' => $tenant->docker_image_tag,
+            'tags'    => $provisioner->listAvailableVersions(),
+        ]);
+    }
+
+    /**
+     * SSE endpoint : met à jour un établissement déjà provisionné vers le
+     * tag choisi (?tag=...), en temps réel.
+     */
+    public function updateTenantVersionStream(Tenant $tenant, Request $request, \App\Services\TenantProvisioningService $provisioner)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isTechAdmin()) { abort(403); }
+
+        $tag = $request->query('tag');
+        if (!$tag) { abort(422, 'Le paramètre "tag" est requis.'); }
+
+        set_time_limit(600);
+        ini_set('max_execution_time', '600');
+
+        return response()->stream(function () use ($tenant, $tag, $provisioner) {
+            if (ob_get_level()) {
+                ob_end_clean();
+            }
+            ob_implicit_flush(true);
+
+            $send = function (string $step, string $message, string $level = 'info') {
+                if (mb_strlen($message) > 500) {
+                    $message = mb_substr($message, 0, 500) . '…';
+                }
+                $payload = json_encode([
+                    'step'    => $step,
+                    'message' => $message,
+                    'level'   => $level,
+                    'time'    => now()->format('H:i:s'),
+                ]);
+                echo "data: {$payload}\n\n";
+                if (ob_get_level()) {
+                    ob_flush();
+                }
+                flush();
+            };
+
+            try {
+                $provisioner->update($tenant, $tag, $send);
+
+                AuditLog::record(
+                    Auth::id(),
+                    'update_tenant_version',
+                    "Mise à jour de l'établissement {$tenant->name} vers le tag « {$tag} »",
+                    'tech_admin'
+                );
+
+                $send('finished', 'Mise à jour terminée avec succès.', 'success');
+
+            } catch (\RuntimeException $e) {
+                $tenant->update(['docker_status' => 'error']);
+                $send('error', $e->getMessage(), 'error');
+
+                AuditLog::record(
+                    Auth::id(),
+                    'update_tenant_version_error',
+                    "Échec de la mise à jour de {$tenant->name} vers « {$tag} » : " . $e->getMessage(),
+                    'tech_admin'
+                );
+            }
+        }, 200, [
+            'Content-Type'      => 'text/event-stream',
+            'Cache-Control'     => 'no-cache',
+            'X-Accel-Buffering' => 'no',
+        ]);
+    }
+
     public function startTenant(Tenant $tenant, \App\Services\TenantProvisioningService $provisioner)
     {
         $user = Auth::user();

@@ -26,13 +26,17 @@ Chez le client, on installe UNE fois le projet admin (containerisé)
         ↓
 TECH crée un établissement via le formulaire
         ↓
-Script shell de provisioning → clone villa_b (branche main) → build image →
-   lance 2 containers (app + db isolés) → migrations
+TenantProvisioningService → pull ghcr.io/adrien-stage/villa_b (digest figé) →
+   lance 2 containers (app + db isolés) → migrations auto (entrypoint)
         ↓
 L'établissement tourne de façon autonome
         ↓
 TECH active/désactive des modules (site web, API…) par établissement
 ```
+
+> **Historique** : ce flux clonait initialement `villa_b` puis buildait l'image
+> localement à chaque établissement (lent, gourmand en espace disque). Remplacé
+> par un pull d'image prébuildée depuis GHCR — voir **Phase 2bis** ci-dessous.
 
 ### Règle des modules site/API
 
@@ -41,7 +45,8 @@ TECH active/désactive des modules (site web, API…) par établissement
 
 ### Choix techniques arrêtés
 
-- **Dépôt template** : `https://github.com/Adrien-Stage/villa_b.git` — **branche `main`**
+- **Dépôt template** : `https://github.com/Adrien-Stage/villa_b.git` — **branche `main`** (source du build CI, plus jamais clonée en provisioning)
+- **Image publiée** : `ghcr.io/adrien-stage/villa_b` (package public, build automatique via GitHub Actions à chaque push sur `main`)
 - **Stockage données TECH** : **SQLite** *(déjà implémenté dans `erp_pms`)*
 - **Cœur applicatif** : Laravel (villa_b)
 - **Site web public** : SvelteKit (futur repo/dossier séparé)
@@ -68,9 +73,9 @@ Phase 5  Nettoyage final   → retirer le code hôtel de erp_pms + BelongsToTena
 | Tâche | Détail | État |
 |---|---|---|
 | Restaurer `nginx.conf` + `supervisord.conf` villa_b | Les deux fichiers contenaient par erreur le script `entrypoint.sh` | ✅ Fait |
-| Corriger le **fallback local hardcodé** | Dans `TenantProvisioningService::resolveGithub()`, le chemin `/c/Users/user/Herd/villab` est en dur → le paramétrer via une variable d'env (ex: `LOCAL_FALLBACK_PATH`) | ✅ Fait (`config/provisioning.php` + `.env` + `.env.docker`) |
+| Corriger le **fallback local hardcodé** | Dans `TenantProvisioningService::resolveGithub()`, le chemin `/c/Users/user/Herd/villab` est en dur → le paramétrer via une variable d'env (ex: `LOCAL_FALLBACK_PATH`) | ✅ Fait, puis **retiré entièrement en Phase 2bis** (plus de clone du tout, `resolveGithub()` supprimée) |
 | Corriger le **réseau `pms`** | Le compose admin déclare `pms` en réseau interne. Pour que les containers d'établissements le rejoignent, il faut créer un réseau Docker **externe partagé** et le déclarer `external: true` dans le compose admin | ✅ Fait (réseau `pms` créé sur l'hôte, `external: true` dans le compose, containers admin connectés sans coupure) |
-| Vérifier le **clone GitHub branche `main`** | Le `git clone --depth=1` actuel clone déjà la branche par défaut (`main`) — confirmer que `main` est bien à jour côté dépôt distant | ✅ Validé (`main` distant = commit `53244ac`, Dockerfile + configs docker corrects, mergés via PR #60 depuis develop) |
+| Vérifier le **clone GitHub branche `main`** | Le `git clone --depth=1` actuel clone déjà la branche par défaut (`main`) — confirmer que `main` est bien à jour côté dépôt distant | ✅ Validé, puis **le clone lui-même a été supprimé en Phase 2bis** au profit d'un pull d'image GHCR |
 | Commit + tag de version template villa_b | Marquer la version `villa_b` qui sert de référence (après restauration des configs docker) | ⏭️ Skip (choix utilisateur : pas de tag) |
 
 **Livrable** : un provisioning de base qui clone `main` et fonctionne, avec un réseau partagé correct.
@@ -103,16 +108,36 @@ Fichiers existants (ne pas recréer) :
 
 **Objectif** : créer un établissement réel de A à Z, sans erreur.
 
-| Tâche | Détail |
-|---|---|
-| Test complet source `local` | Création → build image → compose → migrate → seed → établissement accessible |
-| Test complet source `github` (branche `main`) | Idem avec clone |
-| Gestion d'erreurs robuste | Si une étape échoue, le `docker_status` passe à `error`, logs SSE clairs, container nettoyé |
-| Re-provisioning | Pouvoir relancer le provisioning sur un tenant cassé |
-| Validation du réseau `pms` | L'admin peut `docker exec` dans les containers des établissements |
-| Health check automatique | Cron ou bouton « vérifier tous les établissements » |
+| Tâche | Détail | État |
+|---|---|---|
+| Test complet de bout en bout | Création → pull image → compose → migrate → seed → établissement accessible | ✅ Fait (Phase 2bis) |
+| Gestion d'erreurs robuste | Si une étape échoue, le `docker_status` passe à `error`, logs SSE clairs, container nettoyé | ✅ Fait |
+| Re-provisioning | Pouvoir relancer le provisioning sur un tenant cassé | ✅ Fait (`start()` re-provisionne si container introuvable) |
+| Validation du réseau `pms` | L'admin peut `docker exec` dans les containers des établissements | ✅ Validé |
+| Health check automatique | Cron ou bouton « vérifier tous les établissements » | ❌ Reste à faire |
 
-**Livrable** : on peut créer plusieurs établissements de test, chacun isolé, tous supervisables depuis l'admin.
+**Livrable** : on peut créer plusieurs établissements de test, chacun isolé, tous supervisables depuis l'admin. ✅
+
+---
+
+## Phase 2bis — Migration clone+build → registre d'images (GHCR)
+
+**Objectif** : arrêter de cloner `villa_b` et de builder l'image localement à chaque établissement (lent, espace disque) — pull direct d'une image prébuildée et publiée automatiquement.
+
+| Tâche | Détail | État |
+|---|---|---|
+| CI de build (`villa_b`) | `.github/workflows/build-image.yml` : build + push vers `ghcr.io/adrien-stage/villa_b` (tags `latest` + `sha-<court>`) à chaque push sur `main` | ✅ Fait |
+| Package GHCR public | Aucune authentification requise côté serveur pour le `docker pull` | ✅ Fait |
+| `TenantProvisioningService` : pull au lieu de clone+build | `pullDockerImage()` remplace `resolveSourcePath()` (git clone) + `ensureDockerImage()` (docker build) | ✅ Fait |
+| Version figée par établissement | Chaque tenant épingle un digest exact (`Tenant::docker_image_tag`, résolu via l'API de distribution GHCR) — jamais impacté par un futur build tant qu'aucune mise à jour explicite n'est demandée | ✅ Fait |
+| Mise à jour d'un établissement existant | `TenantProvisioningService::update()` + UI TECH (sélecteur de version + logs SSE) — recrée uniquement le container `app`, DB/volume intacts | ✅ Fait |
+| Migrations auto au démarrage | Bug trouvé en testant : l'entrypoint ne lançait jamais `php artisan migrate` → corrigé (migrate --force + seed conditionnel si `users` vide) | ✅ Fait |
+| Fiabilisation `waitForDatabase()` | Le `docker exec pg_isready` imbriqué depuis le container admin était peu fiable en test réel → remplacé par une lecture de `docker inspect .State.Health.Status` (s'appuie sur le `HEALTHCHECK` déjà défini dans le compose généré) | ✅ Fait |
+| Nettoyage `source_type`/`source_path` | Colonnes Tenant devenues inutilisées (plus de clone) → colonnes supprimées, `$fillable` nettoyé | ✅ Fait |
+| Retrait de `git` du Dockerfile `villa_b` | Plus utilisé (ni au build ni au runtime) | ✅ Fait |
+| Nettoyage périodique des images locales | `docker image prune` sur le serveur pour les vieux digests inutilisés | ❌ Reste à faire (pas automatisé) |
+
+**Livrable** : provisioning plus rapide (pull vs clone+build), établissements mis à jour de façon contrôlée et réversible, sans re-téléchargement du code source à chaque création.
 
 ---
 
@@ -195,21 +220,22 @@ Phase 0  ──►  Phase 1  ──►  Phase 2  ──►  Phase 4
 
 ---
 
-## ✅ État courant de conformité (audit initial)
+## ✅ État courant de conformité (après Phase 2bis)
 
 ### `erp_pms` (admin) — conforme
-- `app/Services/TenantProvisioningService.php` ✅
-- `config/provisioning.php` ✅
-- `app/Http/Controllers/AdminAuditController.php` (store/provision/stream/start/stop/restart/health) ✅
-- Migration `add_source_to_tenants_table` ✅
-- `app/Models/Tenant.php` (`$fillable`) ✅
-- `routes/web.php` (route SSE) ✅
-- `.env` (variables provisioning) ✅
-- `create.blade.php` (champ source_type/source_path) ✅
-- `show.blade.php` (widget SSE) ✅
+- `app/Services/TenantProvisioningService.php` (pull par digest + `update()`) ✅
+- `app/Services/DockerRegistryService.php` (listing/résolution des tags GHCR) ✅
+- `config/provisioning.php` (`registry_image`, plus de `template_github_url`) ✅
+- `app/Http/Controllers/AdminAuditController.php` (store/provision/stream/start/stop/restart/health/versions/update-version) ✅
+- Migration `drop_source_columns_from_tenants_table` (source_type/source_path retirés) ✅
+- `app/Models/Tenant.php` (`$fillable` : `docker_image_tag`, plus de `source_type`/`source_path`) ✅
+- `routes/web.php` (routes SSE provisioning + update) ✅
+- `.env` (`REGISTRY_IMAGE`, plus de `TEMPLATE_GITHUB_URL`) ✅
+- `show.blade.php` (widget SSE provisioning + carte "Version de l'application") ✅
 
-### `villa_b` (template) — 2 fichiers restaurés
-- `Dockerfile` ✅
-- `docker/entrypoint.sh` ✅
-- `docker/nginx.conf` ✅ *(restauré — contenait par erreur entrypoint.sh)*
-- `docker/supervisord.conf` ✅ *(restauré — contenait par erreur entrypoint.sh)*
+### `villa_b` (template) — conforme
+- `Dockerfile` (PHP 8.4, `HEALTHCHECK`, plus de dépendance `git` inutilisée) ✅
+- `docker/entrypoint.sh` (migrate --force + seed conditionnel au démarrage) ✅
+- `docker/nginx.conf` ✅
+- `docker/supervisord.conf` ✅
+- `.github/workflows/build-image.yml` (build + push GHCR sur push `main`) ✅
