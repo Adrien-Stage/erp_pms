@@ -240,22 +240,8 @@ class AdminAuditController extends Controller
 
         if ($section === 'users') {
             try {
-                $dbHost = 'db';
-                $dbPort = '5432';
-                if (gethostbyname('db') === 'db') {
-                    $dbHost = '127.0.0.1';
-                    $dbPort = '5433';
-                }
-                
-                $safeDbName = preg_replace('/[^a-zA-Z0-9_]/', '', $tenant->db_name);
-                $dsn = "pgsql:host={$dbHost};port={$dbPort};dbname={$safeDbName}";
-                
-                // Add short connection timeout (2 seconds) to avoid gateway timeouts
-                $pdo = new \PDO($dsn, $tenant->db_username ?? 'pms', $tenant->db_password ?? 'secret', [
-                    \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
-                    \PDO::ATTR_TIMEOUT => 2,
-                ]);
-                
+                $pdo = $this->connectToTenantDatabase($tenant);
+
                 $stmt = $pdo->query("SELECT id, name, email, phone, role, is_active FROM users ORDER BY name");
                 $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
                 
@@ -269,6 +255,34 @@ class AdminAuditController extends Controller
         }
 
         return view('admin.tenants.show', compact('tenant', 'tenantUsers', 'section'));
+    }
+
+    /**
+     * Connexion PDO à la base applicative propre à un établissement.
+     *
+     * Se connecte via le nom du container DB du tenant sur le réseau Docker
+     * partagé 'pms' (ex: meka-erp-{slug}-db) — PAS via l'alias générique
+     * "db", qui résout vers la base de l'admin lui-même (son propre service
+     * "db"), pas celle du tenant. Repli sur le port hôte mappé (127.0.0.1)
+     * si l'admin ne tourne pas sur le réseau Docker (dev local hors conteneur).
+     */
+    private function connectToTenantDatabase(Tenant $tenant): \PDO
+    {
+        $safeDbName = preg_replace('/[^a-zA-Z0-9_]/', '', $tenant->db_name);
+        $dbUser = $tenant->db_username ?? 'pms';
+        $dbPass = $tenant->db_password ?? 'secret';
+        $dbContainer = $tenant->docker_db_container ?: ('meka-erp-' . $tenant->slug . '-db');
+
+        $options = [
+            \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
+            \PDO::ATTR_TIMEOUT => 3,
+        ];
+
+        try {
+            return new \PDO("pgsql:host={$dbContainer};port=5432;dbname={$safeDbName}", $dbUser, $dbPass, $options);
+        } catch (\PDOException $e) {
+            return new \PDO("pgsql:host=127.0.0.1;port={$tenant->db_port};dbname={$safeDbName}", $dbUser, $dbPass, $options);
+        }
     }
 
     public function updateTenant(Request $request, Tenant $tenant)
@@ -353,8 +367,8 @@ class AdminAuditController extends Controller
 
             $send = function (string $step, string $message, string $level = 'info') {
                 // Tronquer les messages très longs pour éviter le débordement du cadre de logs
-                if (mb_strlen($message) > 500) {
-                    $message = mb_substr($message, 0, 500) . '…';
+                if (mb_strlen($message) > 3000) {
+                    $message = mb_substr($message, 0, 3000) . '…';
                 }
                 $payload = json_encode([
                     'step'    => $step,
@@ -381,7 +395,7 @@ class AdminAuditController extends Controller
 
                 $send('finished', 'Provisioning terminé avec succès.', 'success');
 
-            } catch (\RuntimeException $e) {
+            } catch (\Throwable $e) {
                 $tenant->update(['docker_status' => 'error']);
                 $send('error', $e->getMessage(), 'error');
 
@@ -436,8 +450,8 @@ class AdminAuditController extends Controller
             ob_implicit_flush(true);
 
             $send = function (string $step, string $message, string $level = 'info') {
-                if (mb_strlen($message) > 500) {
-                    $message = mb_substr($message, 0, 500) . '…';
+                if (mb_strlen($message) > 3000) {
+                    $message = mb_substr($message, 0, 3000) . '…';
                 }
                 $payload = json_encode([
                     'step'    => $step,
@@ -464,7 +478,7 @@ class AdminAuditController extends Controller
 
                 $send('finished', 'Mise à jour terminée avec succès.', 'success');
 
-            } catch (\RuntimeException $e) {
+            } catch (\Throwable $e) {
                 $tenant->update(['docker_status' => 'error']);
                 $send('error', $e->getMessage(), 'error');
 
@@ -501,7 +515,7 @@ class AdminAuditController extends Controller
 
             return back()->with('success', "Container de « {$tenant->name} » démarré.");
 
-        } catch (\RuntimeException $e) {
+        } catch (\Throwable $e) {
             $tenant->update(['docker_status' => 'error']);
             return back()->with('error', "Erreur au démarrage : " . $e->getMessage());
         }
@@ -539,8 +553,16 @@ class AdminAuditController extends Controller
 
     public function provisionTenant(Tenant $tenant)
     {
-        // Redirige vers le stream SSE (ancienne méthode conservée pour compatibilité)
-        return redirect()->route('tech.establishments.provision.stream', $tenant);
+        $user = Auth::user();
+        if (!$user || !$user->isTechAdmin()) { abort(403); }
+
+        // Relance (ex: après un échec) : repasse en 'creating' pour que la
+        // page affiche à nouveau le widget SSE, comme à la création initiale.
+        $tenant->update(['docker_status' => 'creating']);
+
+        return redirect()
+            ->route('tech.establishments.show', $tenant)
+            ->with('start_provisioning', true);
     }
 
     public function healthCheckTenant(Tenant $tenant, \App\Services\TenantProvisioningService $provisioner)
@@ -608,23 +630,20 @@ class AdminAuditController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255'],
             'phone' => ['nullable', 'string', 'max:30'],
-            'password' => ['required', 'string', 'min:4'],
+            'password' => ['nullable', 'string', 'min:4'],
         ]);
 
+        // Si aucun mot de passe fourni (flux TECH), on en génère un et on le
+        // renvoie dans la réponse pour que TECH puisse le transmettre au manager.
+        $generatedPassword = null;
+        if (empty($validated['password'])) {
+            $generatedPassword = Str::random(10);
+            $validated['password'] = $generatedPassword;
+        }
+
         try {
-            $dbHost = 'db';
-            $dbPort = '5432';
-            if (gethostbyname('db') === 'db') {
-                $dbHost = '127.0.0.1';
-                $dbPort = '5433';
-            }
-            
-            $safeDbName = preg_replace('/[^a-zA-Z0-9_]/', '', $tenant->db_name);
-            $dsn = "pgsql:host={$dbHost};port={$dbPort};dbname={$safeDbName}";
-            $pdo = new \PDO($dsn, $tenant->db_username ?? 'pms', $tenant->db_password ?? 'secret', [
-                \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION
-            ]);
-            
+            $pdo = $this->connectToTenantDatabase($tenant);
+
             $stmt = $pdo->prepare("SELECT 1 FROM users WHERE email = ?");
             $stmt->execute([$validated['email']]);
             if ($stmt->fetch()) {
@@ -660,7 +679,8 @@ class AdminAuditController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => "Manager créé avec succès."
+                'message' => "Manager créé avec succès.",
+                'generated_password' => $generatedPassword,
             ], 201);
 
         } catch (\PDOException $e) {

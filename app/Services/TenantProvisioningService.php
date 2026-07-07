@@ -53,40 +53,15 @@ class TenantProvisioningService
         return $result === 'yes';
     }
 
-    // ── Création dossier (cross-platform) ─────────────────────────────────────
-
-    private function ensureDir(string $path): void
-    {
-        $quoted = escapeshellarg($path);
-        if (self::isWindows()) {
-            $this->exec('if not exist ' . $quoted . ' mkdir ' . $quoted);
-        } else {
-            $this->exec('mkdir -p ' . $quoted);
-        }
-    }
-
     // ── Suppression fichier (cross-platform) ──────────────────────────────────
 
     private function rmFile(string $path): void
     {
         $quoted = escapeshellarg($path);
         if (self::isWindows()) {
-            $this->exec('del /F /Q ' . $quoted . ' 2>nul');
+            $this->exec('del /F /Q ' . $quoted . ' 2>/dev/null');
         } else {
             $this->exec('rm -f ' . $quoted);
-        }
-    }
-
-    // ── Copie fichier (cross-platform) ────────────────────────────────────────
-
-    private function copyFile(string $from, string $to): void
-    {
-        $qFrom = escapeshellarg($from);
-        $qTo   = escapeshellarg($to);
-        if (self::isWindows()) {
-            $this->exec('copy /Y ' . $qFrom . ' ' . $qTo . ' >nul 2>&1');
-        } else {
-            $this->exec('cp ' . $qFrom . ' ' . $qTo);
         }
     }
 
@@ -132,10 +107,41 @@ class TenantProvisioningService
         $imageRef = $registryImage . '@' . $tenant->docker_image_tag;
 
         $log('image', "⬇️  Récupération de l'image « {$imageRef} »…", 'info');
-        $this->execOrFail('docker pull ' . escapeshellarg($imageRef) . ' 2>&1', "Échec du docker pull de l'image");
+        $this->dockerPullWithRetry($imageRef, $log);
         $log('image', "✅ Image prête.", 'success');
 
         return $imageRef;
+    }
+
+    /**
+     * GHCR redirige le téléchargement des blobs vers une URL Azure signée à
+     * durée de vie courte. Sur un réseau lent/instable, cette URL peut
+     * expirer avant la fin du transfert ("httpReadSeeker: failed open"),
+     * sans que Docker ne retente automatiquement. On retente donc nous-mêmes
+     * avant d'abandonner.
+     */
+    private function dockerPullWithRetry(string $imageRef, callable $log, int $maxAttempts = 3): void
+    {
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            $lines = [];
+            $returnCode = 0;
+            exec('docker pull ' . escapeshellarg($imageRef) . ' 2>&1', $lines, $returnCode);
+            $output = implode("\n", $lines);
+
+            if ($returnCode === 0) {
+                return;
+            }
+
+            if ($attempt < $maxAttempts) {
+                $delay = $attempt * 5;
+                $log('image', "⚠️ Échec du pull (tentative {$attempt}/{$maxAttempts}), nouvel essai dans {$delay}s…", 'warning');
+                sleep($delay);
+            } else {
+                throw new RuntimeException(
+                    "Échec du docker pull de l'image après {$maxAttempts} tentatives.\nSortie: {$output}"
+                );
+            }
+        }
     }
 
     /**
@@ -187,7 +193,9 @@ class TenantProvisioningService
         $composeDir  = $baseDir . '/.compose';
         $composePath = $composeDir . '/' . $tenant->slug . '.yml';
 
-        $this->ensureDir($composeDir);
+        if (!is_dir($composeDir) && !mkdir($composeDir, 0777, true) && !is_dir($composeDir)) {
+            throw new RuntimeException("Impossible de créer le répertoire : {$composeDir}");
+        }
 
         $appContainer = 'meka-erp-' . $tenant->slug . '-app';
         $dbContainer  = 'meka-erp-' . $tenant->slug . '-db';
@@ -200,7 +208,11 @@ class TenantProvisioningService
         $appKey       = $this->resolveAppKey($composePath);
         $appUrl       = 'http://' . $tenant->slug . '.localhost';
         $currency     = $tenant->currency ?? 'XAF';
-        $settingsJson = addslashes(json_encode($tenant->settings ?? []));
+        // Le logo importé côté admin reste côté admin (storage propre à erp_pms) :
+        // pas de lien inter-conteneurs. Le manager importe son propre logo depuis
+        // les paramètres de l'application (stocké dans le storage du tenant).
+        $settings     = collect($tenant->settings ?? [])->except('logo')->all();
+        $settingsJson = addslashes(json_encode($settings));
         $modulesJson  = addslashes(json_encode($tenant->modules  ?? []));
 
         $yaml = <<<YAML
@@ -266,9 +278,9 @@ volumes:
 
 YAML;
 
-        $tmp = sys_get_temp_dir() . '/' . $tenant->slug . '.yml';
-        file_put_contents($tmp, $yaml);
-        $this->copyFile($tmp, $composePath);
+        if (file_put_contents($composePath, $yaml) === false) {
+            throw new RuntimeException("Impossible d'écrire le fichier docker-compose : {$composePath}");
+        }
 
         $log('compose', "📄 docker-compose généré : {$composePath}", 'info');
         return $composePath;
@@ -290,8 +302,8 @@ YAML;
         $appContainer = 'meka-erp-' . $tenant->slug . '-app';
         $dbContainer  = 'meka-erp-' . $tenant->slug . '-db';
 
-        $this->exec('docker rm -f ' . escapeshellarg($appContainer) . ' 2>nul');
-        $this->exec('docker rm -f ' . escapeshellarg($dbContainer)  . ' 2>nul');
+        $this->exec('docker rm -f ' . escapeshellarg($appContainer) . ' 2>/dev/null');
+        $this->exec('docker rm -f ' . escapeshellarg($dbContainer)  . ' 2>/dev/null');
 
         $output = $this->execOrFail(
             'docker compose -f ' . escapeshellarg($composePath) . ' up -d 2>&1',
@@ -450,15 +462,15 @@ YAML;
 
     public function stop(Tenant $tenant, callable $log): void
     {
-        $this->exec('docker stop ' . escapeshellarg('meka-erp-' . $tenant->slug . '-app') . ' 2>nul');
-        $this->exec('docker stop ' . escapeshellarg('meka-erp-' . $tenant->slug . '-db') . ' 2>nul');
+        $this->exec('docker stop ' . escapeshellarg('meka-erp-' . $tenant->slug . '-app') . ' 2>/dev/null');
+        $this->exec('docker stop ' . escapeshellarg('meka-erp-' . $tenant->slug . '-db') . ' 2>/dev/null');
         $log('stop', "✅ Containers arrêtés.", 'success');
     }
 
     public function restart(Tenant $tenant, callable $log): void
     {
-        $this->exec('docker restart ' . escapeshellarg('meka-erp-' . $tenant->slug . '-db') . ' 2>nul');
-        $this->exec('docker restart ' . escapeshellarg('meka-erp-' . $tenant->slug . '-app') . ' 2>nul');
+        $this->exec('docker restart ' . escapeshellarg('meka-erp-' . $tenant->slug . '-db') . ' 2>/dev/null');
+        $this->exec('docker restart ' . escapeshellarg('meka-erp-' . $tenant->slug . '-app') . ' 2>/dev/null');
         $log('restart', "✅ Containers redémarrés.", 'success');
     }
 
@@ -468,10 +480,10 @@ YAML;
         $dbContainer  = 'meka-erp-' . $tenant->slug . '-db';
 
         $appStatus = trim($this->exec(
-            'docker inspect -f "{{.State.Status}}" ' . escapeshellarg($appContainer) . ' 2>nul'
+            'docker inspect -f "{{.State.Status}}" ' . escapeshellarg($appContainer) . ' 2>/dev/null'
         ));
         $dbStatus  = trim($this->exec(
-            'docker inspect -f "{{.State.Status}}" ' . escapeshellarg($dbContainer) . ' 2>nul'
+            'docker inspect -f "{{.State.Status}}" ' . escapeshellarg($dbContainer) . ' 2>/dev/null'
         ));
 
         if ($appStatus === '') { $appStatus = 'absent'; }
@@ -504,9 +516,9 @@ YAML;
         } else {
             $appContainer = 'meka-erp-' . $slug . '-app';
             $dbContainer  = 'meka-erp-' . $slug . '-db';
-            $this->exec('docker rm -f ' . escapeshellarg($appContainer) . ' 2>nul');
-            $this->exec('docker rm -f ' . escapeshellarg($dbContainer)  . ' 2>nul');
-            $this->exec('docker volume rm meka_erp_' . $slug . '_pgdata 2>nul');
+            $this->exec('docker rm -f ' . escapeshellarg($appContainer) . ' 2>/dev/null');
+            $this->exec('docker rm -f ' . escapeshellarg($dbContainer)  . ' 2>/dev/null');
+            $this->exec('docker volume rm meka_erp_' . $slug . '_pgdata 2>/dev/null');
             $log('docker', "Conteneurs orphelins et volume supprimés.", 'warning');
         }
 
