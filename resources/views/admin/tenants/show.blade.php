@@ -148,6 +148,22 @@
                 </div>
             @endif
 
+            {{-- ==================== ÉCHEC DE PROVISIONING : RELANCE ==================== --}}
+            @if($tenant->docker_status === 'error' && !session('start_provisioning'))
+                <div class="mb-6 rounded-lg bg-red-50 border border-red-200 p-4 shadow-sm flex items-center justify-between gap-4">
+                    <div class="flex items-center gap-2 text-xs font-bold text-red-800">
+                        <svg class="h-4 w-4 text-red-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /></svg>
+                        <span>Le provisioning Docker a échoué pour cet établissement.</span>
+                    </div>
+                    <form action="{{ route('tech.establishments.provision', $tenant) }}" method="POST">
+                        @csrf
+                        <button type="submit" class="shrink-0 rounded-lg bg-red-600 px-4 py-2 text-xs font-bold text-white hover:bg-red-700 transition shadow-sm cursor-pointer">
+                            Relancer le provisioning
+                        </button>
+                    </form>
+                </div>
+            @endif
+
             {{-- ==================== LOGS DE PROVISIONING (SSE) ==================== --}}
             @if(session('start_provisioning') || $tenant->docker_status === 'creating')
                 <div class="mb-8 bg-slate-900 rounded-xl border border-slate-800 shadow-2xl overflow-hidden" id="provisioning-log-widget">

@@ -539,8 +539,16 @@ class AdminAuditController extends Controller
 
     public function provisionTenant(Tenant $tenant)
     {
-        // Redirige vers le stream SSE (ancienne méthode conservée pour compatibilité)
-        return redirect()->route('tech.establishments.provision.stream', $tenant);
+        $user = Auth::user();
+        if (!$user || !$user->isTechAdmin()) { abort(403); }
+
+        // Relance (ex: après un échec) : repasse en 'creating' pour que la
+        // page affiche à nouveau le widget SSE, comme à la création initiale.
+        $tenant->update(['docker_status' => 'creating']);
+
+        return redirect()
+            ->route('tech.establishments.show', $tenant)
+            ->with('start_provisioning', true);
     }
 
     public function healthCheckTenant(Tenant $tenant, \App\Services\TenantProvisioningService $provisioner)

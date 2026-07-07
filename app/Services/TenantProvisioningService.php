@@ -132,10 +132,41 @@ class TenantProvisioningService
         $imageRef = $registryImage . '@' . $tenant->docker_image_tag;
 
         $log('image', "⬇️  Récupération de l'image « {$imageRef} »…", 'info');
-        $this->execOrFail('docker pull ' . escapeshellarg($imageRef) . ' 2>&1', "Échec du docker pull de l'image");
+        $this->dockerPullWithRetry($imageRef, $log);
         $log('image', "✅ Image prête.", 'success');
 
         return $imageRef;
+    }
+
+    /**
+     * GHCR redirige le téléchargement des blobs vers une URL Azure signée à
+     * durée de vie courte. Sur un réseau lent/instable, cette URL peut
+     * expirer avant la fin du transfert ("httpReadSeeker: failed open"),
+     * sans que Docker ne retente automatiquement. On retente donc nous-mêmes
+     * avant d'abandonner.
+     */
+    private function dockerPullWithRetry(string $imageRef, callable $log, int $maxAttempts = 3): void
+    {
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            $lines = [];
+            $returnCode = 0;
+            exec('docker pull ' . escapeshellarg($imageRef) . ' 2>&1', $lines, $returnCode);
+            $output = implode("\n", $lines);
+
+            if ($returnCode === 0) {
+                return;
+            }
+
+            if ($attempt < $maxAttempts) {
+                $delay = $attempt * 5;
+                $log('image', "⚠️ Échec du pull (tentative {$attempt}/{$maxAttempts}), nouvel essai dans {$delay}s…", 'warning');
+                sleep($delay);
+            } else {
+                throw new RuntimeException(
+                    "Échec du docker pull de l'image après {$maxAttempts} tentatives.\nSortie: {$output}"
+                );
+            }
+        }
     }
 
     /**
