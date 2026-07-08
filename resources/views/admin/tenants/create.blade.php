@@ -105,12 +105,15 @@
         themeTextOnLight: '#391F0E',
         themeTextOnDark: '#CCAB87',
         
-        // Modules Selection
+        // Modules Selection — actifs par défaut (Core mis à part) : on les
+        // désactive explicitement au cas par cas plutôt que d'opt-in.
         modules: {
             hotel: true,
-            restaurant: false,
-            shop: false,
-            housekeeping: false,
+            restaurant: true,
+            shop: true,
+            housekeeping: true,
+            discussions: true,
+            analytics: true,
             accounting: true,
             ai: false,
             api: true,
@@ -840,6 +843,30 @@
                                     <span class="text-xs font-bold text-slate-800">Module Housekeeping</span>
                                     <p class="text-[10px] text-slate-500 leading-relaxed">
                                         Planification du nettoyage des chambres, attribution des tâches aux valets et statut de propreté.
+                                    </p>
+                                </div>
+                            </label>
+
+                            <!-- Module: Discussions -->
+                            <label class="relative flex items-start gap-4 rounded-xl border p-4 cursor-pointer select-none transition hover:bg-slate-50 duration-200"
+                                :class="modules.discussions ? 'border-indigo-600 ring-2 ring-indigo-50 bg-indigo-50/10' : 'border-slate-200'">
+                                <input type="checkbox" name="modules[discussions]" x-model="modules.discussions" class="mt-1 h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500 shrink-0">
+                                <div class="space-y-1">
+                                    <span class="text-xs font-bold text-slate-800">Module Discussions</span>
+                                    <p class="text-[10px] text-slate-500 leading-relaxed">
+                                        Messagerie interne entre membres du personnel de l'établissement.
+                                    </p>
+                                </div>
+                            </label>
+
+                            <!-- Module: Analytics -->
+                            <label class="relative flex items-start gap-4 rounded-xl border p-4 cursor-pointer select-none transition hover:bg-slate-50 duration-200"
+                                :class="modules.analytics ? 'border-indigo-600 ring-2 ring-indigo-50 bg-indigo-50/10' : 'border-slate-200'">
+                                <input type="checkbox" name="modules[analytics]" x-model="modules.analytics" class="mt-1 h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500 shrink-0">
+                                <div class="space-y-1">
+                                    <span class="text-xs font-bold text-slate-800">Module Analytics</span>
+                                    <p class="text-[10px] text-slate-500 leading-relaxed">
+                                        Tour de contrôle : statistiques d'occupation, de revenus et tableaux de bord pour le manager.
                                     </p>
                                 </div>
                             </label>

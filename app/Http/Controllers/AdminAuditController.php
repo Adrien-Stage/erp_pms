@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class AdminAuditController extends Controller
 {
@@ -244,10 +245,18 @@ class AdminAuditController extends Controller
 
                 $stmt = $pdo->query("SELECT id, name, email, phone, role, is_active FROM users ORDER BY name");
                 $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-                
+
                 $tenantUsers = collect($rows)->map(function ($row) {
                     return (object) $row;
                 });
+
+                // users_count est un compteur dénormalisé (incrémenté à la création
+                // d'un manager) — il peut dériver si un utilisateur est supprimé
+                // directement dans la base du tenant. On le resynchronise ici,
+                // le seul endroit où on a déjà une lecture live de cette table.
+                if ($tenant->users_count !== $tenantUsers->count()) {
+                    $tenant->update(['users_count' => $tenantUsers->count()]);
+                }
             } catch (\Exception $e) {
                 \Illuminate\Support\Facades\Log::warning("Could not fetch tenant users for {$tenant->name}: " . $e->getMessage());
                 session()->now('error', "Impossible de se connecter à la base de données de l'établissement : " . $e->getMessage());
@@ -300,6 +309,49 @@ class AdminAuditController extends Controller
         $tenant->update($validated);
 
         return back()->with('success', 'Établissement mis à jour.');
+    }
+
+    /**
+     * Active/désactive des modules métier pour un établissement déjà
+     * provisionné : régénère le docker-compose (même image) et recrée le
+     * container applicatif pour que TENANT_MODULES soit repris en compte.
+     */
+    public function updateModules(Request $request, Tenant $tenant, \App\Services\TenantProvisioningService $provisioner)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isTechAdmin()) { abort(403); }
+
+        $validated = $request->validate([
+            'modules' => ['nullable', 'array'],
+            'modules.*' => ['string', Rule::in(['restaurant', 'shop', 'housekeeping', 'discussions', 'analytics'])],
+        ]);
+
+        $tenant->update(['modules' => $validated['modules'] ?? []]);
+
+        if (empty($tenant->docker_image_tag)) {
+            return back()->with('error', "Cet établissement n'est pas encore provisionné — les modules seront appliqués au premier provisioning.");
+        }
+
+        $logs = [];
+        $log  = function (string $step, string $message, string $level = 'info') use (&$logs) {
+            $logs[] = "[{$level}] {$message}";
+        };
+
+        try {
+            $provisioner->applyModules($tenant, $log);
+
+            AuditLog::record(
+                $user->id,
+                'update_modules',
+                "Modules mis à jour pour l'établissement {$tenant->name} : " . implode(', ', $tenant->modules ?: ['aucun']),
+                'tech_admin',
+                ['logs' => $logs]
+            );
+
+            return back()->with('success', 'Modules appliqués avec succès.');
+        } catch (\RuntimeException $e) {
+            return back()->with('error', "Échec de l'application des modules : " . $e->getMessage());
+        }
     }
 
     public function destroyTenant(Tenant $tenant, \App\Services\TenantProvisioningService $provisioner)
