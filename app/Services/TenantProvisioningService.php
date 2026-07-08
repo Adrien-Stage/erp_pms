@@ -187,6 +187,15 @@ class TenantProvisioningService
         return 'base64:' . base64_encode(random_bytes(32));
     }
 
+    /**
+     * Échappe une valeur pour l'insérer dans une chaîne YAML *simple-quote*
+     * ('...'): seule la quote simple littérale doit être doublée.
+     */
+    private function yamlSingleQuoteEscape(string $value): string
+    {
+        return str_replace("'", "''", $value);
+    }
+
     private function generateDockerCompose(Tenant $tenant, string $imageRef, callable $log): string
     {
         $baseDir     = rtrim(config('provisioning.tenants_base_path'), '/\\');
@@ -212,8 +221,14 @@ class TenantProvisioningService
         // pas de lien inter-conteneurs. Le manager importe son propre logo depuis
         // les paramètres de l'application (stocké dans le storage du tenant).
         $settings     = collect($tenant->settings ?? [])->except('logo')->all();
-        $settingsJson = addslashes(json_encode($settings));
-        $modulesJson  = addslashes(json_encode($tenant->modules  ?? []));
+        // Ces valeurs sont injectées dans une chaîne YAML *simple-quote*, qui ne
+        // traite pas le backslash comme un caractère d'échappement (contrairement
+        // aux chaînes double-quote) — seule une quote simple littérale doit être
+        // doublée. addslashes() ici produirait un JSON qui ne se décode jamais
+        // correctement côté tenant (bug historique : TENANT_SETTINGS/TENANT_MODULES
+        // n'ont jamais pu être json_decode() correctement).
+        $settingsJson = $this->yamlSingleQuoteEscape(json_encode($settings));
+        $modulesJson  = $this->yamlSingleQuoteEscape(json_encode($tenant->modules ?? []));
 
         $yaml = <<<YAML
 services:
@@ -438,6 +453,36 @@ YAML;
         $tenant->update(['docker_status' => 'running']);
 
         $log('done', "✅ Établissement « {$tenant->name} » mis à jour avec succès.", 'success');
+    }
+
+    /**
+     * Applique un changement de modules (Tenant::modules déjà sauvegardé par
+     * l'appelant) : régénère le compose avec la même image (aucun pull) et
+     * recrée uniquement le container applicatif pour que TENANT_MODULES soit
+     * repris en compte par l'entrypoint. Base de données/volume intacts.
+     */
+    public function applyModules(Tenant $tenant, callable $log): void
+    {
+        if (empty($tenant->docker_image_tag)) {
+            throw new RuntimeException("Établissement non provisionné — aucune image à recréer.");
+        }
+
+        $log('start', "Application des modules pour « {$tenant->name} »");
+
+        $registryImage = config('provisioning.registry_image');
+        $imageRef      = $registryImage . '@' . $tenant->docker_image_tag;
+        $composePath   = $this->generateDockerCompose($tenant, $imageRef, $log);
+
+        $log('docker', "🔄 Recréation du container applicatif…", 'info');
+        $this->execOrFail(
+            'docker compose -f ' . escapeshellarg($composePath) . ' up -d 2>&1',
+            "Échec du docker compose up"
+        );
+        $log('docker', "✅ Container recréé.", 'success');
+
+        $tenant->update(['docker_status' => 'running']);
+
+        $log('done', "✅ Modules appliqués pour « {$tenant->name} ».", 'success');
     }
 
     // ── Actions post-provisioning ─────────────────────────────────────────────

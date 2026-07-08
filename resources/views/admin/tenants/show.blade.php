@@ -727,6 +727,50 @@
                     </div>
                 </form>
 
+            {{-- ==================== MODULES ==================== --}}
+            @elseif($section === 'modules')
+                @php
+                    $moduleDefs = [
+                        'restaurant'   => ['label' => 'Restaurant', 'desc' => 'Menus, commandes, facturation, portail QR, garde-manger.'],
+                        'shop'         => ['label' => 'Boutique', 'desc' => 'Articles, point de vente, gestion de caisse.'],
+                        'housekeeping' => ['label' => 'Housekeeping', 'desc' => 'Planification et suivi du nettoyage des chambres.'],
+                        'discussions'  => ['label' => 'Discussions', 'desc' => 'Messagerie interne entre membres du personnel.'],
+                        'analytics'    => ['label' => 'Analytics', 'desc' => 'Tour de contrôle : statistiques et tableaux de bord.'],
+                    ];
+                    $tenantModules = $tenant->modules ?? [];
+                    // Établissement jamais passé par ce sélecteur (aucune des clés
+                    // canoniques présente) : tout est actif aujourd'hui côté
+                    // application, on part de cet état plutôt que de tout décocher.
+                    $legacyAllEnabled = empty(array_intersect(array_keys($moduleDefs), $tenantModules));
+                @endphp
+                <div class="mb-6">
+                    <h2 class="text-xl font-extrabold text-slate-800 tracking-tight">Modules</h2>
+                    <p class="text-xs text-slate-500 mt-1">Active ou désactive des fonctionnalités métier pour {{ $tenant->name }}. Les modules cœur (Chambres, Réservations, Clients, Utilisateurs) restent toujours actifs.</p>
+                </div>
+
+                <form action="{{ route('tech.establishments.modules', $tenant) }}" method="POST" class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                    @csrf
+                    <div class="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        @foreach($moduleDefs as $key => $def)
+                            @php $checked = $legacyAllEnabled || in_array($key, $tenantModules); @endphp
+                            <label class="relative flex items-start gap-3 rounded-xl border p-4 cursor-pointer select-none transition hover:bg-slate-50 {{ $checked ? 'border-indigo-600 ring-2 ring-indigo-50 bg-indigo-50/10' : 'border-slate-200' }}">
+                                <input type="checkbox" name="modules[]" value="{{ $key }}" {{ $checked ? 'checked' : '' }}
+                                       class="mt-1 h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500 shrink-0">
+                                <div class="space-y-1">
+                                    <span class="text-xs font-bold text-slate-800">{{ $def['label'] }}</span>
+                                    <p class="text-[10px] text-slate-500 leading-relaxed">{{ $def['desc'] }}</p>
+                                </div>
+                            </label>
+                        @endforeach
+                    </div>
+                    <div class="bg-slate-50 px-6 py-4 border-t border-slate-100 flex items-center justify-between gap-4">
+                        <p class="text-[10px] text-slate-400">Appliquer recrée le container applicatif (même version, base de données intacte) — quelques secondes d'interruption.</p>
+                        <button type="submit" class="shrink-0 rounded-lg bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-sm">
+                            Appliquer les modules
+                        </button>
+                    </div>
+                </form>
+
             {{-- ==================== PARAMÈTRES (SETTINGS) ==================== --}}
             @elseif($section === 'settings')
                 <div class="mb-6">
