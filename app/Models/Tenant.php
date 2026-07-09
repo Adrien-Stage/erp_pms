@@ -23,10 +23,13 @@ class Tenant extends Model
         'db_password',
         'docker_app_container',
         'docker_db_container',
+        'docker_web_container',
         'docker_status', // running, stopped, creating, error
         'docker_image_tag', // digest (sha256:...) de l'image ghcr.io figé pour ce tenant
+        'web_image_tag', // digest de l'image template_site figé pour ce tenant (module website)
         'app_port',
         'db_port',
+        'web_port',
 
         // Modules & Features
         'api_enabled',
