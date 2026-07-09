@@ -18,6 +18,9 @@ Route::get('/login', [AuthenticatedSessionController::class, 'create'])->name('l
 Route::post('/login', [AuthenticatedSessionController::class, 'store']);
 Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
 
+// === API PUBLIQUE (consommée par template_site — pas d'authentification) ===
+Route::get('/api/public/establishments/{tenant:slug}/content', [AdminAuditController::class, 'publicSiteContent'])->name('api.public.establishments.content');
+
 // === ESPACE TECH (Supervision Technique) ===
 Route::middleware(['auth', 'role:tech_admin'])->prefix('tech')->name('tech.')->group(function () {
     // Dashboard principal TECH (Santé des conteneurs, statistiques globales)
@@ -32,6 +35,7 @@ Route::middleware(['auth', 'role:tech_admin'])->prefix('tech')->name('tech.')->g
     Route::delete('/establishments/{tenant}', [AdminAuditController::class, 'destroyTenant'])->name('establishments.destroy');
     Route::post('/establishments/{tenant}/create-manager', [AdminAuditController::class, 'createTenantManager'])->name('establishments.create-manager');
     Route::post('/establishments/{tenant}/modules', [AdminAuditController::class, 'updateModules'])->name('establishments.modules');
+    Route::post('/establishments/{tenant}/site-content', [AdminAuditController::class, 'updateSiteContent'])->name('establishments.site-content');
 
     // Actions Docker pour les établissements
     Route::post('/establishments/{tenant}/provision', [AdminAuditController::class, 'provisionTenant'])->name('establishments.provision');

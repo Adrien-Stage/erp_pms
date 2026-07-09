@@ -354,6 +354,125 @@ class AdminAuditController extends Controller
         }
     }
 
+    /**
+     * Enregistre le contenu marketing du site vitrine (module website).
+     * Pur stockage côté pms (colonne site_content) — pas d'action Docker,
+     * contrairement aux modules : le site le récupère à l'exécution via
+     * publicSiteContent(), pas besoin de recréer de container.
+     */
+    public function updateSiteContent(Request $request, Tenant $tenant)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isTechAdmin()) { abort(403); }
+
+        $validated = $request->validate([
+            'hero_title' => ['nullable', 'string', 'max:255'],
+            'hero_subtitle' => ['nullable', 'string', 'max:255'],
+            'hero_cta_label' => ['nullable', 'string', 'max:100'],
+            'hero_background' => ['nullable', 'image', 'max:4096'],
+            'about_title' => ['nullable', 'string', 'max:255'],
+            'about_body' => ['nullable', 'string', 'max:5000'],
+            'contact_intro' => ['nullable', 'string', 'max:1000'],
+            'contact_hours' => ['nullable', 'string', 'max:1000'],
+            'seo_title' => ['nullable', 'string', 'max:255'],
+            'seo_description' => ['nullable', 'string', 'max:500'],
+            'gallery_images' => ['nullable', 'array'],
+            'gallery_images.*' => ['image', 'max:4096'],
+            'remove_gallery' => ['nullable', 'array'],
+            'remove_gallery.*' => ['string'],
+        ]);
+
+        $content = $tenant->site_content ?? [];
+
+        $content['hero'] = [
+            'title' => $validated['hero_title'] ?? null,
+            'subtitle' => $validated['hero_subtitle'] ?? null,
+            'cta_label' => $validated['hero_cta_label'] ?? null,
+            'background_image' => $content['hero']['background_image'] ?? null,
+        ];
+        $content['about'] = [
+            'title' => $validated['about_title'] ?? null,
+            'body' => $validated['about_body'] ?? null,
+        ];
+        $content['contact'] = [
+            'intro' => $validated['contact_intro'] ?? null,
+            'hours' => $validated['contact_hours'] ?? null,
+        ];
+        $content['seo'] = [
+            'title' => $validated['seo_title'] ?? null,
+            'description' => $validated['seo_description'] ?? null,
+        ];
+
+        if ($request->hasFile('hero_background')) {
+            if (!empty($content['hero']['background_image'])) {
+                \Illuminate\Support\Facades\Storage::disk('public')->delete($content['hero']['background_image']);
+            }
+            $content['hero']['background_image'] = $request->file('hero_background')->store('site', 'public');
+        }
+
+        $gallery = $content['gallery'] ?? [];
+
+        if (!empty($validated['remove_gallery'])) {
+            foreach ($validated['remove_gallery'] as $path) {
+                \Illuminate\Support\Facades\Storage::disk('public')->delete($path);
+            }
+            $gallery = array_values(array_diff($gallery, $validated['remove_gallery']));
+        }
+
+        if ($request->hasFile('gallery_images')) {
+            foreach ($request->file('gallery_images') as $file) {
+                $gallery[] = $file->store('site', 'public');
+            }
+        }
+
+        $content['gallery'] = $gallery;
+
+        $tenant->update(['site_content' => $content]);
+
+        AuditLog::record($user->id, 'update_site_content', "Contenu du site mis à jour pour l'établissement {$tenant->name}", 'tech_admin');
+
+        return back()->with('success', 'Contenu du site enregistré.');
+    }
+
+    /**
+     * API publique (lecture seule, pas d'auth) : contenu marketing d'un
+     * établissement, consommée par template_site. Résout les images en URLs
+     * absolues — le storage vit dans pms, pas dans le container du site.
+     */
+    public function publicSiteContent(Tenant $tenant)
+    {
+        $content = $tenant->site_content ?? [];
+        $absolute = fn (?string $path) => $path
+            ? rtrim(config('app.url'), '/') . '/storage/' . ltrim($path, '/')
+            : null;
+
+        return response()->json([
+            'name' => $tenant->name,
+            'hero' => [
+                'title' => $content['hero']['title'] ?? null,
+                'subtitle' => $content['hero']['subtitle'] ?? null,
+                'cta_label' => $content['hero']['cta_label'] ?? null,
+                'background_image' => $absolute($content['hero']['background_image'] ?? null),
+            ],
+            'about' => [
+                'title' => $content['about']['title'] ?? null,
+                'body' => $content['about']['body'] ?? null,
+            ],
+            'contact' => [
+                'intro' => $content['contact']['intro'] ?? null,
+                'hours' => $content['contact']['hours'] ?? null,
+                'address' => $tenant->address,
+                'phone' => $tenant->phone,
+                'email' => $tenant->email,
+            ],
+            'gallery' => collect($content['gallery'] ?? [])->map($absolute)->all(),
+            'seo' => [
+                'title' => $content['seo']['title'] ?? $tenant->name,
+                'description' => $content['seo']['description'] ?? null,
+            ],
+        ]);
+    }
+
     public function destroyTenant(Tenant $tenant, \App\Services\TenantProvisioningService $provisioner)
     {
         $user = Auth::user();

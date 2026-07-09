@@ -40,12 +40,14 @@ class Tenant extends Model
         
         // Métadonnées
         'settings',
+        'site_content', // contenu marketing du site vitrine (module website)
         'provisioned_at',
         'last_health_check',
     ];
 
     protected $casts = [
         'settings' => 'array',
+        'site_content' => 'array',
         'modules' => 'array',
         'is_active' => 'boolean',
         'users_count' => 'integer',
