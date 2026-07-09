@@ -74,7 +74,8 @@ class TenantProvisioningService
         $log('start', "Démarrage du provisioning pour « {$tenant->name} » (slug: {$slug})");
 
         $imageRef    = $this->pullDockerImage($tenant, $log);
-        $composePath = $this->generateDockerCompose($tenant, $imageRef, $log);
+        $webImageRef = $this->hasWebsiteModule($tenant) ? $this->pullWebImage($tenant, $log) : null;
+        $composePath = $this->generateDockerCompose($tenant, $imageRef, $webImageRef, $log);
         $this->startContainers($tenant, $composePath, $log);
         $this->waitForDatabase($tenant, $log);
         $this->runMigrations($tenant, $log);
@@ -83,10 +84,21 @@ class TenantProvisioningService
             'docker_status'         => 'running',
             'docker_app_container'  => 'meka-erp-' . $slug . '-app',
             'docker_db_container'   => 'meka-erp-' . $slug . '-db',
+            'docker_web_container'  => $webImageRef !== null ? 'meka-erp-' . $slug . '-web' : null,
             'provisioned_at'        => now(),
         ]);
 
         $log('done', "✅ Établissement « {$tenant->name} » provisionné et opérationnel sur le port {$tenant->app_port}", 'success');
+    }
+
+    /**
+     * Le module "website" est stocké dans Tenant::modules au même titre que
+     * les autres modules métier — il pilote le provisioning du 3e container
+     * "web" (site vitrine) en plus de TENANT_MODULES côté container app.
+     */
+    private function hasWebsiteModule(Tenant $tenant): bool
+    {
+        return in_array('website', $tenant->modules ?? [], true);
     }
 
     // ── Étape 1 : Image Docker (pull depuis le registre GHCR) ─────────────────
@@ -167,6 +179,46 @@ class TenantProvisioningService
         $log('image', "✅ Version figée pour cet établissement : {$digest}", 'success');
     }
 
+    /**
+     * Équivalent de pullDockerImage()/pinToTag() pour l'image du site vitrine
+     * (template_site), sur un registre distinct de l'image applicative — le
+     * digest est figé séparément (Tenant::web_image_tag) pour ne pas coupler
+     * les mises à jour des deux images.
+     */
+    private function pullWebImage(Tenant $tenant, callable $log): string
+    {
+        $registryImage = config('provisioning.registry_image_web');
+
+        if (empty($tenant->web_image_tag)) {
+            $log('image', "📌 Résolution de la version du site « latest »…", 'info');
+
+            $imagePath = $this->registry->imagePath($registryImage);
+            $digest    = $this->registry->resolveDigest($imagePath, 'latest');
+
+            if (!$digest) {
+                throw new RuntimeException(
+                    "Impossible de résoudre le digest de l'image « {$registryImage}:latest » sur le registre."
+                );
+            }
+
+            $tenant->update(['web_image_tag' => $digest]);
+            $log('image', "✅ Version du site figée pour cet établissement : {$digest}", 'success');
+        }
+
+        return $this->pullPinnedWebImage($tenant, $log);
+    }
+
+    private function pullPinnedWebImage(Tenant $tenant, callable $log): string
+    {
+        $imageRef = config('provisioning.registry_image_web') . '@' . $tenant->web_image_tag;
+
+        $log('image', "⬇️  Récupération de l'image du site « {$imageRef} »…", 'info');
+        $this->dockerPullWithRetry($imageRef, $log);
+        $log('image', "✅ Image du site prête.", 'success');
+
+        return $imageRef;
+    }
+
     // ── Étape 2 : docker-compose par tenant ──────────────────────────────────
 
     /**
@@ -196,7 +248,7 @@ class TenantProvisioningService
         return str_replace("'", "''", $value);
     }
 
-    private function generateDockerCompose(Tenant $tenant, string $imageRef, callable $log): string
+    private function generateDockerCompose(Tenant $tenant, string $imageRef, ?string $webImageRef, callable $log): string
     {
         $baseDir     = rtrim(config('provisioning.tenants_base_path'), '/\\');
         $composeDir  = $baseDir . '/.compose';
@@ -230,9 +282,7 @@ class TenantProvisioningService
         $settingsJson = $this->yamlSingleQuoteEscape(json_encode($settings));
         $modulesJson  = $this->yamlSingleQuoteEscape(json_encode($tenant->modules ?? []));
 
-        $yaml = <<<YAML
-services:
-
+        $appService = <<<YAML
   {$appContainer}:
     image: {$imageRef}
     container_name: {$appContainer}
@@ -264,6 +314,9 @@ services:
     networks:
       - {$network}
 
+YAML;
+
+        $dbService = <<<YAML
   {$dbContainer}:
     image: postgres:16
     container_name: {$dbContainer}
@@ -284,14 +337,36 @@ services:
     networks:
       - {$network}
 
-networks:
-  {$network}:
-    external: true
+YAML;
 
-volumes:
-  meka_erp_{$tenant->slug}_pgdata:
+        $services = [$appService, $dbService];
+
+        if ($webImageRef !== null) {
+            $webContainer = 'meka-erp-' . $tenant->slug . '-web';
+            $webPort      = $tenant->web_port ?? ($appPort + 1000);
+            $cmsContainer = config('provisioning.cms_container', 'MEKA_ERP-app');
+
+            $services[] = <<<YAML
+  {$webContainer}:
+    image: {$webImageRef}
+    container_name: {$webContainer}
+    restart: unless-stopped
+    ports:
+      - "{$webPort}:3000"
+    environment:
+      TENANT_SLUG: "{$tenant->slug}"
+      CMS_API_URL: "http://{$cmsContainer}"
+      TENANT_API_URL: "http://{$appContainer}"
+    depends_on:
+      - {$appContainer}
+    networks:
+      - {$network}
 
 YAML;
+        }
+
+        $yaml = "services:\n\n" . implode("\n", $services)
+            . "\nnetworks:\n  {$network}:\n    external: true\n\nvolumes:\n  meka_erp_{$tenant->slug}_pgdata:\n";
 
         if (file_put_contents($composePath, $yaml) === false) {
             throw new RuntimeException("Impossible d'écrire le fichier docker-compose : {$composePath}");
@@ -316,9 +391,11 @@ YAML;
 
         $appContainer = 'meka-erp-' . $tenant->slug . '-app';
         $dbContainer  = 'meka-erp-' . $tenant->slug . '-db';
+        $webContainer = 'meka-erp-' . $tenant->slug . '-web';
 
         $this->exec('docker rm -f ' . escapeshellarg($appContainer) . ' 2>/dev/null');
         $this->exec('docker rm -f ' . escapeshellarg($dbContainer)  . ' 2>/dev/null');
+        $this->exec('docker rm -f ' . escapeshellarg($webContainer) . ' 2>/dev/null');
 
         $output = $this->execOrFail(
             'docker compose -f ' . escapeshellarg($composePath) . ' up -d 2>&1',
@@ -438,8 +515,16 @@ YAML;
         $registryImage = config('provisioning.registry_image');
         $this->pinToTag($tenant, $registryImage, $tag, $log);
 
-        $imageRef    = $this->pullPinnedImage($tenant, $registryImage, $log);
-        $composePath = $this->generateDockerCompose($tenant, $imageRef, $log);
+        $imageRef = $this->pullPinnedImage($tenant, $registryImage, $log);
+
+        // Le tag de l'application est mis à jour indépendamment du site vitrine —
+        // l'image "web" n'est pas re-résolue ici, seulement réutilisée si déjà
+        // pinnée (le digest ne change pas, donc aucun nouveau pull nécessaire).
+        $webImageRef = ($this->hasWebsiteModule($tenant) && !empty($tenant->web_image_tag))
+            ? config('provisioning.registry_image_web') . '@' . $tenant->web_image_tag
+            : null;
+
+        $composePath = $this->generateDockerCompose($tenant, $imageRef, $webImageRef, $log);
 
         $log('docker', "🔄 Recréation du container applicatif…", 'info');
         $this->execOrFail(
@@ -460,6 +545,12 @@ YAML;
      * l'appelant) : régénère le compose avec la même image (aucun pull) et
      * recrée uniquement le container applicatif pour que TENANT_MODULES soit
      * repris en compte par l'entrypoint. Base de données/volume intacts.
+     *
+     * Gère aussi l'activation/désactivation du module "website" : pull (et
+     * pin si première activation) de l'image du site quand il devient actif,
+     * suppression explicite du container "web" quand il devient inactif —
+     * "docker compose up -d" ne retire pas de lui-même un service disparu du
+     * fichier généré.
      */
     public function applyModules(Tenant $tenant, callable $log): void
     {
@@ -471,7 +562,18 @@ YAML;
 
         $registryImage = config('provisioning.registry_image');
         $imageRef      = $registryImage . '@' . $tenant->docker_image_tag;
-        $composePath   = $this->generateDockerCompose($tenant, $imageRef, $log);
+
+        $wantsWebsite = $this->hasWebsiteModule($tenant);
+        $webContainer = 'meka-erp-' . $tenant->slug . '-web';
+        $webImageRef  = null;
+
+        if ($wantsWebsite) {
+            $webImageRef = $this->pullWebImage($tenant, $log);
+        } else {
+            $this->exec('docker rm -f ' . escapeshellarg($webContainer) . ' 2>/dev/null');
+        }
+
+        $composePath = $this->generateDockerCompose($tenant, $imageRef, $webImageRef, $log);
 
         $log('docker', "🔄 Recréation du container applicatif…", 'info');
         $this->execOrFail(
@@ -480,7 +582,10 @@ YAML;
         );
         $log('docker', "✅ Container recréé.", 'success');
 
-        $tenant->update(['docker_status' => 'running']);
+        $tenant->update([
+            'docker_status'         => 'running',
+            'docker_web_container'  => $wantsWebsite ? $webContainer : null,
+        ]);
 
         $log('done', "✅ Modules appliqués pour « {$tenant->name} ».", 'success');
     }
@@ -502,6 +607,9 @@ YAML;
 
         $this->exec('docker start ' . escapeshellarg($appContainer) . ' 2>&1');
         $this->exec('docker start ' . escapeshellarg('meka-erp-' . $tenant->slug . '-db') . ' 2>&1');
+        if ($tenant->docker_web_container) {
+            $this->exec('docker start ' . escapeshellarg($tenant->docker_web_container) . ' 2>&1');
+        }
         $log('start', "✅ Containers démarrés.", 'success');
     }
 
@@ -509,6 +617,9 @@ YAML;
     {
         $this->exec('docker stop ' . escapeshellarg('meka-erp-' . $tenant->slug . '-app') . ' 2>/dev/null');
         $this->exec('docker stop ' . escapeshellarg('meka-erp-' . $tenant->slug . '-db') . ' 2>/dev/null');
+        if ($tenant->docker_web_container) {
+            $this->exec('docker stop ' . escapeshellarg($tenant->docker_web_container) . ' 2>/dev/null');
+        }
         $log('stop', "✅ Containers arrêtés.", 'success');
     }
 
@@ -516,6 +627,9 @@ YAML;
     {
         $this->exec('docker restart ' . escapeshellarg('meka-erp-' . $tenant->slug . '-db') . ' 2>/dev/null');
         $this->exec('docker restart ' . escapeshellarg('meka-erp-' . $tenant->slug . '-app') . ' 2>/dev/null');
+        if ($tenant->docker_web_container) {
+            $this->exec('docker restart ' . escapeshellarg($tenant->docker_web_container) . ' 2>/dev/null');
+        }
         $log('restart', "✅ Containers redémarrés.", 'success');
     }
 
@@ -534,7 +648,7 @@ YAML;
         if ($appStatus === '') { $appStatus = 'absent'; }
         if ($dbStatus === '') { $dbStatus = 'absent'; }
 
-        return [
+        $result = [
             'app_container' => $appContainer,
             'db_container'  => $dbContainer,
             'app_status'    => $appStatus,
@@ -542,6 +656,19 @@ YAML;
             'healthy'       => $appStatus === 'running' && $dbStatus === 'running',
             'url'           => $appStatus === 'running' ? 'http://' . $tenant->slug . '.localhost' : null,
         ];
+
+        if ($tenant->docker_web_container) {
+            $webStatus = trim($this->exec(
+                'docker inspect -f "{{.State.Status}}" ' . escapeshellarg($tenant->docker_web_container) . ' 2>/dev/null'
+            ));
+            if ($webStatus === '') { $webStatus = 'absent'; }
+
+            $result['web_container'] = $tenant->docker_web_container;
+            $result['web_status']    = $webStatus;
+            $result['healthy']       = $result['healthy'] && $webStatus === 'running';
+        }
+
+        return $result;
     }
 
     public function delete(Tenant $tenant, callable $log): void
@@ -565,6 +692,14 @@ YAML;
             $this->exec('docker rm -f ' . escapeshellarg($dbContainer)  . ' 2>/dev/null');
             $this->exec('docker volume rm meka_erp_' . $slug . '_pgdata 2>/dev/null');
             $log('docker', "Conteneurs orphelins et volume supprimés.", 'warning');
+        }
+
+        // Filet de sécurité : le container "web" peut avoir été laissé orphelin
+        // si le module website a été désactivé sans que docker_web_container
+        // ait été nettoyé (ou si down -v n'a pas trouvé ce service dans le
+        // compose au moment de la suppression).
+        if ($tenant->docker_web_container) {
+            $this->exec('docker rm -f ' . escapeshellarg($tenant->docker_web_container) . ' 2>/dev/null');
         }
 
         $log('done', "✅ Établissement « {$tenant->name} » supprimé.", 'success');

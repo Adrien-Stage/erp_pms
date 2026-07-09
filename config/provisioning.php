@@ -27,6 +27,28 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Image Docker du site vitrine (registre)
+    |--------------------------------------------------------------------------
+    | Image publiée par la CI du repo site_villab (template SvelteKit) -> GHCR.
+    | Provisionnée en 3e container ("web") uniquement pour les établissements
+    | avec le module "website" actif — même principe de pin par digest que
+    | registry_image.
+    */
+    'registry_image_web' => env('REGISTRY_IMAGE_WEB', 'ghcr.io/clyde237/site_villab'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Container admin (pms) sur le réseau Docker partagé
+    |--------------------------------------------------------------------------
+    | Nom du container applicatif de l'admin lui-même (voir docker-compose.yml
+    | à la racine, service "app") — utilisé pour injecter CMS_API_URL dans le
+    | container "web" de chaque établissement, qui doit consommer l'API de
+    | contenu marketing depuis le réseau Docker interne.
+    */
+    'cms_container' => env('CMS_CONTAINER_NAME', 'MEKA_ERP-app'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Réseau Docker partagé
     |--------------------------------------------------------------------------
     | Tous les containers (admin + établissements) sont sur ce réseau.

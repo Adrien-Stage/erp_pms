@@ -5,9 +5,13 @@
         'users' => ['label' => 'Utilisateurs', 'icon' => 'users'],
         'theme' => ['label' => 'Thème & Couleurs', 'icon' => 'palette'],
         'modules' => ['label' => 'Modules', 'icon' => 'puzzle'],
-        'site-content' => ['label' => 'Contenu du site', 'icon' => 'globe'],
-        'settings' => ['label' => 'Paramètres', 'icon' => 'cog'],
     ];
+    // Onglet visible uniquement si le module "website" est actif — sinon rien
+    // à configurer (aucun container "web" provisionné pour cet établissement).
+    if (in_array('website', $tenant->modules ?? [])) {
+        $sidebarMenus['site-content'] = ['label' => 'Contenu du site', 'icon' => 'globe'];
+    }
+    $sidebarMenus['settings'] = ['label' => 'Paramètres', 'icon' => 'cog'];
     $section = request('section', 'overview');
 @endphp
 
@@ -54,6 +58,18 @@
             </div>
             
             <div class="flex items-center gap-3">
+                @php
+                    $dockerBadge = match($tenant->docker_status) {
+                        'running'  => ['label' => 'Conteneurs actifs',  'classes' => 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30', 'dot' => 'bg-emerald-400'],
+                        'creating' => ['label' => 'Provisioning…',      'classes' => 'bg-amber-500/10 text-amber-400 border-amber-500/30',       'dot' => 'bg-amber-400 animate-pulse'],
+                        'error'    => ['label' => 'Erreur conteneurs',  'classes' => 'bg-red-500/10 text-red-400 border-red-500/30',             'dot' => 'bg-red-400'],
+                        default    => ['label' => 'Conteneurs arrêtés', 'classes' => 'bg-slate-500/10 text-slate-400 border-slate-500/30',       'dot' => 'bg-slate-400'],
+                    };
+                @endphp
+                <span class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-bold border {{ $dockerBadge['classes'] }}">
+                    <span class="h-1.5 w-1.5 rounded-full {{ $dockerBadge['dot'] }}"></span>
+                    {{ $dockerBadge['label'] }}
+                </span>
                 <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold border {{ $tenant->is_active ? 'bg-green-500/10 text-green-400 border-green-500/30' : 'bg-red-500/10 text-red-400 border-red-500/30' }}">
                     {{ $tenant->is_active ? 'Actif' : 'Inactif' }}
                 </span>
@@ -69,7 +85,7 @@
 
     <div class="flex min-h-[calc(100vh-3.5rem)]">
         <!-- ======= SIDEBAR ======= -->
-        <aside class="w-60 shrink-0 bg-white border-r border-slate-200 shadow-sm">
+        <aside class="fixed top-14 left-0 bottom-0 w-60 overflow-y-auto bg-white border-r border-slate-200 shadow-sm">
             <nav class="p-4 space-y-1">
                 @foreach($sidebarMenus as $key => $menu)
                     <a 
@@ -123,11 +139,11 @@
                         </div>
                         <div class="flex justify-between">
                             <span>Chambres</span>
-                            <span class="font-bold text-slate-800">{{ $tenant->rooms_count }}</span>
+                            <span class="font-bold text-slate-800">{{ $tenant->rooms_count ?? '—' }}</span>
                         </div>
                         <div class="flex justify-between">
                             <span>Réservations</span>
-                            <span class="font-bold text-slate-800">{{ $tenant->bookings_count }}</span>
+                            <span class="font-bold text-slate-800">{{ $tenant->bookings_count ?? '—' }}</span>
                         </div>
                     </div>
                 </div>
@@ -135,7 +151,7 @@
         </aside>
 
         <!-- ======= MAIN CONTENT ======= -->
-        <main class="flex-1 p-8">
+        <main class="flex-1 ml-60 p-8">
             <!-- Flash Messages -->
             @if(session('success'))
                 <div class="mb-6 rounded-lg bg-green-50 border border-green-200 p-4 text-xs font-bold text-green-800 shadow-sm flex items-center gap-2">
@@ -303,7 +319,7 @@
                             </div>
                             <div>
                                 <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Chambres</p>
-                                <p class="text-2xl font-extrabold text-slate-800">{{ $tenant->rooms_count }}</p>
+                                <p class="text-2xl font-extrabold text-slate-800">{{ $tenant->rooms_count ?? '—' }}</p>
                             </div>
                         </div>
                     </div>
@@ -316,7 +332,7 @@
                             </div>
                             <div>
                                 <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Réservations</p>
-                                <p class="text-2xl font-extrabold text-slate-800">{{ $tenant->bookings_count }}</p>
+                                <p class="text-2xl font-extrabold text-slate-800">{{ $tenant->bookings_count ?? '—' }}</p>
                             </div>
                         </div>
                     </div>
@@ -737,11 +753,13 @@
             @elseif($section === 'modules')
                 @php
                     $moduleDefs = [
-                        'restaurant'   => ['label' => 'Restaurant', 'desc' => 'Menus, commandes, facturation, portail QR, garde-manger.'],
-                        'shop'         => ['label' => 'Boutique', 'desc' => 'Articles, point de vente, gestion de caisse.'],
-                        'housekeeping' => ['label' => 'Housekeeping', 'desc' => 'Planification et suivi du nettoyage des chambres.'],
-                        'discussions'  => ['label' => 'Discussions', 'desc' => 'Messagerie interne entre membres du personnel.'],
-                        'analytics'    => ['label' => 'Analytics', 'desc' => 'Tour de contrôle : statistiques et tableaux de bord.'],
+                        'restaurant'   => ['label' => 'Restaurant', 'desc' => 'Menus, commandes, facturation, portail QR, garde-manger.', 'icon' => 'utensils'],
+                        'shop'         => ['label' => 'Boutique', 'desc' => 'Articles, point de vente, gestion de caisse.', 'icon' => 'store'],
+                        'housekeeping' => ['label' => 'Housekeeping', 'desc' => 'Planification et suivi du nettoyage des chambres.', 'icon' => 'brush-cleaning'],
+                        'discussions'  => ['label' => 'Discussions', 'desc' => 'Messagerie interne entre membres du personnel.', 'icon' => 'message-circle'],
+                        'analytics'    => ['label' => 'Analytics', 'desc' => 'Tour de contrôle : statistiques et tableaux de bord.', 'icon' => 'chart-column'],
+                        'api'          => ['label' => 'API d\'intégration', 'desc' => 'Expose des routes API sécurisées pour connecter des applications mobiles tierces ou des PMS externes.', 'icon' => 'plug'],
+                        'website'      => ['label' => 'Site web', 'desc' => 'Site vitrine public (chambres, menu, contenu CMS) — provisionne un 3ᵉ container. Nécessite l\'API d\'intégration active.', 'icon' => 'globe'],
                     ];
                     $tenantModules = $tenant->modules ?? [];
                     // Établissement jamais passé par ce sélecteur (aucune des clés
@@ -754,14 +772,39 @@
                     <p class="text-xs text-slate-500 mt-1">Active ou désactive des fonctionnalités métier pour {{ $tenant->name }}. Les modules cœur (Chambres, Réservations, Clients, Utilisateurs) restent toujours actifs.</p>
                 </div>
 
-                <form action="{{ route('tech.establishments.modules', $tenant) }}" method="POST" class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <form action="{{ route('tech.establishments.modules', $tenant) }}" method="POST" class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden"
+                    x-data="{
+                        modules: {
+                            @foreach($moduleDefs as $key => $def)
+                            {{ $key }}: {{ ($legacyAllEnabled || in_array($key, $tenantModules)) ? 'true' : 'false' }},
+                            @endforeach
+                        },
+                        toggleModuleDependency(name) {
+                            // Site web nécessite l'API d'intégration : l'activer force l'API,
+                            // mais désactiver l'API seule ne coche pas le site web pour autant.
+                            if (name === 'website' && this.modules.website) { this.modules.api = true; }
+                            if (name === 'api' && !this.modules.api) { this.modules.website = false; }
+                        }
+                    }">
                     @csrf
                     <div class="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
                         @foreach($moduleDefs as $key => $def)
-                            @php $checked = $legacyAllEnabled || in_array($key, $tenantModules); @endphp
-                            <label class="relative flex items-start gap-3 rounded-xl border p-4 cursor-pointer select-none transition hover:bg-slate-50 {{ $checked ? 'border-indigo-600 ring-2 ring-indigo-50 bg-indigo-50/10' : 'border-slate-200' }}">
-                                <input type="checkbox" name="modules[]" value="{{ $key }}" {{ $checked ? 'checked' : '' }}
-                                       class="mt-1 h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500 shrink-0">
+                            <label class="relative flex flex-col gap-3 rounded-xl border p-4 cursor-pointer select-none transition hover:bg-slate-50"
+                                   :class="modules.{{ $key }} ? 'border-indigo-600 ring-2 ring-indigo-50 bg-indigo-50/10' : 'border-slate-200'">
+                                <input type="checkbox" name="modules[]" value="{{ $key }}" hidden
+                                       x-model="modules.{{ $key }}"
+                                       @if(in_array($key, ['api', 'website'], true)) @change="toggleModuleDependency('{{ $key }}')" @endif>
+                                <div class="flex items-start justify-between gap-2">
+                                    <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition"
+                                         :class="modules.{{ $key }} ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'">
+                                        <i data-lucide="{{ $def['icon'] }}" class="h-5 w-5"></i>
+                                    </div>
+                                    <div class="mt-1.5 h-5 w-9 shrink-0 rounded-full transition-colors"
+                                         :class="modules.{{ $key }} ? 'bg-indigo-600' : 'bg-slate-200'">
+                                        <div class="h-4 w-4 mt-0.5 rounded-full bg-white shadow transition-transform"
+                                             :class="modules.{{ $key }} ? 'translate-x-[18px]' : 'translate-x-0.5'"></div>
+                                    </div>
+                                </div>
                                 <div class="space-y-1">
                                     <span class="text-xs font-bold text-slate-800">{{ $def['label'] }}</span>
                                     <p class="text-[10px] text-slate-500 leading-relaxed">{{ $def['desc'] }}</p>
@@ -770,7 +813,7 @@
                         @endforeach
                     </div>
                     <div class="bg-slate-50 px-6 py-4 border-t border-slate-100 flex items-center justify-between gap-4">
-                        <p class="text-[10px] text-slate-400">Appliquer recrée le container applicatif (même version, base de données intacte) — quelques secondes d'interruption.</p>
+                        <p class="text-[10px] text-slate-400">Appliquer recrée le container applicatif (même version, base de données intacte) — quelques secondes d'interruption. Activer « Site web » pour la première fois télécharge son image, ce qui peut prendre plus de temps.</p>
                         <button type="submit" class="shrink-0 rounded-lg bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-sm">
                             Appliquer les modules
                         </button>

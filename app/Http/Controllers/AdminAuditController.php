@@ -194,6 +194,7 @@ class AdminAuditController extends Controller
         if ($request->has('modules') && is_array($request->modules)) {
             $modules = array_keys($request->modules);
         }
+        $modules = $this->applyModuleDependencies($modules);
 
         // 5. Créer le Tenant en base (statut 'creating' — le provisioning Docker suit via SSE)
         $tenant = Tenant::create([
@@ -323,10 +324,11 @@ class AdminAuditController extends Controller
 
         $validated = $request->validate([
             'modules' => ['nullable', 'array'],
-            'modules.*' => ['string', Rule::in(['restaurant', 'shop', 'housekeeping', 'discussions', 'analytics'])],
+            'modules.*' => ['string', Rule::in(['restaurant', 'shop', 'housekeeping', 'discussions', 'analytics', 'api', 'website'])],
         ]);
 
-        $tenant->update(['modules' => $validated['modules'] ?? []]);
+        $modules = $this->applyModuleDependencies($validated['modules'] ?? []);
+        $tenant->update(['modules' => $modules]);
 
         if (empty($tenant->docker_image_tag)) {
             return back()->with('error', "Cet établissement n'est pas encore provisionné — les modules seront appliqués au premier provisioning.");
@@ -352,6 +354,22 @@ class AdminAuditController extends Controller
         } catch (\RuntimeException $e) {
             return back()->with('error', "Échec de l'application des modules : " . $e->getMessage());
         }
+    }
+
+    /**
+     * Règle métier (PLAN_REALISATION_ARCHITECTURE.md, Phase 3) : le site
+     * vitrine consomme l'API applicative de l'établissement, donc l'activer
+     * force "api" — mais l'inverse n'est pas vrai, activer l'API seule ne
+     * provisionne pas de site. Appliquée ici plutôt que côté vue seule
+     * (Alpine) pour ne pas dépendre du JS client.
+     */
+    private function applyModuleDependencies(array $modules): array
+    {
+        if (in_array('website', $modules, true) && !in_array('api', $modules, true)) {
+            $modules[] = 'api';
+        }
+
+        return $modules;
     }
 
     /**
