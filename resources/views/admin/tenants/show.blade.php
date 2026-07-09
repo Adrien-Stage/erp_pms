@@ -5,6 +5,7 @@
         'users' => ['label' => 'Utilisateurs', 'icon' => 'users'],
         'theme' => ['label' => 'Thème & Couleurs', 'icon' => 'palette'],
         'modules' => ['label' => 'Modules', 'icon' => 'puzzle'],
+        'site-content' => ['label' => 'Contenu du site', 'icon' => 'globe'],
         'settings' => ['label' => 'Paramètres', 'icon' => 'cog'],
     ];
     $section = request('section', 'overview');
@@ -99,6 +100,11 @@
                             <svg class="h-4 w-4 shrink-0 {{ $section === $key ? 'text-indigo-500' : 'text-slate-400' }}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28z" />
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                        @elseif($menu['icon'] === 'globe')
+                            <svg class="h-4 w-4 shrink-0 {{ $section === $key ? 'text-indigo-500' : 'text-slate-400' }}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9 9 0 100-18 9 9 0 000 18z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M3.6 9h16.8M3.6 15h16.8M11.5 3a17 17 0 000 18M12.5 3a17 17 0 010 18" />
                             </svg>
                         @endif
                         {{ $menu['label'] }}
@@ -767,6 +773,140 @@
                         <p class="text-[10px] text-slate-400">Appliquer recrée le container applicatif (même version, base de données intacte) — quelques secondes d'interruption.</p>
                         <button type="submit" class="shrink-0 rounded-lg bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-sm">
                             Appliquer les modules
+                        </button>
+                    </div>
+                </form>
+
+            {{-- ==================== CONTENU DU SITE (CMS) ==================== --}}
+            @elseif($section === 'site-content')
+                @php
+                    $siteContent = $tenant->site_content ?? [];
+                    $hero = $siteContent['hero'] ?? [];
+                    $about = $siteContent['about'] ?? [];
+                    $contact = $siteContent['contact'] ?? [];
+                    $seo = $siteContent['seo'] ?? [];
+                    $gallery = $siteContent['gallery'] ?? [];
+                @endphp
+                <div class="mb-6">
+                    <h2 class="text-xl font-extrabold text-slate-800 tracking-tight">Contenu du site</h2>
+                    <p class="text-xs text-slate-500 mt-1">Contenu marketing affiché sur le site vitrine public de {{ $tenant->name }} (module Site web). Les chambres et le menu restaurant viennent directement de l'application, pas d'ici.</p>
+                </div>
+
+                <form action="{{ route('tech.establishments.site-content', $tenant) }}" method="POST" enctype="multipart/form-data" class="space-y-6" x-data="{ galleryPreview: [] }">
+                    @csrf
+
+                    <!-- Hero -->
+                    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div class="px-6 py-4 border-b border-slate-100">
+                            <h3 class="text-sm font-bold text-slate-800">Section d'accueil (Hero)</h3>
+                        </div>
+                        <div class="p-6 space-y-4">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Titre</label>
+                                    <input type="text" name="hero_title" value="{{ old('hero_title', $hero['title'] ?? '') }}" class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Texte du bouton (CTA)</label>
+                                    <input type="text" name="hero_cta_label" value="{{ old('hero_cta_label', $hero['cta_label'] ?? '') }}" placeholder="Ex: Réserver maintenant" class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Sous-titre</label>
+                                <input type="text" name="hero_subtitle" value="{{ old('hero_subtitle', $hero['subtitle'] ?? '') }}" class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Image de fond</label>
+                                @if(!empty($hero['background_image']))
+                                    <img src="{{ asset('storage/' . $hero['background_image']) }}" alt="Fond hero actuel" class="mb-2 h-24 rounded-lg border border-slate-200 object-cover">
+                                @endif
+                                <input type="file" name="hero_background" accept="image/*" class="block w-full text-xs text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-indigo-700">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- À propos -->
+                    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div class="px-6 py-4 border-b border-slate-100">
+                            <h3 class="text-sm font-bold text-slate-800">À propos</h3>
+                        </div>
+                        <div class="p-6 space-y-4">
+                            <div>
+                                <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Titre</label>
+                                <input type="text" name="about_title" value="{{ old('about_title', $about['title'] ?? '') }}" class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Texte</label>
+                                <textarea name="about_body" rows="5" class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">{{ old('about_body', $about['body'] ?? '') }}</textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Contact -->
+                    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div class="px-6 py-4 border-b border-slate-100">
+                            <h3 class="text-sm font-bold text-slate-800">Contact & infos pratiques</h3>
+                            <p class="text-[10px] text-slate-400 mt-0.5">L'adresse, le téléphone et l'email affichés viennent de l'onglet Informations.</p>
+                        </div>
+                        <div class="p-6 space-y-4">
+                            <div>
+                                <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Texte d'introduction</label>
+                                <textarea name="contact_intro" rows="2" class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">{{ old('contact_intro', $contact['intro'] ?? '') }}</textarea>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Horaires</label>
+                                <textarea name="contact_hours" rows="2" placeholder="Ex: Réception ouverte 24h/24" class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">{{ old('contact_hours', $contact['hours'] ?? '') }}</textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Galerie -->
+                    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div class="px-6 py-4 border-b border-slate-100">
+                            <h3 class="text-sm font-bold text-slate-800">Galerie photos</h3>
+                        </div>
+                        <div class="p-6 space-y-4">
+                            @if(count($gallery))
+                                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                    @foreach($gallery as $path)
+                                        <label class="relative block rounded-lg overflow-hidden border border-slate-200 cursor-pointer group">
+                                            <img src="{{ asset('storage/' . $path) }}" alt="Photo galerie" class="h-24 w-full object-cover">
+                                            <div class="absolute inset-0 bg-black/0 group-has-[:checked]:bg-red-900/60 transition flex items-center justify-center">
+                                                <span class="hidden group-has-[:checked]:block text-white text-[10px] font-bold">Supprimer</span>
+                                            </div>
+                                            <input type="checkbox" name="remove_gallery[]" value="{{ $path }}" class="absolute top-1.5 right-1.5 h-4 w-4 rounded">
+                                        </label>
+                                    @endforeach
+                                </div>
+                                <p class="text-[10px] text-slate-400">Coche une photo pour la supprimer lors de l'enregistrement.</p>
+                            @endif
+                            <div>
+                                <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Ajouter des photos</label>
+                                <input type="file" name="gallery_images[]" accept="image/*" multiple class="block w-full text-xs text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-indigo-700">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SEO -->
+                    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div class="px-6 py-4 border-b border-slate-100">
+                            <h3 class="text-sm font-bold text-slate-800">Référencement (SEO)</h3>
+                        </div>
+                        <div class="p-6 space-y-4">
+                            <div>
+                                <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Titre de la page</label>
+                                <input type="text" name="seo_title" value="{{ old('seo_title', $seo['title'] ?? '') }}" placeholder="{{ $tenant->name }}" class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Meta description</label>
+                                <textarea name="seo_description" rows="2" class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">{{ old('seo_description', $seo['description'] ?? '') }}</textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex justify-end">
+                        <button type="submit" class="rounded-lg bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-sm">
+                            Enregistrer le contenu
                         </button>
                     </div>
                 </form>
