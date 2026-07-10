@@ -823,136 +823,173 @@
             {{-- ==================== CONTENU DU SITE (CMS) ==================== --}}
             @elseif($section === 'site-content')
                 @php
-                    $siteContent = $tenant->site_content ?? [];
-                    $hero = $siteContent['hero'] ?? [];
-                    $about = $siteContent['about'] ?? [];
-                    $contact = $siteContent['contact'] ?? [];
-                    $seo = $siteContent['seo'] ?? [];
-                    $gallery = $siteContent['gallery'] ?? [];
+                    $schemaPages = \App\Support\SiteContentSchema::pages();
+                    $pagesData   = \App\Support\SiteContentSchema::hydrate($tenant->site_content);
+                    $seo         = $tenant->site_content['seo'] ?? [];
                 @endphp
                 <div class="mb-6">
                     <h2 class="text-xl font-extrabold text-slate-800 tracking-tight">Contenu du site</h2>
-                    <p class="text-xs text-slate-500 mt-1">Contenu marketing affiché sur le site vitrine public de {{ $tenant->name }} (module Site web). Les chambres et le menu restaurant viennent directement de l'application, pas d'ici.</p>
+                    <p class="text-xs text-slate-500 mt-1">Construis le contenu de chaque page du site vitrine de {{ $tenant->name }} — un onglet par page, des champs regroupés par section. Chaque section peut être affichée ou masquée sur le site via son interrupteur. Les chambres et le menu restaurant viennent directement de l'application.</p>
                 </div>
 
-                <form action="{{ route('tech.establishments.site-content', $tenant) }}" method="POST" enctype="multipart/form-data" class="space-y-6" x-data="{ galleryPreview: [] }">
+                <form action="{{ route('tech.establishments.site-content', $tenant) }}" method="POST" enctype="multipart/form-data" x-data="{ tab: 'home' }">
                     @csrf
 
-                    <!-- Hero -->
-                    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                        <div class="px-6 py-4 border-b border-slate-100">
-                            <h3 class="text-sm font-bold text-slate-800">Section d'accueil (Hero)</h3>
-                        </div>
-                        <div class="p-6 space-y-4">
-                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div>
-                                    <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Titre</label>
-                                    <input type="text" name="hero_title" value="{{ old('hero_title', $hero['title'] ?? '') }}" class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">
-                                </div>
-                                <div>
-                                    <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Texte du bouton (CTA)</label>
-                                    <input type="text" name="hero_cta_label" value="{{ old('hero_cta_label', $hero['cta_label'] ?? '') }}" placeholder="Ex: Réserver maintenant" class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">
-                                </div>
-                            </div>
-                            <div>
-                                <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Sous-titre</label>
-                                <input type="text" name="hero_subtitle" value="{{ old('hero_subtitle', $hero['subtitle'] ?? '') }}" class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">
-                            </div>
-                            <div>
-                                <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Image de fond</label>
-                                @if(!empty($hero['background_image']))
-                                    <img src="{{ asset('storage/' . $hero['background_image']) }}" alt="Fond hero actuel" class="mb-2 h-24 rounded-lg border border-slate-200 object-cover">
-                                @endif
-                                <input type="file" name="hero_background" accept="image/*" class="block w-full text-xs text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-indigo-700">
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- À propos -->
-                    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                        <div class="px-6 py-4 border-b border-slate-100">
-                            <h3 class="text-sm font-bold text-slate-800">À propos</h3>
-                        </div>
-                        <div class="p-6 space-y-4">
-                            <div>
-                                <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Titre</label>
-                                <input type="text" name="about_title" value="{{ old('about_title', $about['title'] ?? '') }}" class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">
-                            </div>
-                            <div>
-                                <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Texte</label>
-                                <textarea name="about_body" rows="5" class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">{{ old('about_body', $about['body'] ?? '') }}</textarea>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Contact -->
-                    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                        <div class="px-6 py-4 border-b border-slate-100">
-                            <h3 class="text-sm font-bold text-slate-800">Contact & infos pratiques</h3>
-                            <p class="text-[10px] text-slate-400 mt-0.5">L'adresse, le téléphone et l'email affichés viennent de l'onglet Informations.</p>
-                        </div>
-                        <div class="p-6 space-y-4">
-                            <div>
-                                <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Texte d'introduction</label>
-                                <textarea name="contact_intro" rows="2" class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">{{ old('contact_intro', $contact['intro'] ?? '') }}</textarea>
-                            </div>
-                            <div>
-                                <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Horaires</label>
-                                <textarea name="contact_hours" rows="2" placeholder="Ex: Réception ouverte 24h/24" class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">{{ old('contact_hours', $contact['hours'] ?? '') }}</textarea>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Galerie -->
-                    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                        <div class="px-6 py-4 border-b border-slate-100">
-                            <h3 class="text-sm font-bold text-slate-800">Galerie photos</h3>
-                        </div>
-                        <div class="p-6 space-y-4">
-                            @if(count($gallery))
-                                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                                    @foreach($gallery as $path)
-                                        <label class="relative block rounded-lg overflow-hidden border border-slate-200 cursor-pointer group">
-                                            <img src="{{ asset('storage/' . $path) }}" alt="Photo galerie" class="h-24 w-full object-cover">
-                                            <div class="absolute inset-0 bg-black/0 group-has-[:checked]:bg-red-900/60 transition flex items-center justify-center">
-                                                <span class="hidden group-has-[:checked]:block text-white text-[10px] font-bold">Supprimer</span>
-                                            </div>
-                                            <input type="checkbox" name="remove_gallery[]" value="{{ $path }}" class="absolute top-1.5 right-1.5 h-4 w-4 rounded">
-                                        </label>
-                                    @endforeach
-                                </div>
-                                <p class="text-[10px] text-slate-400">Coche une photo pour la supprimer lors de l'enregistrement.</p>
-                            @endif
-                            <div>
-                                <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Ajouter des photos</label>
-                                <input type="file" name="gallery_images[]" accept="image/*" multiple class="block w-full text-xs text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-indigo-700">
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- SEO -->
-                    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                        <div class="px-6 py-4 border-b border-slate-100">
-                            <h3 class="text-sm font-bold text-slate-800">Référencement (SEO)</h3>
-                        </div>
-                        <div class="p-6 space-y-4">
-                            <div>
-                                <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Titre de la page</label>
-                                <input type="text" name="seo_title" value="{{ old('seo_title', $seo['title'] ?? '') }}" placeholder="{{ $tenant->name }}" class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">
-                            </div>
-                            <div>
-                                <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Meta description</label>
-                                <textarea name="seo_description" rows="2" class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">{{ old('seo_description', $seo['description'] ?? '') }}</textarea>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="flex justify-end">
-                        <button type="submit" class="rounded-lg bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-sm">
-                            Enregistrer le contenu
+                    {{-- Barre d'onglets (une entrée par page du site + SEO global) --}}
+                    <div class="bg-white rounded-t-xl border border-b-0 border-slate-200 px-3 pt-3 flex flex-wrap gap-1">
+                        @foreach($schemaPages as $pageKey => $pageDef)
+                            <button type="button" @click="tab = '{{ $pageKey }}'"
+                                    class="px-4 py-2.5 rounded-t-lg text-xs font-bold transition border-b-2 cursor-pointer"
+                                    :class="tab === '{{ $pageKey }}' ? 'text-indigo-700 border-indigo-600 bg-indigo-50/60' : 'text-slate-500 border-transparent hover:text-slate-800 hover:bg-slate-50'">
+                                {{ $pageDef['label'] }}
+                            </button>
+                        @endforeach
+                        <button type="button" @click="tab = 'seo'"
+                                class="px-4 py-2.5 rounded-t-lg text-xs font-bold transition border-b-2 cursor-pointer"
+                                :class="tab === 'seo' ? 'text-indigo-700 border-indigo-600 bg-indigo-50/60' : 'text-slate-500 border-transparent hover:text-slate-800 hover:bg-slate-50'">
+                            SEO
                         </button>
                     </div>
+
+                    <div class="bg-slate-50/60 border border-slate-200 rounded-b-xl p-5">
+
+                        {{-- Onglets pages : sections générées depuis le schéma --}}
+                        @foreach($schemaPages as $pageKey => $pageDef)
+                            <div x-show="tab === '{{ $pageKey }}'" x-cloak class="space-y-5">
+                                @foreach($pageDef['sections'] as $sectionKey => $sectionDef)
+                                    @php $sd = $pagesData[$pageKey][$sectionKey]; @endphp
+                                    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden" x-data="{ on: {{ $sd['enabled'] ? 'true' : 'false' }} }">
+
+                                        {{-- En-tête de section : libellé + interrupteur d'affichage --}}
+                                        <div class="px-6 py-4 border-b border-slate-100 flex items-start justify-between gap-4">
+                                            <div>
+                                                <h3 class="text-sm font-bold transition" :class="on ? 'text-slate-800' : 'text-slate-400'">{{ $sectionDef['label'] }}</h3>
+                                                <p class="text-[10px] text-slate-400 mt-0.5 leading-relaxed">{{ $sectionDef['description'] }}</p>
+                                            </div>
+                                            <label class="shrink-0 flex items-center gap-2 mt-0.5 cursor-pointer select-none">
+                                                <span class="text-[10px] font-bold uppercase tracking-wider transition" :class="on ? 'text-indigo-600' : 'text-slate-400'" x-text="on ? 'Affichée' : 'Masquée'"></span>
+                                                <input type="checkbox" name="pages[{{ $pageKey }}][{{ $sectionKey }}][enabled]" value="1" x-model="on" hidden>
+                                                <div class="h-5 w-9 rounded-full transition-colors" :class="on ? 'bg-indigo-600' : 'bg-slate-200'">
+                                                    <div class="h-4 w-4 mt-0.5 rounded-full bg-white shadow transition-transform" :class="on ? 'translate-x-[18px]' : 'translate-x-0.5'"></div>
+                                                </div>
+                                            </label>
+                                        </div>
+
+                                        {{-- Champs de la section (repliés quand elle est masquée) --}}
+                                        <div class="p-6 space-y-4" x-show="on">
+                                            @foreach($sectionDef['fields'] as $fieldKey => $fieldDef)
+                                                @php
+                                                    $inputName = "pages[{$pageKey}][{$sectionKey}][{$fieldKey}]";
+                                                    $fileName  = "pages_files[{$pageKey}][{$sectionKey}][{$fieldKey}]";
+                                                    $value     = $sd[$fieldKey];
+                                                @endphp
+
+                                                @if($fieldDef['type'] === 'text')
+                                                    <div>
+                                                        <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">{{ $fieldDef['label'] }}</label>
+                                                        <input type="text" name="{{ $inputName }}" value="{{ old($inputName, $value) }}"
+                                                               class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">
+                                                    </div>
+
+                                                @elseif($fieldDef['type'] === 'textarea')
+                                                    <div>
+                                                        <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">{{ $fieldDef['label'] }}</label>
+                                                        <textarea name="{{ $inputName }}" rows="3"
+                                                                  class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">{{ old($inputName, $value) }}</textarea>
+                                                    </div>
+
+                                                @elseif($fieldDef['type'] === 'items')
+                                                    <div>
+                                                        <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">{{ $fieldDef['label'] }}</label>
+                                                        <textarea name="{{ $inputName }}" rows="4" placeholder="{{ $fieldDef['placeholder'] ?? '' }}"
+                                                                  class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 font-mono outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">{{ old($inputName, \App\Support\SiteContentSchema::itemsToRaw($value, $fieldDef['keys'])) }}</textarea>
+                                                        <p class="text-[10px] text-slate-400 mt-1">Un élément par ligne — colonnes séparées par « | » ({{ implode(' | ', array_map(fn ($k) => ucfirst($k), $fieldDef['keys'])) }}).</p>
+                                                    </div>
+
+                                                @elseif($fieldDef['type'] === 'image')
+                                                    <div>
+                                                        <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">{{ $fieldDef['label'] }}</label>
+                                                        <div class="flex items-center gap-4">
+                                                            @if($value)
+                                                                <div class="relative shrink-0">
+                                                                    <img src="{{ asset('storage/' . $value) }}" alt="" class="h-16 w-24 object-cover rounded-lg border border-slate-200">
+                                                                    <label class="absolute -top-2 -right-2 flex items-center gap-1 bg-white border border-slate-200 rounded-full px-1.5 py-0.5 shadow-sm cursor-pointer" title="Supprimer cette image à l'enregistrement">
+                                                                        <input type="checkbox" name="pages[{{ $pageKey }}][{{ $sectionKey }}][remove_{{ $fieldKey }}]" value="1" class="h-3 w-3 rounded text-red-600">
+                                                                        <span class="text-[9px] font-bold text-red-500">Suppr.</span>
+                                                                    </label>
+                                                                </div>
+                                                            @endif
+                                                            <input type="file" name="{{ $fileName }}" accept="image/*"
+                                                                   class="text-xs text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-indigo-700">
+                                                        </div>
+                                                    </div>
+
+                                                @elseif($fieldDef['type'] === 'images')
+                                                    <div>
+                                                        <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">{{ $fieldDef['label'] }}</label>
+                                                        @if(count($value))
+                                                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+                                                                @foreach($value as $path)
+                                                                    <label class="relative block rounded-lg overflow-hidden border border-slate-200 cursor-pointer group">
+                                                                        <img src="{{ asset('storage/' . $path) }}" alt="" class="h-24 w-full object-cover">
+                                                                        <div class="absolute inset-0 bg-black/0 group-has-[:checked]:bg-red-900/60 transition flex items-center justify-center">
+                                                                            <span class="hidden group-has-[:checked]:block text-white text-[10px] font-bold">Supprimer</span>
+                                                                        </div>
+                                                                        <input type="checkbox" name="pages[{{ $pageKey }}][{{ $sectionKey }}][remove_{{ $fieldKey }}][]" value="{{ $path }}" class="absolute top-1.5 right-1.5 h-4 w-4 rounded">
+                                                                    </label>
+                                                                @endforeach
+                                                            </div>
+                                                            <p class="text-[10px] text-slate-400 mb-2">Coche une photo pour la supprimer lors de l'enregistrement.</p>
+                                                        @endif
+                                                        <input type="file" name="{{ $fileName }}[]" accept="image/*" multiple
+                                                               class="block w-full text-xs text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-indigo-700">
+                                                    </div>
+                                                @endif
+                                            @endforeach
+                                        </div>
+
+                                        {{-- Rappel discret quand la section est masquée --}}
+                                        <div class="px-6 py-3 text-[10px] text-slate-400 italic" x-show="!on" x-cloak>
+                                            Section masquée sur le site — son contenu est conservé et sera réaffiché si tu la réactives.
+                                        </div>
+                                    </div>
+                                @endforeach
+                            </div>
+                        @endforeach
+
+                        {{-- Onglet SEO global --}}
+                        <div x-show="tab === 'seo'" x-cloak class="space-y-5">
+                            <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                                <div class="px-6 py-4 border-b border-slate-100">
+                                    <h3 class="text-sm font-bold text-slate-800">Référencement (SEO)</h3>
+                                    <p class="text-[10px] text-slate-400 mt-0.5">Titre et description affichés dans les résultats de recherche.</p>
+                                </div>
+                                <div class="p-6 space-y-4">
+                                    <div>
+                                        <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Titre de la page</label>
+                                        <input type="text" name="seo_title" value="{{ old('seo_title', $seo['title'] ?? '') }}" placeholder="{{ $tenant->name }}"
+                                               class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Meta description</label>
+                                        <textarea name="seo_description" rows="2"
+                                                  class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">{{ old('seo_description', $seo['description'] ?? '') }}</textarea>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {{-- Enregistrement global (toutes pages confondues) --}}
+                        <div class="flex items-center justify-between gap-4 mt-6">
+                            <p class="text-[10px] text-slate-400">L'enregistrement sauvegarde toutes les pages et sections d'un coup, y compris celles des autres onglets.</p>
+                            <button type="submit" class="shrink-0 rounded-lg bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-sm">
+                                Enregistrer le contenu
+                            </button>
+                        </div>
+
+                    </div>
                 </form>
+
 
             {{-- ==================== PARAMÈTRES (SETTINGS) ==================== --}}
             @elseif($section === 'settings')
@@ -1028,6 +1065,31 @@
                             </button>
                         </div>
                     </div>
+
+                    {{-- Version du site vitrine (module website uniquement) --}}
+                    @if(in_array('website', $tenant->modules ?? []))
+                        <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                            <div class="px-6 py-4 border-b border-slate-100">
+                                <h3 class="text-sm font-bold text-slate-800">Version du site vitrine</h3>
+                                <p class="text-[10px] text-slate-500 mt-0.5">Image Docker du site public, figée pour cet établissement — mise à jour vers la dernière version publiée</p>
+                            </div>
+                            <div class="p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
+                                <div class="text-xs">
+                                    <span class="text-slate-450 font-semibold">Digest actuel :</span>
+                                    <span class="font-mono bg-slate-50 border border-slate-200 px-2 py-0.5 rounded ml-2">
+                                        {{ $tenant->web_image_tag ? \Illuminate\Support\Str::limit($tenant->web_image_tag, 22, '…') : 'Non résolu' }}
+                                    </span>
+                                </div>
+                                <form action="{{ route('tech.establishments.update-website', $tenant) }}" method="POST"
+                                      onsubmit="const b = this.querySelector('button'); b.disabled = true; b.textContent = 'Mise à jour en cours…';">
+                                    @csrf
+                                    <button type="submit" class="shrink-0 rounded-lg bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-sm cursor-pointer disabled:opacity-60 disabled:cursor-wait">
+                                        Mettre à jour le site
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    @endif
 
                     <!-- Danger Zone Card -->
                     <div class="bg-white rounded-xl border border-red-200 shadow-sm overflow-hidden">
