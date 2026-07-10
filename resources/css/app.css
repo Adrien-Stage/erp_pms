@@ -26,6 +26,11 @@
 /* Pour le mode sombre basé sur une classe */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Masque les éléments Alpine avant leur initialisation (x-show/x-cloak) */
+[x-cloak] {
+    display: none !important;
+}
+
 /* Styles de base pour l'application */
 @layer base {
     body {
