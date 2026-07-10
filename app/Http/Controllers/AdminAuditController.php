@@ -423,6 +423,12 @@ class AdminAuditController extends Controller
         $rules = [
             'seo_title' => ['nullable', 'string', 'max:255'],
             'seo_description' => ['nullable', 'string', 'max:500'],
+            // Onglet Identité du site : édite la fiche du tenant elle-même
+            'identity_logo' => ['nullable', 'image', 'max:2048'],
+            'identity_remove_logo' => ['nullable'],
+            'identity_phone' => ['nullable', 'string', 'max:30'],
+            'identity_email' => ['nullable', 'email', 'max:255'],
+            'identity_address' => ['nullable', 'string', 'max:255'],
         ];
         foreach (\App\Support\SiteContentSchema::pages() as $pageKey => $page) {
             foreach ($page['sections'] as $sectionKey => $section) {
@@ -530,7 +536,30 @@ class AdminAuditController extends Controller
         ];
         $content['gallery'] = $pages['home']['instagram']['images'];
 
-        $tenant->update(['site_content' => $content]);
+        // Identité du site : coordonnées et logo vivent sur la fiche du
+        // tenant (mêmes champs que la création / l'onglet Informations),
+        // pas dans site_content — une seule source de vérité.
+        $settings = $tenant->settings ?? [];
+
+        if ($request->boolean('identity_remove_logo') && !empty($settings['logo'])) {
+            $storage->delete($settings['logo']);
+            $settings['logo'] = null;
+        }
+
+        if ($file = $request->file('identity_logo')) {
+            if (!empty($settings['logo'])) {
+                $storage->delete($settings['logo']);
+            }
+            $settings['logo'] = $file->store('logos', 'public');
+        }
+
+        $tenant->update([
+            'site_content' => $content,
+            'settings'     => $settings,
+            'phone'        => $request->input('identity_phone') ?: null,
+            'email'        => $request->input('identity_email') ?: null,
+            'address'      => $request->input('identity_address') ?: null,
+        ]);
 
         AuditLog::record($user->id, 'update_site_content', "Contenu du site mis à jour pour l'établissement {$tenant->name}", 'tech_admin');
 
