@@ -334,153 +334,1187 @@
                 @endforelse
             </div>
         @elseif($activeTab === 'imports')
-            <!-- ================= IMPORT & EXPORT LAYOUT ================= -->
-            
-            <!-- Breadcrumb Path -->
+            {{-- ================= IMPORT / EXPORT & BACKUPS ================= --}}
             <p class="text-[10px] font-bold tracking-widest text-indigo-600 uppercase">IMPORT / EXPORT</p>
-            
-            <!-- Page Title and Subtitle Row -->
-            <div class="mt-2 flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-2 border-b border-slate-200 pb-4">
-                <div>
-                    <h1 class="text-2xl font-extrabold tracking-tight text-slate-800 font-heading">Import & Export de Données</h1>
-                    <p class="text-xs text-slate-500 mt-1">Exportez les journaux et rapports d'activité de la plateforme ou planifiez des imports.</p>
-                </div>
-                <span class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider block sm:text-right">
-                    Format recommandé : CSV Excel (UTF-8 BOM, délimiteur ;)
-                </span>
+            <div class="mt-2 border-b border-slate-200 pb-4">
+                <h1 class="text-2xl font-extrabold tracking-tight text-slate-800 font-heading">Sauvegardes & Export de données</h1>
+                <p class="text-xs text-slate-500 mt-1">Créez des sauvegardes complètes de la base de chaque établissement, à la demande ou automatiquement selon une planification.</p>
             </div>
 
-            <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] mt-6">
-                <!-- Main Content Area -->
-                <div class="space-y-6">
-                    
-                    <!-- Section: Exports -->
+            <div x-data="{
+                    tab: 'backups',
+                    data: null,
+                    loading: false,
+                    filter: '',
+                    importSel: '',
+                    tenantMap: {{ Illuminate\Support\Js::from($tenants->mapWithKeys(fn ($t) => [$t->id => ['slug' => $t->slug, 'name' => $t->name]])) }},
+                    get importBackups() {
+                        if (!this.data || !this.importSel) return [];
+                        const slug = this.tenantMap[this.importSel]?.slug;
+                        return this.data.backups.filter(b => b.slug === slug && b.status === 'completed');
+                    },
+                    async load() {
+                        this.loading = true;
+                        try {
+                            const url = new URL('{{ route('tech.backups.index') }}', window.location.origin);
+                            if (this.filter) url.searchParams.set('slug', this.filter);
+                            const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+                            this.data = await r.json();
+                        } catch (e) { this.data = null; }
+                        this.loading = false;
+                    }
+                 }" x-init="load()">
+
+                {{-- Sous-onglets --}}
+                <div class="flex flex-wrap gap-1 border-b border-slate-200 mt-6 mb-6">
+                    <button type="button" @click="tab = 'backups'"
+                            class="px-4 py-2.5 text-xs font-bold transition border-b-2 -mb-px cursor-pointer"
+                            :class="tab === 'backups' ? 'text-indigo-700 border-indigo-600' : 'text-slate-500 border-transparent hover:text-slate-800'">
+                        Sauvegardes
+                    </button>
+                    <button type="button" @click="tab = 'schedule'"
+                            class="px-4 py-2.5 text-xs font-bold transition border-b-2 -mb-px cursor-pointer"
+                            :class="tab === 'schedule' ? 'text-indigo-700 border-indigo-600' : 'text-slate-500 border-transparent hover:text-slate-800'">
+                        Planification
+                    </button>
+                    <button type="button" @click="tab = 'import'"
+                            class="px-4 py-2.5 text-xs font-bold transition border-b-2 -mb-px cursor-pointer"
+                            :class="tab === 'import' ? 'text-indigo-700 border-indigo-600' : 'text-slate-500 border-transparent hover:text-slate-800'">
+                        Importation
+                    </button>
+                    <button type="button" @click="tab = 'exports'"
+                            class="px-4 py-2.5 text-xs font-bold transition border-b-2 -mb-px cursor-pointer"
+                            :class="tab === 'exports' ? 'text-indigo-700 border-indigo-600' : 'text-slate-500 border-transparent hover:text-slate-800'">
+                        Exports CSV
+                    </button>
+                </div>
+
+                {{-- ============ SAUVEGARDES ============ --}}
+                <div x-show="tab === 'backups'">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                        <div class="flex items-center gap-2">
+                            <select x-model="filter" @change="load()"
+                                    class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 outline-none focus:border-indigo-500">
+                                <option value="">Tous les établissements</option>
+                                @foreach($tenants as $t)
+                                    <option value="{{ $t->slug }}">{{ $t->name }}</option>
+                                @endforeach
+                            </select>
+                            <button type="button" @click="load()" :disabled="loading"
+                                    class="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition disabled:opacity-50 cursor-pointer">
+                                <svg class="h-3.5 w-3.5" :class="loading ? 'animate-spin' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+                                Actualiser
+                            </button>
+                        </div>
+                        <form method="POST" action="{{ route('tech.backups.all') }}" onsubmit="this.querySelector('button').disabled = true; this.querySelector('button').textContent = 'Sauvegarde en cours…';">
+                            @csrf
+                            <button type="submit" class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-sm cursor-pointer disabled:opacity-60">
+                                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" /></svg>
+                                Sauvegarder tout
+                            </button>
+                        </form>
+                    </div>
+
+                    {{-- Lancer un backup ponctuel par établissement --}}
+                    <div class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm mb-5" x-data="{ target: '' }">
+                        <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                            <div class="flex-1">
+                                <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Sauvegarder un établissement précis</label>
+                                <select x-model="target" class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500">
+                                    <option value="">— Choisir —</option>
+                                    @foreach($tenants as $t)
+                                        @if($t->provisioned_at)
+                                            <option value="{{ $t->id }}">{{ $t->name }}</option>
+                                        @endif
+                                    @endforeach
+                                </select>
+                            </div>
+                            <form method="POST" :action="`{{ url('tech/backups') }}/${target}`" class="shrink-0 sm:self-end"
+                                  @submit="if(!target){$event.preventDefault(); return;} $el.querySelector('button').disabled = true; $el.querySelector('button').textContent = 'Sauvegarde…';">
+                                @csrf
+                                <button type="submit" :disabled="!target" class="w-full sm:w-auto rounded-lg bg-slate-800 px-4 py-2.5 text-xs font-bold text-white hover:bg-slate-900 transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
+                                    Créer la sauvegarde
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div x-show="loading && !data" class="rounded-lg border border-slate-200 bg-white p-8 text-center text-xs text-slate-400">Chargement…</div>
+
+                    <template x-if="data">
+                        <div class="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-xs">
+                                    <thead>
+                                        <tr class="text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
+                                            <th class="px-5 py-3">Établissement</th>
+                                            <th class="px-3 py-3">Fichier</th>
+                                            <th class="px-3 py-3">Taille</th>
+                                            <th class="px-3 py-3">Type</th>
+                                            <th class="px-3 py-3">Date</th>
+                                            <th class="px-5 py-3 text-right">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-50">
+                                        <template x-for="b in data.backups" :key="b.id">
+                                            <tr class="hover:bg-slate-50/60 transition align-top">
+                                                <td class="px-5 py-3 font-bold text-slate-800" x-text="b.tenant"></td>
+                                                <td class="px-3 py-3">
+                                                    <span class="font-mono text-[10px] text-slate-500" x-text="b.filename"></span>
+                                                    <template x-if="b.status === 'failed'">
+                                                        <p class="text-[10px] text-red-500 mt-0.5" x-text="b.error"></p>
+                                                    </template>
+                                                </td>
+                                                <td class="px-3 py-3 text-slate-600" x-text="b.status === 'completed' ? b.size : '—'"></td>
+                                                <td class="px-3 py-3">
+                                                    <span class="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider"
+                                                          :class="b.trigger === 'scheduled' ? 'bg-violet-50 text-violet-600 border border-violet-200' : (b.trigger === 'imported' ? 'bg-sky-50 text-sky-600 border border-sky-200' : 'bg-slate-100 text-slate-500 border border-slate-200')"
+                                                          x-text="b.trigger === 'scheduled' ? 'Auto' : (b.trigger === 'imported' ? 'Importé' : 'Manuel')"></span>
+                                                    <template x-if="b.status === 'failed'">
+                                                        <span class="ml-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-50 text-red-600 border border-red-200 uppercase">Échec</span>
+                                                    </template>
+                                                </td>
+                                                <td class="px-3 py-3 whitespace-nowrap">
+                                                    <span class="text-slate-700" x-text="b.at"></span>
+                                                    <p class="text-[10px] text-slate-400" x-text="b.ago"></p>
+                                                </td>
+                                                <td class="px-5 py-3 text-right whitespace-nowrap">
+                                                    <template x-if="b.status === 'completed'">
+                                                        <a :href="`{{ url('tech/backups') }}/${b.id}/download`" class="font-semibold text-indigo-600 hover:text-indigo-800 hover:underline">Télécharger</a>
+                                                    </template>
+                                                    <form method="POST" :action="`{{ url('tech/backups') }}/${b.id}`" class="inline ml-2" @submit="return confirm('Supprimer cette sauvegarde ?')">
+                                                        @csrf
+                                                        @method('DELETE')
+                                                        <button type="submit" class="font-semibold text-red-500 hover:text-red-700 cursor-pointer">Supprimer</button>
+                                                    </form>
+                                                </td>
+                                            </tr>
+                                        </template>
+                                        <template x-if="data.backups.length === 0">
+                                            <tr><td colspan="6" class="px-5 py-10 text-center text-slate-400">Aucune sauvegarde pour ce filtre. Lancez-en une ci-dessus.</td></tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+
+                {{-- ============ IMPORTATION (restauration de backups) ============ --}}
+                <div x-show="tab === 'import'" x-cloak>
+
+                    {{-- Rôle réel de l'importation --}}
+                    <div class="rounded-lg border border-amber-200 bg-amber-50/60 p-5 mb-5">
+                        <div class="flex items-start gap-3">
+                            <div class="rounded-lg bg-amber-100 p-2 shrink-0">
+                                <svg class="h-5 w-5 text-amber-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 8.25H7.5a2.25 2.25 0 00-2.25 2.25v9a2.25 2.25 0 002.25 2.25h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25H15m0-3l-3-3m0 0l-3 3m3-3v11.25" /></svg>
+                            </div>
+                            <div class="text-xs leading-relaxed">
+                                <h3 class="text-sm font-bold text-amber-900">Que fait l'importation d'une sauvegarde ?</h3>
+                                <p class="mt-1.5 text-amber-950/80">Importer une sauvegarde <strong>restaure la base de données de l'établissement</strong> : le dump SQL est rejoué dans son container PostgreSQL, les tables sont supprimées puis recréées, et <strong>toutes les données actuelles de l'application (réservations, clients, chambres, utilisateurs…) sont remplacées</strong> par celles contenues dans la sauvegarde.</p>
+                                <ul class="mt-2.5 space-y-1 text-amber-950/80">
+                                    <li class="flex items-start gap-1.5"><span class="mt-1.5 h-1 w-1 rounded-full bg-amber-600 shrink-0"></span> <span><strong>Reprise après incident</strong> : revenir à un état sain après une panne ou une mauvaise manipulation.</span></li>
+                                    <li class="flex items-start gap-1.5"><span class="mt-1.5 h-1 w-1 rounded-full bg-amber-600 shrink-0"></span> <span><strong>Retour arrière</strong> : annuler des modifications récentes en rechargeant une sauvegarde antérieure.</span></li>
+                                    <li class="flex items-start gap-1.5"><span class="mt-1.5 h-1 w-1 rounded-full bg-amber-600 shrink-0"></span> <span><strong>Migration</strong> : réinjecter les données d'un établissement sur une instance reprovisionnée.</span></li>
+                                </ul>
+                                <p class="mt-2.5 font-semibold text-amber-900">⚠ Opération irréversible : les données écrasées ne sont pas récupérables. Créez une sauvegarde fraîche avant d'importer. L'opération est auditée.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {{-- Choix de l'établissement cible --}}
+                    <div class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm mb-5">
+                        <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Établissement à restaurer</label>
+                        <select x-model="importSel" @change="if (filter) { filter = ''; load(); }"
+                                class="block w-full sm:max-w-md rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">
+                            <option value="">— Choisir un établissement —</option>
+                            @foreach($tenants as $t)
+                                @if($t->provisioned_at)
+                                    <option value="{{ $t->id }}">{{ $t->name }}</option>
+                                @endif
+                            @endforeach
+                        </select>
+                    </div>
+
+                    <template x-if="importSel">
+                        <div class="grid gap-5 lg:grid-cols-2 items-start">
+
+                            {{-- Restaurer une sauvegarde existante --}}
+                            <div class="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
+                                <div class="px-5 py-4 border-b border-slate-100">
+                                    <h3 class="text-sm font-bold text-slate-800">Restaurer une sauvegarde existante</h3>
+                                    <p class="text-[10px] text-slate-400 mt-0.5">Sauvegardes archivées de cet établissement (manuelles, automatiques ou importées).</p>
+                                </div>
+                                <div class="divide-y divide-slate-50 max-h-[420px] overflow-y-auto">
+                                    <template x-for="b in importBackups" :key="b.id">
+                                        <div class="px-5 py-3 flex items-center justify-between gap-3">
+                                            <div class="min-w-0">
+                                                <p class="font-mono text-[10px] text-slate-600 truncate" x-text="b.filename"></p>
+                                                <p class="text-[10px] text-slate-400 mt-0.5"><span x-text="b.at"></span> · <span x-text="b.size"></span> · <span x-text="b.trigger === 'scheduled' ? 'Auto' : (b.trigger === 'imported' ? 'Importé' : 'Manuel')"></span></p>
+                                            </div>
+                                            <form method="POST" :action="`{{ url('tech/backups') }}/${b.id}/restore`" class="shrink-0"
+                                                  @submit="if (!confirm(`Restaurer ${b.filename} dans « ${tenantMap[importSel]?.name} » ?\n\nToutes les données actuelles de l'application seront REMPLACÉES par celles de cette sauvegarde. Cette action est irréversible.`)) $event.preventDefault(); else { const btn = $el.querySelector('button'); btn.disabled = true; btn.textContent = 'Restauration…'; }">
+                                                @csrf
+                                                <button type="submit" class="rounded-lg bg-amber-600 px-3 py-1.5 text-[10px] font-bold text-white hover:bg-amber-700 transition cursor-pointer disabled:opacity-60">
+                                                    Restaurer
+                                                </button>
+                                            </form>
+                                        </div>
+                                    </template>
+                                    <template x-if="importBackups.length === 0">
+                                        <div class="px-5 py-8 text-center text-xs text-slate-400">Aucune sauvegarde archivée pour cet établissement — crée-en une depuis l'onglet Sauvegardes, ou importe un fichier ci-contre.</div>
+                                    </template>
+                                </div>
+                            </div>
+
+                            {{-- Importer un fichier depuis le PC --}}
+                            <div class="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
+                                <div class="px-5 py-4 border-b border-slate-100">
+                                    <h3 class="text-sm font-bold text-slate-800">Importer un fichier de sauvegarde</h3>
+                                    <p class="text-[10px] text-slate-400 mt-0.5">Fichier .sql.gz (généré par cet outil) ou .sql — archivé puis restauré immédiatement.</p>
+                                </div>
+                                <form method="POST" :action="`{{ url('tech/backups') }}/${importSel}/import`" enctype="multipart/form-data" class="p-5 space-y-4"
+                                      @submit="if (!confirm(`Importer ce fichier et restaurer « ${tenantMap[importSel]?.name} » ?\n\nToutes les données actuelles de l'application seront REMPLACÉES par le contenu du fichier. Cette action est irréversible.`)) $event.preventDefault(); else { const btn = $el.querySelector('button[type=submit]'); btn.disabled = true; btn.textContent = 'Import en cours…'; }">
+                                    @csrf
+                                    <div>
+                                        <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Fichier de sauvegarde</label>
+                                        <input type="file" name="backup_file" required accept=".gz,.sql"
+                                               class="block w-full text-xs text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-indigo-700">
+                                        <p class="text-[10px] text-slate-400 mt-1.5">500 Mo max. Le fichier est conservé dans les archives (badge « Importé ») pour pouvoir être restauré à nouveau plus tard.</p>
+                                    </div>
+                                    <button type="submit" class="rounded-lg bg-amber-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-amber-700 transition shadow-sm cursor-pointer disabled:opacity-60">
+                                        Importer et restaurer
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    </template>
+
+                    <div x-show="!importSel" x-cloak class="rounded-lg border border-dashed border-slate-300 bg-slate-50/60 p-8 text-center text-xs text-slate-400">
+                        Sélectionne un établissement pour afficher ses sauvegardes restaurables.
+                    </div>
+                </div>
+
+                {{-- ============ PLANIFICATION ============ --}}
+                <div x-show="tab === 'schedule'" x-cloak>
+                    <div class="rounded-lg border border-indigo-100 bg-indigo-50/50 p-4 mb-5 flex items-start gap-2">
+                        <svg class="h-4 w-4 text-indigo-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        <p class="text-[11px] text-indigo-950 leading-relaxed">Chaque établissement peut avoir sa propre planification. La commande <code class="font-mono bg-white/60 px-1 rounded">backups:run</code> est vérifiée chaque minute par le scheduler ; en production, une entrée cron <code class="font-mono bg-white/60 px-1 rounded">* * * * * php artisan schedule:run</code> (ou <code class="font-mono bg-white/60 px-1 rounded">schedule:work</code>) doit être active.</p>
+                    </div>
+
+                    <div class="space-y-4">
+                        @foreach($tenants as $t)
+                            @php $sched = \App\Models\BackupSchedule::where('tenant_id', $t->id)->first(); @endphp
+                            <form method="POST" action="{{ route('tech.backups.schedule', $t) }}"
+                                  class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
+                                  x-data="{
+                                    enabled: {{ $sched && $sched->enabled ? 'true' : 'false' }},
+                                    frequency: '{{ $sched->frequency ?? 'daily' }}'
+                                  }">
+                                @csrf
+                                <div class="flex items-center justify-between gap-3 mb-4">
+                                    <div>
+                                        <h3 class="text-sm font-bold text-slate-800">{{ $t->name }}</h3>
+                                        @if($sched && $sched->enabled && $sched->next_run_at)
+                                            <p class="text-[10px] text-emerald-600 mt-0.5">Prochaine : {{ $sched->next_run_at->format('d/m/Y à H:i') }}
+                                                @if($sched->last_run_at) · dernière : {{ $sched->last_run_at->format('d/m H:i') }} @endif
+                                            </p>
+                                        @else
+                                            <p class="text-[10px] text-slate-400 mt-0.5">Aucune sauvegarde automatique</p>
+                                        @endif
+                                    </div>
+                                    <label class="flex items-center gap-2 cursor-pointer select-none shrink-0">
+                                        <span class="text-[10px] font-bold uppercase tracking-wider" :class="enabled ? 'text-indigo-600' : 'text-slate-400'" x-text="enabled ? 'Activée' : 'Désactivée'"></span>
+                                        <input type="checkbox" name="enabled" value="1" x-model="enabled" hidden>
+                                        <div class="h-5 w-9 rounded-full transition-colors" :class="enabled ? 'bg-indigo-600' : 'bg-slate-200'">
+                                            <div class="h-4 w-4 mt-0.5 rounded-full bg-white shadow transition-transform" :class="enabled ? 'translate-x-[18px]' : 'translate-x-0.5'"></div>
+                                        </div>
+                                    </label>
+                                </div>
+
+                                <div class="grid grid-cols-2 md:grid-cols-5 gap-3" x-show="enabled" x-cloak>
+                                    <div>
+                                        <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1">Fréquence</label>
+                                        <select name="frequency" x-model="frequency" class="block w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-700 outline-none focus:border-indigo-500">
+                                            <option value="daily">Quotidienne</option>
+                                            <option value="weekly">Hebdomadaire</option>
+                                            <option value="monthly">Mensuelle</option>
+                                        </select>
+                                    </div>
+                                    <div x-show="frequency === 'weekly'">
+                                        <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1">Jour</label>
+                                        <select name="day_of_week" class="block w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-700 outline-none focus:border-indigo-500">
+                                            @foreach(['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'] as $i => $d)
+                                                <option value="{{ $i }}" @selected(($sched->day_of_week ?? 1) == $i)>{{ $d }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                    <div x-show="frequency === 'monthly'">
+                                        <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1">Jour du mois</label>
+                                        <input type="number" name="day_of_month" min="1" max="28" value="{{ $sched->day_of_month ?? 1 }}" class="block w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-700 outline-none focus:border-indigo-500">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1">Heure</label>
+                                        <input type="number" name="hour" min="0" max="23" value="{{ $sched->hour ?? 2 }}" class="block w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-700 outline-none focus:border-indigo-500">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1">Minute</label>
+                                        <input type="number" name="minute" min="0" max="59" value="{{ $sched->minute ?? 0 }}" class="block w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-700 outline-none focus:border-indigo-500">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1">Conserver</label>
+                                        <input type="number" name="retention" min="1" max="365" value="{{ $sched->retention ?? 7 }}" class="block w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-700 outline-none focus:border-indigo-500" title="Nombre de sauvegardes conservées">
+                                    </div>
+                                </div>
+                                {{-- Champs neutres pour enregistrer une planification désactivée sans erreur de validation --}}
+                                <template x-if="!enabled">
+                                    <div>
+                                        <input type="hidden" name="frequency" :value="frequency">
+                                        <input type="hidden" name="hour" value="{{ $sched->hour ?? 2 }}">
+                                        <input type="hidden" name="minute" value="{{ $sched->minute ?? 0 }}">
+                                        <input type="hidden" name="retention" value="{{ $sched->retention ?? 7 }}">
+                                    </div>
+                                </template>
+
+                                <div class="flex justify-end mt-4">
+                                    <button type="submit" class="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-sm cursor-pointer">Enregistrer</button>
+                                </div>
+                            </form>
+                        @endforeach
+                    </div>
+                </div>
+
+                {{-- ============ EXPORTS CSV (existant) ============ --}}
+                <div x-show="tab === 'exports'" x-cloak>
                     <div class="bg-white rounded-lg border border-slate-200 p-6 shadow-sm">
                         <div class="flex items-center gap-2 border-b border-slate-100 pb-3">
                             <div class="rounded-full bg-indigo-50 p-2 text-indigo-600">
-                                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                </svg>
+                                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                             </div>
                             <div>
-                                <h2 class="text-md font-bold text-slate-800 tracking-tight">Exportation des données métiers</h2>
-                                <p class="text-[11px] text-slate-500">Téléchargez des extractions de données consolidées au format CSV compatible Microsoft Excel.</p>
+                                <h2 class="text-md font-bold text-slate-800 tracking-tight">Exportation des données métiers (CSV)</h2>
+                                <p class="text-[11px] text-slate-500">Extractions consolidées au format CSV compatible Microsoft Excel (UTF-8 BOM, délimiteur « ; »).</p>
                             </div>
                         </div>
-
                         <div class="mt-6 space-y-4">
-                            <!-- Card: Supervision Export -->
-                            <div class="rounded-lg border border-slate-100 bg-slate-50/50 p-5 hover:border-indigo-100 hover:bg-slate-50 transition duration-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                            <div class="rounded-lg border border-slate-100 bg-slate-50/50 p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
                                 <div class="space-y-1">
-                                    <div class="flex items-center gap-2">
-                                        <h3 class="text-sm font-bold text-slate-800">Rapport de Supervision des Établissements</h3>
-                                    </div>
-                                    <p class="text-xs text-slate-500 max-w-xl">
-                                        Génère un rapport consolidé de tous les établissements actifs ou inactifs (contacts, devise, pays, nombre d'utilisateurs et de réservations enregistrés).
-                                    </p>
+                                    <h3 class="text-sm font-bold text-slate-800">Rapport de Supervision des Établissements</h3>
+                                    <p class="text-xs text-slate-500 max-w-xl">Rapport consolidé de tous les établissements (contacts, devise, pays, utilisateurs, réservations).</p>
                                 </div>
-                                <div class="shrink-0">
-                                    <a href="{{ route('tech.export.supervision') }}" class="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-indigo-700 transition shadow-xs">
-                                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                                        </svg>
-                                        Exporter la Supervision
-                                    </a>
-                                </div>
-                            </div>
-
-                            <!-- Card: Database Backup -->
-                            <div class="rounded-lg border border-slate-100 bg-slate-50/50 p-5 hover:border-indigo-100 hover:bg-slate-50 transition duration-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                <div class="space-y-1">
-                                    <div class="flex items-center gap-2">
-                                        <h3 class="text-sm font-bold text-slate-800">Sauvegarde de la Base de Données (Backup)</h3>
-                                    </div>
-                                    <p class="text-xs text-slate-500 max-w-xl">
-                                        Génère une sauvegarde complète de la base de données PostgreSQL au format SQL compressé dans un fichier ZIP pour archivage.
-                                    </p>
-                                </div>
-                                <div class="shrink-0">
-                                    <a href="{{ route('tech.export.backup') }}" class="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-indigo-700 transition shadow-xs">
-                                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                                        </svg>
-                                        Télécharger le Backup (.zip)
-                                    </a>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Section: Imports -->
-                    <div class="bg-white rounded-lg border border-slate-200 p-6 shadow-sm opacity-85">
-                        <div class="flex items-center gap-2 border-b border-slate-100 pb-3">
-                            <div class="rounded-full bg-slate-100 p-2 text-slate-500">
-                                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                                </svg>
-                            </div>
-                            <div>
-                                <h2 class="text-md font-bold text-slate-700 tracking-tight">Importation de données</h2>
-                                <p class="text-[11px] text-slate-500">Préparez l'initialisation de nouveaux établissements ou utilisateurs par fichier structuré.</p>
-                            </div>
-                        </div>
-
-                        <div class="grid gap-4 mt-6 sm:grid-cols-2">
-                            <!-- Card: Import tenants -->
-                            <div class="rounded-lg border border-slate-100 bg-slate-50/40 p-4 relative overflow-hidden">
-                                <span class="absolute top-3 right-3 inline-flex items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-[9px] font-bold text-slate-600 uppercase">Bientôt</span>
-                                <h3 class="text-xs font-bold text-slate-600">Import d'Établissements</h3>
-                                <p class="text-[11px] text-slate-400 mt-1">Création de masse de nouveaux établissements avec leurs configurations initiales.</p>
-                                <div class="mt-4 flex gap-2">
-                                    <button disabled class="rounded bg-slate-200 px-3 py-1.5 text-[10px] font-bold text-slate-400 cursor-not-allowed">
-                                        Sélectionner fichier
-                                    </button>
-                                </div>
-                            </div>
-
-                            <!-- Card: Import users -->
-                            <div class="rounded-lg border border-slate-100 bg-slate-50/40 p-4 relative overflow-hidden">
-                                <span class="absolute top-3 right-3 inline-flex items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-[9px] font-bold text-slate-600 uppercase">Bientôt</span>
-                                <h3 class="text-xs font-bold text-slate-600">Import d'Utilisateurs</h3>
-                                <p class="text-[11px] text-slate-400 mt-1">Invitation groupée et affectation de managers ou réceptionnistes à des filiales.</p>
-                                <div class="mt-4 flex gap-2">
-                                    <button disabled class="rounded bg-slate-200 px-3 py-1.5 text-[10px] font-bold text-slate-400 cursor-not-allowed">
-                                        Sélectionner fichier
-                                    </button>
-                                </div>
+                                <a href="{{ route('tech.export.supervision') }}" class="shrink-0 inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-indigo-700 transition shadow-xs">
+                                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                                    Exporter la Supervision
+                                </a>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Sidebar Guide -->
-                <aside class="space-y-4">
-                    <div class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-                        <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wider">Guide d'utilisation</h3>
-                        <div class="mt-4 space-y-4 text-xs text-slate-600 leading-relaxed">
-                            <div>
-                                <p class="font-bold text-slate-700">Encodage & Compatibilité</p>
-                                <p class="mt-1">Les exports incluent le marqueur d'ordre d'octets **BOM UTF-8** pour assurer le bon rendu des accents français sous Excel.</p>
+            </div>
+
+
+        @elseif($activeTab === 'dashboard' && $isTech)
+            {{-- ================= SUPERVISION MULTI-ÉTABLISSEMENTS ================= --}}
+            <div class="mt-6"
+                 x-data="{
+                    loading: true,
+                    data: null,
+                    dot(s) {
+                        if (s === 'running') return 'bg-emerald-500';
+                        if (s === 'absent' || s === 'exited' || !s) return 'bg-slate-300';
+                        return 'bg-red-500';
+                    },
+                    async refresh() {
+                        this.loading = true;
+                        try {
+                            const r = await fetch('{{ route('tech.supervision.stats') }}', { headers: { 'Accept': 'application/json' } });
+                            this.data = await r.json();
+                        } catch (e) { this.data = null; }
+                        this.loading = false;
+                    }
+                 }"
+                 x-init="refresh(); setInterval(() => refresh(), 60000)">
+
+                <div class="flex items-center justify-between gap-4 mb-5">
+                    <div>
+                        <h2 class="text-xl font-bold text-slate-800 tracking-tight">Supervision multi-établissements</h2>
+                        <p class="text-xs text-slate-500 mt-1">Vue globale des établissements, utilisateurs, activité et alertes — actualisée automatiquement toutes les 60 secondes.</p>
+                    </div>
+                    <div class="flex items-center gap-3 shrink-0">
+                        <span class="text-[10px] text-slate-400 font-mono" x-show="data" x-text="data ? 'à ' + data.generated_at : ''"></span>
+                        <button type="button" @click="refresh()" :disabled="loading"
+                                class="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition disabled:opacity-50 cursor-pointer">
+                            <svg class="h-3.5 w-3.5" :class="loading ? 'animate-spin' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                            </svg>
+                            Actualiser
+                        </button>
+                    </div>
+                </div>
+
+                {{-- Squelette de chargement (premier affichage) --}}
+                <div x-show="loading && !data" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+                    <template x-for="i in 4">
+                        <div class="h-24 rounded-lg border border-slate-200 bg-white shadow-sm animate-pulse"></div>
+                    </template>
+                </div>
+
+                <template x-if="data">
+                    <div>
+                        {{-- KPI cards --}}
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
+                            <div class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+                                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Établissements actifs</p>
+                                <div class="mt-2 flex items-baseline gap-2">
+                                    <span class="text-3xl font-extrabold text-slate-800" x-text="data.counts.establishments_running"></span>
+                                    <span class="text-xs text-slate-400">/ <span x-text="data.counts.establishments_total"></span> opérationnels</span>
+                                </div>
                             </div>
-                            <div class="border-t border-slate-100 pt-3">
-                                <p class="font-bold text-slate-700">Délimiteur</p>
-                                <p class="mt-1">Le délimiteur utilisé est le **point-virgule (;)**, standard de facto des versions françaises de tableurs.</p>
+                            <div class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+                                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Utilisateurs actifs</p>
+                                <div class="mt-2 flex items-baseline gap-2">
+                                    <span class="text-3xl font-extrabold text-slate-800" x-text="data.counts.users_total"></span>
+                                    <span class="text-xs text-slate-400">tous établissements</span>
+                                </div>
+                            </div>
+                            <div class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+                                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Réservations du jour</p>
+                                <div class="mt-2 flex items-baseline gap-2">
+                                    <span class="text-3xl font-extrabold text-slate-800" x-text="data.counts.bookings_today"></span>
+                                    <span class="text-xs text-slate-400"><span x-text="data.counts.arrivals_today"></span> arrivée(s) prévue(s)</span>
+                                </div>
+                            </div>
+                            <div class="rounded-lg border p-5 shadow-sm"
+                                 :class="data.counts.alerts > 0 ? 'border-red-200 bg-red-50' : 'border-slate-200 bg-white'">
+                                <p class="text-[10px] font-bold uppercase tracking-wider" :class="data.counts.alerts > 0 ? 'text-red-500' : 'text-slate-400'">Alertes globales</p>
+                                <div class="mt-2 flex items-baseline gap-2">
+                                    <span class="text-3xl font-extrabold" :class="data.counts.alerts > 0 ? 'text-red-700' : 'text-slate-800'" x-text="data.counts.alerts"></span>
+                                    <span class="text-xs" :class="data.counts.alerts > 0 ? 'text-red-500' : 'text-slate-400'" x-text="data.counts.alerts > 0 ? 'à traiter' : 'tout est en ordre'"></span>
+                                </div>
                             </div>
                         </div>
+
+                        <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+                            {{-- Tableau des établissements --}}
+                            <div class="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
+                                <div class="px-5 py-4 border-b border-slate-100">
+                                    <h3 class="text-sm font-bold text-slate-800">État des établissements</h3>
+                                </div>
+                                <div class="overflow-x-auto">
+                                    <table class="w-full text-xs">
+                                        <thead>
+                                            <tr class="text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
+                                                <th class="px-5 py-3">Établissement</th>
+                                                <th class="px-3 py-3 text-center">App</th>
+                                                <th class="px-3 py-3 text-center">Base</th>
+                                                <th class="px-3 py-3 text-center">Site</th>
+                                                <th class="px-3 py-3 text-right">Utilisateurs</th>
+                                                <th class="px-3 py-3 text-right">Résa. jour</th>
+                                                <th class="px-5 py-3 text-right">Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-slate-50">
+                                            <template x-for="e in data.establishments" :key="e.id">
+                                                <tr class="hover:bg-slate-50/60 transition">
+                                                    <td class="px-5 py-3">
+                                                        <p class="font-bold text-slate-800" x-text="e.name"></p>
+                                                        <p class="font-mono text-[10px] text-slate-400" x-text="e.slug"></p>
+                                                    </td>
+                                                    <td class="px-3 py-3 text-center">
+                                                        <span class="inline-block h-2.5 w-2.5 rounded-full" :class="dot(e.app_status)" :title="'Application : ' + e.app_status"></span>
+                                                    </td>
+                                                    <td class="px-3 py-3 text-center">
+                                                        <span class="inline-block h-2.5 w-2.5 rounded-full" :class="dot(e.db_status)" :title="'Base de données : ' + e.db_status"></span>
+                                                    </td>
+                                                    <td class="px-3 py-3 text-center">
+                                                        <template x-if="e.has_website">
+                                                            <span class="inline-block h-2.5 w-2.5 rounded-full" :class="dot(e.web_status)" :title="'Site vitrine : ' + (e.web_status ?? 'non provisionné')"></span>
+                                                        </template>
+                                                        <template x-if="!e.has_website">
+                                                            <span class="text-slate-300">—</span>
+                                                        </template>
+                                                    </td>
+                                                    <td class="px-3 py-3 text-right font-bold text-slate-700" x-text="e.users_count"></td>
+                                                    <td class="px-3 py-3 text-right font-bold text-slate-700" x-text="e.bookings_today ?? '—'"></td>
+                                                    <td class="px-5 py-3 text-right">
+                                                        <a :href="e.url" class="font-semibold text-indigo-600 hover:text-indigo-800 hover:underline">Fiche →</a>
+                                                    </td>
+                                                </tr>
+                                            </template>
+                                            <template x-if="data.establishments.length === 0">
+                                                <tr><td colspan="7" class="px-5 py-8 text-center text-slate-400">Aucun établissement.</td></tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            {{-- Alertes globales --}}
+                            <aside class="rounded-lg border border-slate-200 bg-white shadow-sm self-start overflow-hidden">
+                                <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                                    <h3 class="text-sm font-bold text-slate-800">Alertes globales</h3>
+                                    <span class="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                                          :class="data.counts.alerts > 0 ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'"
+                                          x-text="data.counts.alerts"></span>
+                                </div>
+                                <div class="divide-y divide-slate-50 max-h-[420px] overflow-y-auto">
+                                    <template x-if="data.alerts.length === 0">
+                                        <div class="px-5 py-8 text-center">
+                                            <p class="text-xs font-bold text-emerald-600">✓ Aucune alerte</p>
+                                            <p class="text-[10px] text-slate-400 mt-1">Tous les établissements sont opérationnels.</p>
+                                        </div>
+                                    </template>
+                                    <template x-for="a in data.alerts">
+                                        <div class="px-5 py-3 flex items-start gap-2.5">
+                                            <span class="mt-1 h-2 w-2 rounded-full shrink-0" :class="a.level === 'critical' ? 'bg-red-500' : 'bg-amber-400'"></span>
+                                            <div>
+                                                <p class="text-[10px] font-bold uppercase tracking-wider" :class="a.level === 'critical' ? 'text-red-600' : 'text-amber-600'" x-text="a.tenant"></p>
+                                                <p class="text-xs text-slate-600 leading-snug mt-0.5" x-text="a.message"></p>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </aside>
+                        </div>
                     </div>
-                    
-                    <div class="rounded-lg border border-indigo-100 bg-indigo-50/50 p-5 shadow-sm">
-                        <h3 class="text-xs font-bold text-indigo-900 uppercase tracking-wider flex items-center gap-1.5">
-                            <svg class="h-4 w-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </template>
+
+                {{-- Échec de chargement --}}
+                <div x-show="!loading && !data" x-cloak class="rounded-lg border border-red-200 bg-red-50 p-5 text-xs font-bold text-red-700">
+                    Impossible de charger les statistiques de supervision — vérifie que le serveur répond, puis réessaie.
+                </div>
+            </div>
+        @elseif($activeTab === 'roles' && $isTech)
+            {{-- ================= RÔLES & PERMISSIONS ================= --}}
+            @php
+                $roleCatalog     = \App\Support\TenantRoles::catalog();
+                $moduleColumns   = \App\Support\TenantRoles::moduleColumns();
+                $rolePermissions = \App\Support\TenantRoles::permissions();
+                $moduleBadges = [
+                    'core' => 'bg-indigo-50 text-indigo-700 border-indigo-200',
+                    'restaurant' => 'bg-amber-50 text-amber-700 border-amber-200',
+                    'shop' => 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                    'housekeeping' => 'bg-sky-50 text-sky-700 border-sky-200',
+                    'accounting' => 'bg-violet-50 text-violet-700 border-violet-200',
+                ];
+                $platformRoles = [
+                    'tech_admin' => ['label' => 'Administrateur technique', 'description' => 'Provisioning, supervision, modules, CMS et cycle de vie des établissements.', 'count' => \App\Models\User::where('role', \App\Models\User::ROLE_TECH_ADMIN)->count()],
+                    'owner' => ['label' => 'Propriétaire (business)', 'description' => 'Console business consolidée de ses établissements — pas d\'accès technique.', 'count' => \App\Models\User::where('role', \App\Models\User::ROLE_OWNER)->count()],
+                ];
+            @endphp
+            <div class="mt-6 space-y-8">
+                <div>
+                    <h2 class="text-xl font-bold text-slate-800 tracking-tight">Rôles et permissions</h2>
+                    <p class="text-xs text-slate-500 mt-1">Consultation des rôles de la plateforme et des rôles opérationnels de l'application établissement — pms documente ces rôles et suit leur répartition, ils sont attribués dans chaque application.</p>
+                </div>
+
+                {{-- Rôles plateforme (pms) --}}
+                <div>
+                    <h3 class="text-sm font-bold text-slate-800 mb-3">Rôles plateforme (pms)</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        @foreach($platformRoles as $key => $role)
+                            <div class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm flex items-start justify-between gap-4">
+                                <div>
+                                    <p class="text-sm font-bold text-slate-800">{{ $role['label'] }}</p>
+                                    <p class="font-mono text-[10px] text-slate-400 mt-0.5">{{ $key }}</p>
+                                    <p class="text-xs text-slate-500 mt-2 leading-relaxed">{{ $role['description'] }}</p>
+                                </div>
+                                <div class="shrink-0 text-right">
+                                    <p class="text-2xl font-extrabold text-slate-800">{{ $role['count'] }}</p>
+                                    <p class="text-[10px] text-slate-400 uppercase tracking-wider">compte(s)</p>
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+
+                {{-- Rôles opérationnels (application établissement) --}}
+                <div>
+                    <h3 class="text-sm font-bold text-slate-800 mb-3">Rôles opérationnels (application établissement)</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        @foreach($roleCatalog as $key => $role)
+                            <div class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                                <div class="flex items-start justify-between gap-2">
+                                    <p class="text-xs font-bold text-slate-800">{{ $role['label'] }}</p>
+                                    <span class="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wider {{ $moduleBadges[$role['module']] ?? 'bg-slate-50 text-slate-500 border-slate-200' }}">
+                                        {{ $moduleColumns[$role['module']] ?? $role['module'] }}
+                                    </span>
+                                </div>
+                                <p class="font-mono text-[10px] text-slate-400 mt-0.5">{{ $key }}</p>
+                                <p class="text-[11px] text-slate-500 mt-2 leading-relaxed">{{ $role['description'] }}</p>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+
+                {{-- Permissions par module (matrice consultative) --}}
+                <div class="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
+                    <div class="px-5 py-4 border-b border-slate-100">
+                        <h3 class="text-sm font-bold text-slate-800">Permissions par module</h3>
+                        <p class="text-[10px] text-slate-400 mt-0.5">Accès de chaque rôle aux modules de l'application (déduit des règles d'accès du template). Un module désactivé pour un établissement reste inaccessible quel que soit le rôle.</p>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead>
+                                <tr class="text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
+                                    <th class="px-5 py-3">Rôle</th>
+                                    @foreach($moduleColumns as $moduleKey => $moduleLabel)
+                                        <th class="px-3 py-3 text-center whitespace-nowrap">{{ $moduleLabel }}</th>
+                                    @endforeach
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-50">
+                                @foreach($roleCatalog as $key => $role)
+                                    <tr class="hover:bg-slate-50/60 transition">
+                                        <td class="px-5 py-2.5">
+                                            <span class="font-bold text-slate-700">{{ $role['label'] }}</span>
+                                        </td>
+                                        @foreach($moduleColumns as $moduleKey => $moduleLabel)
+                                            <td class="px-3 py-2.5 text-center">
+                                                @if(in_array($moduleKey, $rolePermissions[$key] ?? [], true))
+                                                    <span class="inline-block h-2.5 w-2.5 rounded-full bg-emerald-500" title="Accès"></span>
+                                                @else
+                                                    <span class="text-slate-200">—</span>
+                                                @endif
+                                            </td>
+                                        @endforeach
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                {{-- Répartition par établissement (live, bases tenants) --}}
+                <div class="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden"
+                     x-data="{
+                        loading: true,
+                        data: null,
+                        async refresh() {
+                            this.loading = true;
+                            try {
+                                const r = await fetch('{{ route('tech.roles.distribution') }}', { headers: { 'Accept': 'application/json' } });
+                                this.data = await r.json();
+                            } catch (e) { this.data = null; }
+                            this.loading = false;
+                        }
+                     }" x-init="refresh()">
+                    <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-4">
+                        <div>
+                            <h3 class="text-sm font-bold text-slate-800">Rôles par établissement</h3>
+                            <p class="text-[10px] text-slate-400 mt-0.5">Répartition en direct, lue dans la base de chaque établissement joignable.</p>
+                        </div>
+                        <button type="button" @click="refresh()" :disabled="loading"
+                                class="shrink-0 inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition disabled:opacity-50 cursor-pointer">
+                            <svg class="h-3.5 w-3.5" :class="loading ? 'animate-spin' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
                             </svg>
-                            Sécurité
-                        </h3>
-                        <p class="mt-2 text-xs text-indigo-950 leading-relaxed">
-                            Toutes les opérations d'export de données métiers sont historisées dans le **Journal d'Audit** sous le module `sécurité` / `paramètres`.
-                        </p>
+                            Actualiser
+                        </button>
                     </div>
-                </aside>
+
+                    <div x-show="loading && !data" class="p-5">
+                        <div class="h-16 rounded-md bg-slate-50 animate-pulse"></div>
+                    </div>
+
+                    <template x-if="data">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-xs">
+                                <thead>
+                                    <tr class="text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
+                                        <th class="px-5 py-3">Établissement</th>
+                                        @foreach($roleCatalog as $key => $role)
+                                            <th class="px-2 py-3 text-center font-mono normal-case" title="{{ $role['label'] }}">{{ $key }}</th>
+                                        @endforeach
+                                        <th class="px-3 py-3 text-right">Total</th>
+                                        <th class="px-5 py-3 text-right">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-50">
+                                    <template x-for="e in data.establishments" :key="e.id">
+                                        <tr class="hover:bg-slate-50/60 transition">
+                                            <td class="px-5 py-3">
+                                                <p class="font-bold text-slate-800" x-text="e.name"></p>
+                                                <template x-if="!e.reachable">
+                                                    <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-50 text-red-600 border border-red-200 uppercase">Base injoignable</span>
+                                                </template>
+                                            </td>
+                                            @foreach($roleCatalog as $key => $role)
+                                                <td class="px-2 py-3 text-center">
+                                                    <span class="font-bold" :class="(e.roles['{{ $key }}'] ?? 0) > 0 ? 'text-slate-800' : 'text-slate-200'" x-text="e.roles['{{ $key }}'] ?? '·'"></span>
+                                                </td>
+                                            @endforeach
+                                            <td class="px-3 py-3 text-right font-extrabold text-slate-800" x-text="e.reachable ? e.total : '—'"></td>
+                                            <td class="px-5 py-3 text-right">
+                                                <a :href="e.url" class="font-semibold text-indigo-600 hover:text-indigo-800 hover:underline">Utilisateurs →</a>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </template>
+
+                    <div x-show="!loading && !data" x-cloak class="p-5 text-xs font-bold text-red-700 bg-red-50 border-t border-red-100">
+                        Impossible de charger la répartition des rôles.
+                    </div>
+                </div>
+
+                {{-- Rôles personnalisés (à venir) --}}
+                <div class="rounded-lg border border-dashed border-slate-300 bg-slate-50/60 p-5">
+                    <div class="flex items-center gap-2">
+                        <h3 class="text-sm font-bold text-slate-500">Rôles personnalisés</h3>
+                        <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-200 text-slate-500 uppercase tracking-wider">À venir</span>
+                    </div>
+                    <p class="text-xs text-slate-400 mt-1.5 leading-relaxed">Création de rôles sur mesure par établissement (permissions à la carte) — prévu avec le futur système de permissions par module, une fois la matrice ci-dessus rendue configurable.</p>
+                </div>
+            </div>
+        @elseif($activeTab === 'support' && $isTech)
+            {{-- ================= SUPPORT OPÉRATIONNEL ================= --}}
+            <div class="mt-6"
+                 x-data="{
+                    sub: 'read',
+                    selected: '',
+                    diag: null,
+                    diagLoading: false,
+                    interventions: null,
+                    intLoading: false,
+                    intFilter: '',
+                    appLogs: null,
+                    appLogsLoading: false,
+                    appLogsFilter: '',
+                    appLogsUnreachable: [],
+                    async loadDiag() {
+                        if (!this.selected) { this.diag = null; return; }
+                        this.diagLoading = true;
+                        try {
+                            const r = await fetch(`{{ url('tech/support') }}/${this.selected}/diagnostic`, { headers: { 'Accept': 'application/json' } });
+                            this.diag = await r.json();
+                        } catch (e) { this.diag = null; }
+                        this.diagLoading = false;
+                    },
+                    async loadAppLogs() {
+                        this.appLogsLoading = true;
+                        try {
+                            const url = new URL('{{ route('tech.support.app-logs') }}', window.location.origin);
+                            if (this.appLogsFilter) url.searchParams.set('slug', this.appLogsFilter);
+                            const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+                            const d = await r.json();
+                            this.appLogs = d.logs;
+                            this.appLogsUnreachable = d.unreachable ?? [];
+                        } catch (e) { this.appLogs = null; }
+                        this.appLogsLoading = false;
+                    },
+                    async loadInterventions() {
+                        this.intLoading = true;
+                        try {
+                            const url = new URL('{{ route('tech.support.interventions') }}', window.location.origin);
+                            if (this.intFilter) url.searchParams.set('slug', this.intFilter);
+                            const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+                            this.interventions = (await r.json()).interventions;
+                        } catch (e) { this.interventions = null; }
+                        this.intLoading = false;
+                    },
+                    dotClass(s) {
+                        if (s === 'running') return 'bg-emerald-500';
+                        if (!s || s === 'absent' || s === 'exited') return 'bg-slate-300';
+                        return 'bg-red-500';
+                    }
+                 }"
+                 x-init="$watch('sub', v => {
+                    if (v === 'history' && interventions === null) loadInterventions();
+                    if (v === 'logs' && appLogs === null) loadAppLogs();
+                 })">
+
+                <div class="mb-5">
+                    <h2 class="text-xl font-bold text-slate-800 tracking-tight">Support opérationnel</h2>
+                    <p class="text-xs text-slate-500 mt-1">Diagnostic en lecture seule des établissements et journal des interventions. Toute consultation est elle-même auditée.</p>
+                </div>
+
+                {{-- Sous-onglets internes --}}
+                <div class="flex flex-wrap gap-1 border-b border-slate-200 mb-6">
+                    @php
+                        $supportSubs = [
+                            'read' => 'Mode lecture',
+                            'logs' => 'Logs applicatifs',
+                            'assist' => 'Mode assistance',
+                            'justification' => 'Justification',
+                            'history' => 'Historique interventions',
+                        ];
+                    @endphp
+                    @foreach($supportSubs as $subKey => $subLabel)
+                        <button type="button" @click="sub = '{{ $subKey }}'"
+                                class="px-4 py-2.5 text-xs font-bold transition border-b-2 -mb-px cursor-pointer"
+                                :class="sub === '{{ $subKey }}' ? 'text-indigo-700 border-indigo-600' : 'text-slate-500 border-transparent hover:text-slate-800'">
+                            {{ $subLabel }}
+                        </button>
+                    @endforeach
+                </div>
+
+                {{-- ---- Mode lecture ---- --}}
+                <div x-show="sub === 'read'">
+                    <div class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm mb-5">
+                        <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Établissement à diagnostiquer</label>
+                        <div class="flex flex-col sm:flex-row gap-3">
+                            <select x-model="selected" @change="loadDiag()"
+                                    class="flex-1 rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">
+                                <option value="">— Choisir un établissement —</option>
+                                @foreach($tenants as $t)
+                                    <option value="{{ $t->id }}">{{ $t->name }} ({{ $t->slug }})</option>
+                                @endforeach
+                            </select>
+                            <button type="button" @click="loadDiag()" :disabled="!selected || diagLoading"
+                                    class="shrink-0 inline-flex items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-indigo-700 transition disabled:opacity-50 cursor-pointer">
+                                <svg class="h-3.5 w-3.5" :class="diagLoading ? 'animate-spin' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                                </svg>
+                                Diagnostiquer
+                            </button>
+                        </div>
+                        <p class="text-[10px] text-slate-400 mt-2">Lecture seule — aucune donnée de l'établissement n'est modifiée. La consultation est enregistrée dans le journal d'audit.</p>
+                    </div>
+
+                    <div x-show="diagLoading" class="rounded-lg border border-slate-200 bg-white p-8 text-center text-xs text-slate-400">Diagnostic en cours…</div>
+
+                    <template x-if="diag && !diagLoading">
+                        <div class="grid gap-5 lg:grid-cols-2">
+                            {{-- Infrastructure --}}
+                            <div class="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
+                                <div class="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
+                                    <h3 class="text-sm font-bold text-slate-800">Infrastructure</h3>
+                                    <span class="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                                          :class="diag.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'"
+                                          x-text="diag.is_active ? 'Actif' : 'Inactif'"></span>
+                                </div>
+                                <div class="p-5 space-y-3 text-xs">
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-slate-500">Application</span>
+                                        <span class="flex items-center gap-1.5 font-semibold text-slate-700"><span class="h-2 w-2 rounded-full" :class="dotClass(diag.app_status)"></span><span x-text="diag.app_status"></span></span>
+                                    </div>
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-slate-500">Base de données</span>
+                                        <span class="flex items-center gap-1.5 font-semibold text-slate-700"><span class="h-2 w-2 rounded-full" :class="dotClass(diag.db_status)"></span><span x-text="diag.db_status"></span></span>
+                                    </div>
+                                    <div class="flex items-center justify-between" x-show="diag.has_website">
+                                        <span class="text-slate-500">Site vitrine</span>
+                                        <span class="flex items-center gap-1.5 font-semibold text-slate-700"><span class="h-2 w-2 rounded-full" :class="dotClass(diag.web_status)"></span><span x-text="diag.web_status ?? 'non provisionné'"></span></span>
+                                    </div>
+                                    <div class="flex items-center justify-between border-t border-slate-100 pt-3">
+                                        <span class="text-slate-500">Provisionné le</span>
+                                        <span class="font-semibold text-slate-700" x-text="diag.provisioned_at ?? '—'"></span>
+                                    </div>
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-slate-500">URL locale</span>
+                                        <template x-if="diag.app_url"><a :href="diag.app_url" target="_blank" class="font-mono text-indigo-600 hover:underline" x-text="diag.app_url"></a></template>
+                                        <template x-if="!diag.app_url"><span class="text-slate-400">—</span></template>
+                                    </div>
+                                    <div>
+                                        <span class="text-slate-500 block mb-1.5">Modules actifs</span>
+                                        <div class="flex flex-wrap gap-1.5">
+                                            <template x-for="m in diag.modules" :key="m">
+                                                <span class="text-[10px] font-semibold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-100" x-text="m"></span>
+                                            </template>
+                                            <template x-if="diag.modules.length === 0"><span class="text-[10px] text-slate-400">Aucun module optionnel</span></template>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {{-- Données applicatives --}}
+                            <div class="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
+                                <div class="px-5 py-3 border-b border-slate-100">
+                                    <h3 class="text-sm font-bold text-slate-800">Données applicatives</h3>
+                                </div>
+                                <template x-if="diag.reachable">
+                                    <div class="p-5 grid grid-cols-2 gap-4 text-center">
+                                        <div class="rounded-lg bg-slate-50 border border-slate-100 py-3">
+                                            <p class="text-2xl font-extrabold text-slate-800" x-text="diag.users"></p>
+                                            <p class="text-[10px] text-slate-400 uppercase tracking-wider mt-0.5">Utilisateurs</p>
+                                        </div>
+                                        <div class="rounded-lg bg-slate-50 border border-slate-100 py-3">
+                                            <p class="text-2xl font-extrabold text-slate-800" x-text="diag.active_users"></p>
+                                            <p class="text-[10px] text-slate-400 uppercase tracking-wider mt-0.5">Comptes actifs</p>
+                                        </div>
+                                        <div class="rounded-lg bg-slate-50 border border-slate-100 py-3">
+                                            <p class="text-2xl font-extrabold text-slate-800" x-text="diag.bookings_total"></p>
+                                            <p class="text-[10px] text-slate-400 uppercase tracking-wider mt-0.5">Réservations</p>
+                                        </div>
+                                        <div class="rounded-lg bg-slate-50 border border-slate-100 py-3">
+                                            <p class="text-2xl font-extrabold text-slate-800" x-text="diag.bookings_today"></p>
+                                            <p class="text-[10px] text-slate-400 uppercase tracking-wider mt-0.5">Résa. aujourd'hui</p>
+                                        </div>
+                                        <div class="col-span-2 text-left border-t border-slate-100 pt-3 text-xs">
+                                            <span class="text-slate-500">Dernière réservation : </span>
+                                            <span class="font-semibold text-slate-700" x-text="diag.last_booking ?? 'aucune'"></span>
+                                        </div>
+                                    </div>
+                                </template>
+                                <template x-if="!diag.reachable">
+                                    <div class="p-8 text-center">
+                                        <p class="text-xs font-bold text-red-600">Base de données injoignable</p>
+                                        <p class="text-[10px] text-slate-400 mt-1">Le container de base de données doit être démarré pour lire les données applicatives.</p>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+
+                    <div x-show="!diag && !diagLoading" x-cloak class="rounded-lg border border-dashed border-slate-300 bg-slate-50/60 p-8 text-center text-xs text-slate-400">
+                        Sélectionne un établissement pour afficher son diagnostic.
+                    </div>
+                </div>
+
+                {{-- ---- Logs applicatifs (audit_logs de chaque établissement) ---- --}}
+                <div x-show="sub === 'logs'" x-cloak>
+                    <div class="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
+                        <div class="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-800">Logs applicatifs des établissements</h3>
+                                <p class="text-[10px] text-slate-400 mt-0.5">Connexions et actions réalisées à l'intérieur de chaque application (utilisateur concerné, module, horodatage). Lecture directe du journal de chaque établissement.</p>
+                            </div>
+                            <div class="flex items-center gap-2 shrink-0">
+                                <select x-model="appLogsFilter" @change="loadAppLogs()"
+                                        class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 outline-none focus:border-indigo-500">
+                                    <option value="">Tous les établissements</option>
+                                    @foreach($tenants as $t)
+                                        <option value="{{ $t->slug }}">{{ $t->name }}</option>
+                                    @endforeach
+                                </select>
+                                <button type="button" @click="loadAppLogs()" :disabled="appLogsLoading"
+                                        class="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition disabled:opacity-50 cursor-pointer">
+                                    <svg class="h-3.5 w-3.5" :class="appLogsLoading ? 'animate-spin' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+                                    Actualiser
+                                </button>
+                            </div>
+                        </div>
+
+                        {{-- Bandeau bases injoignables --}}
+                        <template x-if="appLogsUnreachable.length > 0">
+                            <div class="px-5 py-2 bg-amber-50 border-b border-amber-100 text-[10px] text-amber-700">
+                                Bases injoignables (logs non lus) : <span class="font-semibold" x-text="appLogsUnreachable.join(', ')"></span>
+                            </div>
+                        </template>
+
+                        <div x-show="appLogsLoading" class="p-8 text-center text-xs text-slate-400">Lecture des journaux…</div>
+
+                        <template x-if="appLogs && !appLogsLoading">
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-xs">
+                                    <thead>
+                                        <tr class="text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
+                                            <th class="px-5 py-3">Quand</th>
+                                            <th class="px-3 py-3">Établissement</th>
+                                            <th class="px-3 py-3">Utilisateur</th>
+                                            <th class="px-3 py-3">Événement</th>
+                                            <th class="px-3 py-3">Action</th>
+                                            <th class="px-5 py-3">IP</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-50">
+                                        <template x-for="log in appLogs" :key="log.slug + '-' + log.event_type + '-' + log.ts + '-' + log.action">
+                                            <tr class="hover:bg-slate-50/60 transition align-top">
+                                                <td class="px-5 py-2.5 whitespace-nowrap">
+                                                    <p class="font-semibold text-slate-700" x-text="log.at"></p>
+                                                    <p class="text-[10px] text-slate-400" x-text="log.ago"></p>
+                                                </td>
+                                                <td class="px-3 py-2.5">
+                                                    <span class="font-semibold text-slate-700" x-text="log.tenant"></span>
+                                                    <p class="font-mono text-[10px] text-slate-400" x-text="log.slug"></p>
+                                                </td>
+                                                <td class="px-3 py-2.5">
+                                                    <span class="font-semibold text-slate-700" x-text="log.user"></span>
+                                                    <p class="text-[10px] text-slate-400" x-text="log.role"></p>
+                                                </td>
+                                                <td class="px-3 py-2.5">
+                                                    <span class="text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider whitespace-nowrap"
+                                                          :class="log.event_type === 'failed_login' ? 'bg-red-50 text-red-600 border border-red-200' : (log.event_type === 'login' || log.event_type === 'logout' ? 'bg-sky-50 text-sky-600 border border-sky-200' : 'bg-slate-100 text-slate-600 border border-slate-200')"
+                                                          x-text="log.event_type"></span>
+                                                    <p class="text-[10px] text-slate-400 mt-1" x-text="log.module"></p>
+                                                </td>
+                                                <td class="px-3 py-2.5 text-slate-600 max-w-xs" x-text="log.action"></td>
+                                                <td class="px-5 py-2.5 font-mono text-[10px] text-slate-400 whitespace-nowrap" x-text="log.ip ?? '—'"></td>
+                                            </tr>
+                                        </template>
+                                        <template x-if="appLogs.length === 0">
+                                            <tr><td colspan="6" class="px-5 py-10 text-center text-slate-400">Aucun log applicatif pour ce filtre.</td></tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </template>
+
+                        <div x-show="!appLogsLoading && !appLogs" x-cloak class="p-5 text-xs font-bold text-red-700 bg-red-50">
+                            Impossible de charger les logs applicatifs.
+                        </div>
+                    </div>
+                </div>
+
+                {{-- ---- Mode assistance : sessions ouvertes / passées ---- --}}
+                <div x-show="sub === 'assist'" x-cloak
+                     x-data="{
+                        sessions: null,
+                        loading: false,
+                        async load() {
+                            this.loading = true;
+                            try {
+                                const r = await fetch('{{ route('tech.support.assistance.list') }}', { headers: { 'Accept': 'application/json' } });
+                                this.sessions = (await r.json()).sessions;
+                            } catch (e) { this.sessions = null; }
+                            this.loading = false;
+                        },
+                        badge(s) {
+                            if (s === 'active') return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                            if (s === 'revoked') return 'bg-red-50 text-red-600 border-red-200';
+                            if (s === 'expired') return 'bg-slate-100 text-slate-500 border-slate-200';
+                            return 'bg-slate-100 text-slate-500 border-slate-200';
+                        },
+                        copy(url) { navigator.clipboard.writeText(url); }
+                     }"
+                     x-init="load(); $watch('sub', v => { if (v === 'assist') load(); })">
+
+                    <div class="flex items-center justify-between mb-4">
+                        <p class="text-xs text-slate-500 max-w-2xl leading-relaxed">Sessions d'assistance ouvertes via l'onglet Justification. Chaque session fournit un lien d'accès signé et temporaire vers l'application de l'établissement — à ouvrir dans un onglet privé. Toute action y est auditée.</p>
+                        <button type="button" @click="load()" :disabled="loading"
+                                class="shrink-0 inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition disabled:opacity-50 cursor-pointer">
+                            <svg class="h-3.5 w-3.5" :class="loading ? 'animate-spin' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+                            Actualiser
+                        </button>
+                    </div>
+
+                    <div x-show="loading && !sessions" class="rounded-lg border border-slate-200 bg-white p-8 text-center text-xs text-slate-400">Chargement…</div>
+
+                    <template x-if="sessions">
+                        <div class="space-y-3">
+                            <template x-for="s in sessions" :key="s.id">
+                                <div class="rounded-lg border bg-white p-4 shadow-sm"
+                                     :class="s.live ? 'border-emerald-200' : 'border-slate-200'">
+                                    <div class="flex items-start justify-between gap-4">
+                                        <div class="min-w-0">
+                                            <div class="flex items-center gap-2">
+                                                <span class="text-sm font-bold text-slate-800" x-text="s.tenant"></span>
+                                                <span class="text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wider" :class="badge(s.status)" x-text="s.status"></span>
+                                            </div>
+                                            <p class="text-xs text-slate-600 mt-1.5 leading-relaxed" x-text="s.reason"></p>
+                                            <p class="text-[10px] text-slate-400 mt-1.5">
+                                                Par <span class="font-semibold" x-text="s.admin"></span>
+                                                · ouverte le <span x-text="s.opened_at"></span>
+                                                <template x-if="s.live"> · <span class="text-emerald-600 font-semibold">expire <span x-text="s.expires_in"></span></span></template>
+                                                <template x-if="!s.live"> · expirait le <span x-text="s.expires_at"></span></template>
+                                            </p>
+                                        </div>
+                                        <template x-if="s.live">
+                                            <div class="flex flex-col items-end gap-2 shrink-0">
+                                                <a :href="s.entry_url" target="_blank" rel="noopener"
+                                                   class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-sm">
+                                                    Entrer dans l'assistance
+                                                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
+                                                </a>
+                                                <div class="flex items-center gap-2">
+                                                    <button type="button" @click="copy(s.entry_url)" class="text-[10px] font-semibold text-slate-500 hover:text-slate-800 cursor-pointer">Copier le lien</button>
+                                                    <form method="POST" :action="`{{ url('tech/support/assistance') }}/${s.id}/revoke`">
+                                                        @csrf
+                                                        <button type="submit" class="text-[10px] font-semibold text-red-500 hover:text-red-700 cursor-pointer">Clôturer</button>
+                                                    </form>
+                                                </div>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+                            <template x-if="sessions.length === 0">
+                                <div class="rounded-lg border border-dashed border-slate-300 bg-slate-50/60 p-8 text-center text-xs text-slate-400">
+                                    Aucune session d'assistance. Ouvre-en une depuis l'onglet Justification.
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+
+                {{-- ---- Justification : ouvre une session d'assistance ---- --}}
+                <div x-show="sub === 'justification'" x-cloak>
+                    <form method="POST" action="{{ route('tech.support.assistance.open') }}" class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm max-w-2xl">
+                        @csrf
+                        <h3 class="text-sm font-bold text-slate-800">Justifier et ouvrir une intervention</h3>
+                        <p class="text-xs text-slate-500 mt-1 leading-relaxed">Documente le motif avant d'accéder à un établissement. La justification est obligatoire, jointe à l'audit, et ouvre une <strong>session d'assistance</strong> à durée limitée (visible dans l'onglet Mode assistance).</p>
+                        <div class="mt-5 space-y-4">
+                            <div>
+                                <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Établissement concerné</label>
+                                <select name="tenant_id" required
+                                        class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">
+                                    <option value="">— Choisir —</option>
+                                    @foreach($tenants as $t)
+                                        <option value="{{ $t->id }}" @selected(old('tenant_id') == $t->id)>{{ $t->name }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Motif de l'intervention <span class="text-slate-400 normal-case font-normal">(10 caractères min.)</span></label>
+                                <textarea name="reason" rows="4" required minlength="10" maxlength="1000" placeholder="Ex : reproduction d'un bug signalé sur la création de réservation…"
+                                          class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">{{ old('reason') }}</textarea>
+                            </div>
+                            <div class="flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
+                                <svg class="h-4 w-4 text-amber-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>
+                                <p class="text-[10px] text-amber-700">L'ouverture d'une session est auditée. L'accès expire automatiquement au bout de {{ config('assistance.ttl_minutes', 30) }} minutes.</p>
+                            </div>
+                            <button type="submit"
+                                    class="rounded-lg bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-sm cursor-pointer">
+                                Ouvrir la session d'assistance
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                {{-- ---- Historique interventions ---- --}}
+                <div x-show="sub === 'history'" x-cloak>
+                    <div class="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
+                        <div class="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-800">Historique des interventions</h3>
+                                <p class="text-[10px] text-slate-400 mt-0.5">Actions sensibles effectuées par les administrateurs (80 plus récentes).</p>
+                            </div>
+                            <div class="flex items-center gap-2 shrink-0">
+                                <select x-model="intFilter" @change="loadInterventions()"
+                                        class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 outline-none focus:border-indigo-500">
+                                    <option value="">Tous les établissements</option>
+                                    @foreach($tenants as $t)
+                                        <option value="{{ $t->slug }}">{{ $t->name }}</option>
+                                    @endforeach
+                                </select>
+                                <button type="button" @click="loadInterventions()" :disabled="intLoading"
+                                        class="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition disabled:opacity-50 cursor-pointer">
+                                    <svg class="h-3.5 w-3.5" :class="intLoading ? 'animate-spin' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+                                    Actualiser
+                                </button>
+                            </div>
+                        </div>
+
+                        <div x-show="intLoading" class="p-8 text-center text-xs text-slate-400">Chargement…</div>
+
+                        <template x-if="interventions && !intLoading">
+                            <div class="divide-y divide-slate-50 max-h-[520px] overflow-y-auto">
+                                <template x-for="item in interventions" :key="item.id">
+                                    <div class="px-5 py-3 flex items-start gap-3 hover:bg-slate-50/60 transition">
+                                        <span class="mt-0.5 text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider shrink-0 whitespace-nowrap"
+                                              :class="item.event_type.includes('error') || item.event_type.includes('delete') || item.event_type.includes('stop') ? 'bg-red-50 text-red-600 border border-red-200' : (item.event_type === 'support_read' ? 'bg-slate-100 text-slate-500 border border-slate-200' : 'bg-indigo-50 text-indigo-600 border border-indigo-200')"
+                                              x-text="item.event_type"></span>
+                                        <div class="min-w-0 flex-1">
+                                            <p class="text-xs text-slate-700 leading-snug" x-text="item.description"></p>
+                                            <p class="text-[10px] text-slate-400 mt-0.5">
+                                                <span class="font-semibold" x-text="item.actor"></span>
+                                                · <span x-text="item.at"></span>
+                                                · <span x-text="item.ago"></span>
+                                            </p>
+                                        </div>
+                                    </div>
+                                </template>
+                                <template x-if="interventions.length === 0">
+                                    <div class="px-5 py-10 text-center text-xs text-slate-400">Aucune intervention enregistrée pour ce filtre.</div>
+                                </template>
+                            </div>
+                        </template>
+                    </div>
+                </div>
             </div>
         @elseif($activeTab !== 'audit')
             <!-- Placeholder Layout for other tabs -->

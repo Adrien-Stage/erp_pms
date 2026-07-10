@@ -25,6 +25,14 @@ Route::get('/api/public/establishments/{tenant:slug}/content', [AdminAuditContro
 Route::middleware(['auth', 'role:tech_admin'])->prefix('tech')->name('tech.')->group(function () {
     // Dashboard principal TECH (Santé des conteneurs, statistiques globales)
     Route::get('/dashboard', [AdminAuditController::class, 'index'])->name('dashboard');
+    Route::get('/supervision/stats', [AdminAuditController::class, 'supervisionStats'])->name('supervision.stats');
+    Route::get('/roles/distribution', [AdminAuditController::class, 'rolesDistribution'])->name('roles.distribution');
+    Route::get('/support/interventions', [AdminAuditController::class, 'supportInterventions'])->name('support.interventions');
+    Route::get('/support/app-logs', [AdminAuditController::class, 'supportAppLogs'])->name('support.app-logs');
+    Route::get('/support/assistance', [AdminAuditController::class, 'assistanceList'])->name('support.assistance.list');
+    Route::post('/support/assistance', [AdminAuditController::class, 'assistanceOpen'])->name('support.assistance.open');
+    Route::post('/support/assistance/{session}/revoke', [AdminAuditController::class, 'assistanceRevoke'])->name('support.assistance.revoke');
+    Route::get('/support/{tenant}/diagnostic', [AdminAuditController::class, 'supportDiagnostic'])->name('support.diagnostic');
 
     // Gestion des Établissements (Tenants)
     Route::get('/establishments', [AdminAuditController::class, 'indexTenants'])->name('establishments.index');
@@ -54,7 +62,16 @@ Route::middleware(['auth', 'role:tech_admin'])->prefix('tech')->name('tech.')->g
 
     // Exports globaux
     Route::get('/export/supervision', [AdminAuditController::class, 'exportSupervision'])->name('export.supervision');
-    Route::get('/export/backup/{tenant?}', [AdminAuditController::class, 'exportBackupTenant'])->name('export.backup');
+
+    // Sauvegardes des établissements (backups + planification cron)
+    Route::get('/backups', [AdminAuditController::class, 'backupsIndex'])->name('backups.index');
+    Route::post('/backups/all', [AdminAuditController::class, 'backupAll'])->name('backups.all');
+    Route::post('/backups/{tenant}', [AdminAuditController::class, 'backupCreate'])->name('backups.create');
+    Route::get('/backups/{backup}/download', [AdminAuditController::class, 'backupDownload'])->name('backups.download');
+    Route::post('/backups/{backup}/restore', [AdminAuditController::class, 'backupRestore'])->name('backups.restore');
+    Route::post('/backups/{tenant}/import', [AdminAuditController::class, 'backupImport'])->name('backups.import');
+    Route::delete('/backups/{backup}', [AdminAuditController::class, 'backupDelete'])->name('backups.delete');
+    Route::post('/backups/{tenant}/schedule', [AdminAuditController::class, 'backupSchedule'])->name('backups.schedule');
 });
 
 Route::middleware(['auth', 'role:owner'])->prefix('business')->name('business.')->group(function () {
