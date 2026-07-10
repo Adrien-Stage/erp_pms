@@ -357,6 +357,42 @@ class AdminAuditController extends Controller
     }
 
     /**
+     * Met à jour le site vitrine vers la dernière image publiée sur le
+     * registre (tag "latest"). Synchrone, comme updateModules — l'image du
+     * site est légère, pas besoin du flux SSE utilisé pour l'application.
+     */
+    public function updateTenantWebsite(Tenant $tenant, \App\Services\TenantProvisioningService $provisioner)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isTechAdmin()) { abort(403); }
+
+        $logs = [];
+        $log  = function (string $step, string $message, string $level = 'info') use (&$logs) {
+            $logs[] = "[{$level}] {$message}";
+        };
+
+        try {
+            $updated = $provisioner->updateWeb($tenant, $log);
+
+            if (!$updated) {
+                return back()->with('success', 'Le site est déjà à la dernière version.');
+            }
+
+            AuditLog::record(
+                $user->id,
+                'update_tenant_website',
+                "Site vitrine mis à jour pour l'établissement {$tenant->name}",
+                'tech_admin',
+                ['logs' => $logs]
+            );
+
+            return back()->with('success', 'Site vitrine mis à jour avec succès.');
+        } catch (\RuntimeException $e) {
+            return back()->with('error', "Échec de la mise à jour du site : " . $e->getMessage());
+        }
+    }
+
+    /**
      * Règle métier (PLAN_REALISATION_ARCHITECTURE.md, Phase 3) : le site
      * vitrine consomme l'API applicative de l'établissement, donc l'activer
      * force "api" — mais l'inverse n'est pas vrai, activer l'API seule ne
@@ -383,67 +419,116 @@ class AdminAuditController extends Controller
         $user = Auth::user();
         if (!$user || !$user->isTechAdmin()) { abort(403); }
 
-        $validated = $request->validate([
-            'hero_title' => ['nullable', 'string', 'max:255'],
-            'hero_subtitle' => ['nullable', 'string', 'max:255'],
-            'hero_cta_label' => ['nullable', 'string', 'max:100'],
-            'hero_background' => ['nullable', 'image', 'max:4096'],
-            'about_title' => ['nullable', 'string', 'max:255'],
-            'about_body' => ['nullable', 'string', 'max:5000'],
-            'contact_intro' => ['nullable', 'string', 'max:1000'],
-            'contact_hours' => ['nullable', 'string', 'max:1000'],
+        // Règles de validation dérivées du schéma (une entrée par champ)
+        $rules = [
             'seo_title' => ['nullable', 'string', 'max:255'],
             'seo_description' => ['nullable', 'string', 'max:500'],
-            'gallery_images' => ['nullable', 'array'],
-            'gallery_images.*' => ['image', 'max:4096'],
-            'remove_gallery' => ['nullable', 'array'],
-            'remove_gallery.*' => ['string'],
-        ]);
+        ];
+        foreach (\App\Support\SiteContentSchema::pages() as $pageKey => $page) {
+            foreach ($page['sections'] as $sectionKey => $section) {
+                foreach ($section['fields'] as $fieldKey => $field) {
+                    $input = "pages.{$pageKey}.{$sectionKey}.{$fieldKey}";
+                    $file  = "pages_files.{$pageKey}.{$sectionKey}.{$fieldKey}";
+                    switch ($field['type']) {
+                        case 'text':
+                            $rules[$input] = ['nullable', 'string', 'max:255'];
+                            break;
+                        case 'textarea':
+                        case 'items':
+                            $rules[$input] = ['nullable', 'string', 'max:8000'];
+                            break;
+                        case 'image':
+                            $rules[$file] = ['nullable', 'image', 'max:4096'];
+                            break;
+                        case 'images':
+                            $rules[$file] = ['nullable', 'array'];
+                            $rules["{$file}.*"] = ['image', 'max:4096'];
+                            break;
+                    }
+                }
+            }
+        }
+        $request->validate($rules);
 
-        $content = $tenant->site_content ?? [];
+        $content  = $tenant->site_content ?? [];
+        $existing = \App\Support\SiteContentSchema::hydrate($content);
+        $storage  = \Illuminate\Support\Facades\Storage::disk('public');
+        $pages    = [];
 
+        foreach (\App\Support\SiteContentSchema::pages() as $pageKey => $page) {
+            foreach ($page['sections'] as $sectionKey => $section) {
+                $in  = (array) $request->input("pages.{$pageKey}.{$sectionKey}", []);
+                $cur = $existing[$pageKey][$sectionKey];
+                $out = ['enabled' => !empty($in['enabled'])];
+
+                foreach ($section['fields'] as $fieldKey => $field) {
+                    switch ($field['type']) {
+                        case 'text':
+                        case 'textarea':
+                            $value = trim((string) ($in[$fieldKey] ?? ''));
+                            $out[$fieldKey] = $value === '' ? null : $value;
+                            break;
+
+                        case 'items':
+                            $out[$fieldKey] = \App\Support\SiteContentSchema::parseItems($in[$fieldKey] ?? null, $field['keys']);
+                            break;
+
+                        case 'image':
+                            $path = $cur[$fieldKey];
+                            if (!empty($in["remove_{$fieldKey}"]) && $path) {
+                                $storage->delete($path);
+                                $path = null;
+                            }
+                            if ($file = $request->file("pages_files.{$pageKey}.{$sectionKey}.{$fieldKey}")) {
+                                if ($path) { $storage->delete($path); }
+                                $path = $file->store('site', 'public');
+                            }
+                            $out[$fieldKey] = $path;
+                            break;
+
+                        case 'images':
+                            $paths  = $cur[$fieldKey];
+                            $remove = array_filter((array) ($in["remove_{$fieldKey}"] ?? []));
+                            if ($remove) {
+                                foreach ($remove as $p) { $storage->delete($p); }
+                                $paths = array_values(array_diff($paths, $remove));
+                            }
+                            foreach ((array) $request->file("pages_files.{$pageKey}.{$sectionKey}.{$fieldKey}", []) as $file) {
+                                $paths[] = $file->store('site', 'public');
+                            }
+                            $out[$fieldKey] = $paths;
+                            break;
+                    }
+                }
+
+                $pages[$pageKey][$sectionKey] = $out;
+            }
+        }
+
+        $content['pages'] = $pages;
+        $content['seo'] = [
+            'title' => $request->input('seo_title') ?: null,
+            'description' => $request->input('seo_description') ?: null,
+        ];
+
+        // Miroir de l'ancien format à plat : la version du site actuellement
+        // déployée chez les établissements lit encore hero/about/contact/
+        // gallery au premier niveau (voir publicSiteContent).
         $content['hero'] = [
-            'title' => $validated['hero_title'] ?? null,
-            'subtitle' => $validated['hero_subtitle'] ?? null,
-            'cta_label' => $validated['hero_cta_label'] ?? null,
-            'background_image' => $content['hero']['background_image'] ?? null,
+            'title' => $pages['home']['hero']['title'],
+            'subtitle' => $pages['home']['hero']['subtitle'],
+            'cta_label' => $pages['home']['hero']['cta_label'],
+            'background_image' => $pages['home']['hero']['background_image'],
         ];
         $content['about'] = [
-            'title' => $validated['about_title'] ?? null,
-            'body' => $validated['about_body'] ?? null,
+            'title' => $pages['home']['philosophy']['title'],
+            'body' => $pages['home']['philosophy']['body'],
         ];
         $content['contact'] = [
-            'intro' => $validated['contact_intro'] ?? null,
-            'hours' => $validated['contact_hours'] ?? null,
+            'intro' => $pages['contact']['info']['intro'],
+            'hours' => $pages['contact']['info']['hours'],
         ];
-        $content['seo'] = [
-            'title' => $validated['seo_title'] ?? null,
-            'description' => $validated['seo_description'] ?? null,
-        ];
-
-        if ($request->hasFile('hero_background')) {
-            if (!empty($content['hero']['background_image'])) {
-                \Illuminate\Support\Facades\Storage::disk('public')->delete($content['hero']['background_image']);
-            }
-            $content['hero']['background_image'] = $request->file('hero_background')->store('site', 'public');
-        }
-
-        $gallery = $content['gallery'] ?? [];
-
-        if (!empty($validated['remove_gallery'])) {
-            foreach ($validated['remove_gallery'] as $path) {
-                \Illuminate\Support\Facades\Storage::disk('public')->delete($path);
-            }
-            $gallery = array_values(array_diff($gallery, $validated['remove_gallery']));
-        }
-
-        if ($request->hasFile('gallery_images')) {
-            foreach ($request->file('gallery_images') as $file) {
-                $gallery[] = $file->store('site', 'public');
-            }
-        }
-
-        $content['gallery'] = $gallery;
+        $content['gallery'] = $pages['home']['instagram']['images'];
 
         $tenant->update(['site_content' => $content]);
 
@@ -464,8 +549,27 @@ class AdminAuditController extends Controller
             ? rtrim(config('app.url'), '/') . '/storage/' . ltrim($path, '/')
             : null;
 
+        // Structure par pages/sections (nouveau format à onglets), images
+        // résolues en URLs absolues via le schéma.
+        $pages = \App\Support\SiteContentSchema::hydrate($content);
+        foreach (\App\Support\SiteContentSchema::pages() as $pageKey => $page) {
+            foreach ($page['sections'] as $sectionKey => $section) {
+                foreach ($section['fields'] as $fieldKey => $field) {
+                    if ($field['type'] === 'image') {
+                        $pages[$pageKey][$sectionKey][$fieldKey] = $absolute($pages[$pageKey][$sectionKey][$fieldKey]);
+                    } elseif ($field['type'] === 'images') {
+                        $pages[$pageKey][$sectionKey][$fieldKey] = array_map($absolute, $pages[$pageKey][$sectionKey][$fieldKey]);
+                    }
+                }
+            }
+        }
+
         return response()->json([
             'name' => $tenant->name,
+            // Logo importé à la création de l'établissement (stocké côté pms,
+            // servi au site en URL absolue comme toutes les images du CMS).
+            'logo' => $absolute($tenant->settings['logo'] ?? null),
+            // Clés à plat conservées pour la version du site déjà déployée
             'hero' => [
                 'title' => $content['hero']['title'] ?? null,
                 'subtitle' => $content['hero']['subtitle'] ?? null,
@@ -488,6 +592,7 @@ class AdminAuditController extends Controller
                 'title' => $content['seo']['title'] ?? $tenant->name,
                 'description' => $content['seo']['description'] ?? null,
             ],
+            'pages' => $pages,
         ]);
     }
 

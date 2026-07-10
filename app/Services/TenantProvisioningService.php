@@ -541,6 +541,64 @@ YAML;
     }
 
     /**
+     * Met à jour le site vitrine d'un établissement vers la dernière image
+     * publiée (tag "latest" du registre web) : ré-épingle web_image_tag,
+     * pull, régénère le compose et recrée uniquement le container "web"
+     * (app et base de données intacts). Retourne false si le site est déjà
+     * sur la dernière version (aucune action effectuée).
+     */
+    public function updateWeb(Tenant $tenant, callable $log): bool
+    {
+        if (empty($tenant->docker_image_tag)) {
+            throw new RuntimeException("Établissement non provisionné — aucun site à mettre à jour.");
+        }
+
+        if (!$this->hasWebsiteModule($tenant)) {
+            throw new RuntimeException("Le module « Site web » n'est pas actif pour cet établissement.");
+        }
+
+        $log('start', "Mise à jour du site vitrine de « {$tenant->name} »");
+
+        $registryImage = config('provisioning.registry_image_web');
+        $imagePath     = $this->registry->imagePath($registryImage);
+        $digest        = $this->registry->resolveDigest($imagePath, 'latest');
+
+        if (!$digest) {
+            throw new RuntimeException(
+                "Impossible de résoudre le digest de l'image « {$registryImage}:latest » sur le registre."
+            );
+        }
+
+        if ($digest === $tenant->web_image_tag) {
+            $log('done', "✅ Le site est déjà à la dernière version.", 'success');
+            return false;
+        }
+
+        $tenant->update(['web_image_tag' => $digest]);
+        $log('image', "✅ Nouvelle version du site figée : {$digest}", 'success');
+
+        $webImageRef = $this->pullPinnedWebImage($tenant, $log);
+        $appImageRef = config('provisioning.registry_image') . '@' . $tenant->docker_image_tag;
+        $composePath = $this->generateDockerCompose($tenant, $appImageRef, $webImageRef, $log);
+
+        $log('docker', "🔄 Recréation du container du site…", 'info');
+        $this->execOrFail(
+            'docker compose -f ' . escapeshellarg($composePath) . ' up -d 2>&1',
+            "Échec du docker compose up"
+        );
+        $log('docker', "✅ Container du site mis à jour.", 'success');
+
+        $tenant->update([
+            'docker_status'        => 'running',
+            'docker_web_container' => 'meka-erp-' . $tenant->slug . '-web',
+        ]);
+
+        $log('done', "✅ Site vitrine de « {$tenant->name} » mis à jour.", 'success');
+
+        return true;
+    }
+
+    /**
      * Applique un changement de modules (Tenant::modules déjà sauvegardé par
      * l'appelant) : régénère le compose avec la même image (aucun pull) et
      * recrée uniquement le container applicatif pour que TENANT_MODULES soit
