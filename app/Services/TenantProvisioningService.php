@@ -281,6 +281,10 @@ class TenantProvisioningService
         // n'ont jamais pu être json_decode() correctement).
         $settingsJson = $this->yamlSingleQuoteEscape(json_encode($settings));
         $modulesJson  = $this->yamlSingleQuoteEscape(json_encode($tenant->modules ?? []));
+        // Secret partagé pms <-> tenant pour vérifier les jetons d'assistance
+        // (Support > Mode assistance). Injecté ici pour que le container
+        // dispose de la même clé que celle qui signe les jetons côté pms.
+        $assistanceSecret = (string) config('assistance.secret');
 
         $appService = <<<YAML
   {$appContainer}:
@@ -305,6 +309,7 @@ class TenantProvisioningService
       TENANT_CURRENCY: "{$currency}"
       TENANT_SETTINGS: '{$settingsJson}'
       TENANT_MODULES: '{$modulesJson}'
+      ASSISTANCE_SECRET: "{$assistanceSecret}"
       SESSION_DRIVER: database
       CACHE_STORE: database
       QUEUE_CONNECTION: database
