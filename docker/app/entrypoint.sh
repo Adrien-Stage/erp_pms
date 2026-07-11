@@ -35,5 +35,13 @@ else
     echo "⚠️  Socket Docker non trouvé — les commandes Docker ne fonctionneront pas."
 fi
 
+# ── Permissions storage / cache ───────────────────────────────────────────────
+# php-fpm et le scheduler tournent en www-data : garantir qu'ils peuvent
+# écrire logs, cache et sauvegardes (storage/app/private/backups), même après
+# un build où les fichiers sont copiés en root.
+echo "🔧 Ajustement des permissions storage/ et bootstrap/cache/..."
+mkdir -p /var/www/html/storage/app/private/backups
+chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache 2>/dev/null || true
+
 # Exécuter la commande passée (CMD du Dockerfile = supervisord)
 exec "$@"
