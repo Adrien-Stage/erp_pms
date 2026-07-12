@@ -92,10 +92,10 @@
                 'items' => ['Membres du personnel', 'Activités récentes', 'Permissions'],
             ],
             'revenue' => [
-                'label' => 'Revenus',
-                'title' => 'Suivi financier',
-                'description' => 'Détails des transactions et du chiffre d\'affaires consolidé.',
-                'items' => ['Chiffre d\'affaires', 'Dépenses', 'Bilan financier'],
+                'label' => 'Rapport',
+                'title' => 'Rapports & audit financier',
+                'description' => 'Encaissements, dépenses, audit de caisse et export de rapports financiers complets.',
+                'items' => ['Encaissements', 'Dépenses', 'Audit de caisse', 'Export Excel / PDF'],
             ],
         ];
     }
@@ -304,16 +304,16 @@
                                     Gérer
                                 </a>
                             @else
-                                <button 
-                                    @click="$dispatch('open-create-manager-modal', { tenant_id: {{ $tenant->id }}, tenant_name: '{{ addslashes($tenant->name) }}' })"
-                                    type="button"
-                                    class="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition shadow-sm cursor-pointer"
+                                <a
+                                    href="{{ route('business.establishments.show', $tenant) }}"
+                                    class="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-sm"
                                 >
-                                    <svg class="h-3.5 w-3.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                        <path stroke-linecap="round" stroke-linejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28z" />
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                                     </svg>
                                     Gérer
-                                </button>
+                                </a>
                                 <a
                                     href="http://localhost:{{ $tenant->app_port }}"
                                     target="_blank"
@@ -1214,6 +1214,563 @@
                 <div x-show="!loading && !data" x-cloak class="rounded-lg border border-red-200 bg-red-50 p-5 text-xs font-bold text-red-700">
                     Impossible de charger votre tableau de bord. Réessayez dans un instant.
                 </div>
+            </div>
+
+        @elseif($activeTab === 'analytics' && $isOwner)
+            {{-- ================= STATISTIQUES (COMPARAISON & TENDANCES) ================= --}}
+            <div class="mt-2"
+                 x-data="{
+                    period: 'month', loading: true, data: null,
+                    sortBy: 'revenue',
+                    periods: { today:'Aujourd\'hui', week:'Semaine', month:'Mois', year:'Année' },
+                    palette: ['#6366f1','#f59e0b','#10b981','#ef4444','#0ea5e9','#8b5cf6','#f97316','#14b8a6'],
+                    fmt(c) { return new Intl.NumberFormat('fr-FR').format(Math.round((c||0)/100)); },
+                    async load() {
+                        this.loading = true;
+                        try {
+                            const url = new URL('{{ route('business.stats.data') }}', window.location.origin);
+                            url.searchParams.set('period', this.period);
+                            const r = await fetch(url, { headers: { 'Accept':'application/json' } });
+                            this.data = await r.json();
+                        } catch(e) { this.data = null; }
+                        this.loading = false;
+                    },
+                    color(i) { return this.palette[i % this.palette.length]; },
+                    get sorted() {
+                        if (!this.data) return [];
+                        const arr = [...this.data.establishments];
+                        arr.sort((a,b) => (b[this.sortBy]||0) - (a[this.sortBy]||0));
+                        return arr;
+                    },
+                    get maxRevenue() {
+                        if (!this.data) return 1;
+                        return Math.max(...this.data.establishments.map(e => e.revenue), 1);
+                    },
+                    // Multi-courbes : normalise toutes les séries sur le même max global.
+                    get chartMax() {
+                        if (!this.data) return 1;
+                        let m = 1;
+                        this.data.establishments.forEach(e => (e.series||[]).forEach(v => { if (v > m) m = v; }));
+                        return m;
+                    },
+                    linePath(vals, w, h, max) {
+                        if (!vals || !vals.length) return '';
+                        const sx = vals.length>1 ? w/(vals.length-1) : 0;
+                        return vals.map((v,i)=>`${i===0?'M':'L'} ${(i*sx).toFixed(1)} ${(h-(v/max)*h).toFixed(1)}`).join(' ');
+                    }
+                 }" x-init="load()">
+
+                {{-- En-tête --}}
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+                    <div>
+                        <h1 class="text-2xl font-extrabold tracking-tight text-slate-800 font-heading">Statistiques</h1>
+                        <p class="text-xs text-slate-500 mt-1">Comparez vos établissements, comprenez vos forces et repérez ce qui décroche.</p>
+                    </div>
+                    <div class="inline-flex rounded-lg border border-slate-200 bg-white p-0.5">
+                        <template x-for="(label,key) in periods" :key="key">
+                            <button type="button" @click="period=key; load()" class="px-3 py-1.5 text-xs font-semibold rounded-md transition" :class="period===key ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'" x-text="label"></button>
+                        </template>
+                    </div>
+                </div>
+
+                <div x-show="loading && !data" class="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6"><template x-for="i in 4" :key="i"><div class="h-24 rounded-xl bg-slate-100 animate-pulse"></div></template></div>
+
+                <template x-if="data && data.count === 0">
+                    <div class="rounded-xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-400">
+                        Aucun établissement en ligne pour établir des statistiques.
+                        <template x-if="data.unreachable && data.unreachable.length"><p class="text-xs text-amber-600 mt-2">Hors ligne : <span x-text="data.unreachable.join(', ')"></span></p></template>
+                    </div>
+                </template>
+
+                <template x-if="data && data.count > 0">
+                    <div>
+                        {{-- KPI analytiques dérivés --}}
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Revenu moyen / établissement</p>
+                                <p class="text-2xl font-extrabold text-slate-800 mt-2 leading-none"><span x-text="fmt(data.derived.avg_revenue)"></span> <span class="text-xs text-slate-400" x-text="data.currency"></span></p>
+                            </div>
+                            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Panier moyen</p>
+                                <p class="text-2xl font-extrabold text-slate-800 mt-2 leading-none"><span x-text="fmt(data.derived.avg_basket)"></span> <span class="text-xs text-slate-400" x-text="data.currency"></span></p>
+                                <p class="text-[11px] text-slate-400 mt-2">par réservation</p>
+                            </div>
+                            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Occupation moyenne</p>
+                                <p class="text-2xl font-extrabold text-slate-800 mt-2 leading-none"><span x-text="data.derived.avg_occupancy"></span>%</p>
+                            </div>
+                            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Revenu par chambre</p>
+                                <p class="text-2xl font-extrabold text-slate-800 mt-2 leading-none"><span x-text="fmt(data.derived.revenue_per_room)"></span> <span class="text-xs text-slate-400" x-text="data.currency"></span></p>
+                                <p class="text-[11px] text-slate-400 mt-2">tous établissements</p>
+                            </div>
+                        </div>
+
+                        {{-- Top & Flop --}}
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                            <template x-if="data.rankings.top">
+                                <div class="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4">
+                                    <p class="text-[10px] font-bold uppercase tracking-wider text-emerald-700">🏆 Meilleur revenu</p>
+                                    <p class="text-sm font-bold text-slate-800 mt-1.5" x-text="data.rankings.top.name"></p>
+                                    <p class="text-xs text-slate-500"><span x-text="fmt(data.rankings.top.revenue)"></span> <span x-text="data.currency"></span></p>
+                                </div>
+                            </template>
+                            <template x-if="data.rankings.flop">
+                                <div class="rounded-xl border border-amber-200 bg-amber-50/50 p-4">
+                                    <p class="text-[10px] font-bold uppercase tracking-wider text-amber-700">⚠ Revenu le plus faible</p>
+                                    <p class="text-sm font-bold text-slate-800 mt-1.5" x-text="data.rankings.flop.name"></p>
+                                    <p class="text-xs text-slate-500"><span x-text="fmt(data.rankings.flop.revenue)"></span> <span x-text="data.currency"></span></p>
+                                </div>
+                            </template>
+                            <template x-if="data.rankings.top_riser">
+                                <div class="rounded-xl border border-emerald-200 bg-white p-4">
+                                    <p class="text-[10px] font-bold uppercase tracking-wider text-emerald-600">▲ Plus forte hausse</p>
+                                    <p class="text-sm font-bold text-slate-800 mt-1.5" x-text="data.rankings.top_riser.name"></p>
+                                    <p class="text-xs font-semibold text-emerald-600" x-text="'+' + data.rankings.top_riser.trend_raw + '%'"></p>
+                                </div>
+                            </template>
+                            <template x-if="data.rankings.top_faller && data.rankings.top_faller.trend_raw < 0">
+                                <div class="rounded-xl border border-red-200 bg-white p-4">
+                                    <p class="text-[10px] font-bold uppercase tracking-wider text-red-600">▼ Plus forte baisse</p>
+                                    <p class="text-sm font-bold text-slate-800 mt-1.5" x-text="data.rankings.top_faller.name"></p>
+                                    <p class="text-xs font-semibold text-red-600" x-text="data.rankings.top_faller.trend_raw + '%'"></p>
+                                    <p class="text-[10px] text-red-500/70 mt-0.5">À investiguer avec le directeur</p>
+                                </div>
+                            </template>
+                        </div>
+
+                        {{-- Évolution comparée (multi-courbes) --}}
+                        <div class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden mb-6">
+                            <div class="px-5 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
+                                <div>
+                                    <h3 class="text-sm font-bold text-slate-800">Évolution comparée du chiffre d'affaires</h3>
+                                    <p class="text-[10px] text-slate-400 mt-0.5">Une courbe par établissement — visualisez les trajectoires</p>
+                                </div>
+                                <div class="flex flex-wrap items-center gap-3 text-[10px]">
+                                    <template x-for="(e,i) in data.establishments" :key="e.id">
+                                        <span class="flex items-center gap-1 text-slate-500"><span class="h-2 w-2 rounded-full" :style="`background:${color(i)}`"></span><span x-text="e.name"></span></span>
+                                    </template>
+                                </div>
+                            </div>
+                            <div class="p-5">
+                                <template x-if="data.labels && data.labels.length">
+                                    <div>
+                                        <svg viewBox="0 0 600 200" class="w-full h-52" preserveAspectRatio="none">
+                                            <template x-for="(e,i) in data.establishments" :key="e.id">
+                                                <path :d="linePath(e.series, 600, 200, chartMax)" fill="none" :stroke="color(i)" stroke-width="2" stroke-linejoin="round" opacity="0.9"></path>
+                                            </template>
+                                        </svg>
+                                        <div class="flex justify-between text-[9px] text-slate-400 mt-1.5">
+                                            <span x-text="data.labels[0] ?? ''"></span>
+                                            <span x-text="data.labels[Math.floor(data.labels.length/2)] ?? ''"></span>
+                                            <span x-text="data.labels[data.labels.length-1] ?? ''"></span>
+                                        </div>
+                                    </div>
+                                </template>
+                                <template x-if="!data.labels || !data.labels.length"><div class="h-52 flex items-center justify-center text-xs text-slate-400">Pas de données d'évolution sur cette période.</div></template>
+                            </div>
+                        </div>
+
+                        {{-- Comparaison détaillée --}}
+                        <div class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden mb-6">
+                            <div class="px-5 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
+                                <div>
+                                    <h3 class="text-sm font-bold text-slate-800">Comparaison des établissements</h3>
+                                    <p class="text-[10px] text-slate-400 mt-0.5">Cliquez une colonne pour trier</p>
+                                </div>
+                                <div class="flex items-center gap-1 text-[10px] text-slate-500">
+                                    <span>Trier :</span>
+                                    <button @click="sortBy='revenue'" class="px-2 py-1 rounded font-semibold" :class="sortBy==='revenue'?'bg-indigo-100 text-indigo-700':'hover:bg-slate-100'">Revenu</button>
+                                    <button @click="sortBy='occupancy'" class="px-2 py-1 rounded font-semibold" :class="sortBy==='occupancy'?'bg-indigo-100 text-indigo-700':'hover:bg-slate-100'">Occupation</button>
+                                    <button @click="sortBy='revenue_per_room'" class="px-2 py-1 rounded font-semibold" :class="sortBy==='revenue_per_room'?'bg-indigo-100 text-indigo-700':'hover:bg-slate-100'">Rev/chambre</button>
+                                </div>
+                            </div>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-xs">
+                                    <thead>
+                                        <tr class="text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
+                                            <th class="px-5 py-3">Établissement</th>
+                                            <th class="px-3 py-3">Revenu</th>
+                                            <th class="px-3 py-3 text-right">Tendance</th>
+                                            <th class="px-3 py-3 text-right">Occup.</th>
+                                            <th class="px-3 py-3 text-right">Résa.</th>
+                                            <th class="px-3 py-3 text-right">Panier</th>
+                                            <th class="px-5 py-3 text-right">Rev/chambre</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-50">
+                                        <template x-for="e in sorted" :key="e.id">
+                                            <tr class="hover:bg-slate-50/60 transition">
+                                                <td class="px-5 py-3 font-bold text-slate-800 whitespace-nowrap" x-text="e.name"></td>
+                                                <td class="px-3 py-3 min-w-[160px]">
+                                                    <div class="flex items-center gap-2">
+                                                        <div class="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden">
+                                                            <div class="h-full bg-indigo-500 rounded-full" :style="`width:${(e.revenue/maxRevenue*100)}%`"></div>
+                                                        </div>
+                                                        <span class="font-bold text-slate-800 whitespace-nowrap" x-text="fmt(e.revenue)"></span>
+                                                    </div>
+                                                </td>
+                                                <td class="px-3 py-3 text-right">
+                                                    <span class="font-semibold" :class="e.trend.direction==='up'?'text-emerald-600':(e.trend.direction==='down'?'text-red-600':'text-slate-400')">
+                                                        <span x-text="e.trend.direction==='up'?'▲':(e.trend.direction==='down'?'▼':'–')"></span><span x-text="e.trend.pct+'%'"></span>
+                                                    </span>
+                                                </td>
+                                                <td class="px-3 py-3 text-right text-slate-600" x-text="e.occupancy+'%'"></td>
+                                                <td class="px-3 py-3 text-right text-slate-600" x-text="e.bookings"></td>
+                                                <td class="px-3 py-3 text-right text-slate-600" x-text="fmt(e.avg_booking)"></td>
+                                                <td class="px-5 py-3 text-right font-semibold text-slate-700" x-text="fmt(e.revenue_per_room)"></td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        {{-- Mix de revenus par établissement --}}
+                        <div class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                            <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                                <div>
+                                    <h3 class="text-sm font-bold text-slate-800">Mix de revenus</h3>
+                                    <p class="text-[10px] text-slate-400 mt-0.5">D'où vient l'argent de chaque établissement</p>
+                                </div>
+                                <div class="flex items-center gap-3 text-[10px] text-slate-500">
+                                    <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-indigo-500"></span>Hôtel</span>
+                                    <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-amber-500"></span>Resto</span>
+                                    <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-emerald-500"></span>Boutique</span>
+                                </div>
+                            </div>
+                            <div class="p-5 space-y-4">
+                                <template x-for="e in data.establishments" :key="e.id">
+                                    <div>
+                                        <div class="flex items-center justify-between text-xs mb-1">
+                                            <span class="font-semibold text-slate-700" x-text="e.name"></span>
+                                            <span class="text-slate-400"><span x-text="fmt(e.revenue)"></span> <span x-text="data.currency"></span></span>
+                                        </div>
+                                        <div class="flex h-3 rounded-full overflow-hidden bg-slate-100">
+                                            <div class="bg-indigo-500 h-full" :style="`width:${e.revenue>0?(e.by_pole.hotel/e.revenue*100):0}%`"></div>
+                                            <div class="bg-amber-500 h-full" :style="`width:${e.revenue>0?(e.by_pole.restaurant/e.revenue*100):0}%`"></div>
+                                            <div class="bg-emerald-500 h-full" :style="`width:${e.revenue>0?(e.by_pole.shop/e.revenue*100):0}%`"></div>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+
+                        <p class="text-[10px] text-slate-400 mt-4 text-right">Dernière actualisation : <span x-text="data.generated_at"></span></p>
+                    </div>
+                </template>
+
+                <div x-show="!loading && !data" x-cloak class="rounded-lg border border-red-200 bg-red-50 p-5 text-xs font-bold text-red-700">Impossible de charger les statistiques. Réessayez.</div>
+            </div>
+
+        @elseif($activeTab === 'employees' && $isOwner)
+            {{-- ================= EMPLOYÉS (CONSOLIDÉ) ================= --}}
+            <div class="mt-2"
+                 x-data="{
+                    loading: true, data: null, filter: '', search: '',
+                    async load() {
+                        this.loading = true;
+                        try {
+                            const url = new URL('{{ route('business.employees.data') }}', window.location.origin);
+                            if (this.filter) url.searchParams.set('slug', this.filter);
+                            const r = await fetch(url, { headers: { 'Accept':'application/json' } });
+                            this.data = await r.json();
+                        } catch(e) { this.data = null; }
+                        this.loading = false;
+                    },
+                    get filtered() {
+                        if (!this.data) return [];
+                        if (!this.search) return this.data.employees;
+                        const q = this.search.toLowerCase();
+                        return this.data.employees.filter(e =>
+                            (e.name||'').toLowerCase().includes(q) ||
+                            (e.email||'').toLowerCase().includes(q) ||
+                            (e.role||'').toLowerCase().includes(q) ||
+                            (e.establishment||'').toLowerCase().includes(q));
+                    },
+                    roleColor(role) {
+                        const r = (role||'').toLowerCase();
+                        if (r.includes('manager') || r.includes('admin')) return 'bg-indigo-50 text-indigo-700 border-indigo-200';
+                        if (r.includes('reception')) return 'bg-sky-50 text-sky-700 border-sky-200';
+                        if (r.includes('restaurant')) return 'bg-amber-50 text-amber-700 border-amber-200';
+                        if (r.includes('shop') || r.includes('cash')) return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                        if (r.includes('housekeep')) return 'bg-violet-50 text-violet-700 border-violet-200';
+                        return 'bg-slate-100 text-slate-600 border-slate-200';
+                    }
+                 }" x-init="load()">
+
+                {{-- En-tête --}}
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+                    <div>
+                        <h1 class="text-2xl font-extrabold tracking-tight text-slate-800 font-heading">Employés</h1>
+                        <p class="text-xs text-slate-500 mt-1">Tout le personnel de vos établissements, réuni en un seul registre.</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <select x-model="filter" @change="load()"
+                                class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 outline-none focus:border-indigo-500">
+                            <option value="">Tous les établissements</option>
+                            @foreach($tenants as $t)
+                                @if($t->provisioned_at)
+                                    <option value="{{ $t->slug }}">{{ $t->name }}</option>
+                                @endif
+                            @endforeach
+                        </select>
+                        <button type="button" @click="load()" :disabled="loading"
+                                class="inline-flex items-center justify-center h-9 w-9 rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 transition disabled:opacity-50 cursor-pointer" title="Actualiser">
+                            <svg class="h-4 w-4" :class="loading ? 'animate-spin' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+                        </button>
+                    </div>
+                </div>
+
+                <div x-show="loading && !data" class="rounded-xl bg-slate-100 h-64 animate-pulse"></div>
+
+                <template x-if="data">
+                    <div class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                        {{-- Barre : total + recherche --}}
+                        <div class="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div class="flex items-center gap-2 text-xs text-slate-500">
+                                <span class="font-bold text-slate-800" x-text="filtered.length"></span>
+                                <span>employé(s)</span>
+                                <template x-if="filter"><span class="text-slate-400">· filtré</span></template>
+                            </div>
+                            <div class="relative">
+                                <svg class="h-4 w-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" /></svg>
+                                <input type="text" x-model="search" placeholder="Rechercher (nom, email, poste…)"
+                                       class="w-full sm:w-72 rounded-lg border border-slate-200 bg-white pl-9 pr-3 py-2 text-xs text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">
+                            </div>
+                        </div>
+
+                        {{-- Bandeau injoignables --}}
+                        <template x-if="data.unreachable && data.unreachable.length > 0">
+                            <div class="px-5 py-2 bg-amber-50 border-b border-amber-100 text-[10px] text-amber-700">
+                                Établissements injoignables (employés non listés) : <span class="font-semibold" x-text="data.unreachable.join(', ')"></span>
+                            </div>
+                        </template>
+
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-xs">
+                                <thead>
+                                    <tr class="text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
+                                        <th class="px-5 py-3">Nom</th>
+                                        <th class="px-3 py-3">Email</th>
+                                        <th class="px-3 py-3">Numéro</th>
+                                        <th class="px-3 py-3">Poste</th>
+                                        <th class="px-3 py-3">Établissement</th>
+                                        <th class="px-5 py-3 text-right">Créé le</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-50">
+                                    <template x-for="(e, i) in filtered" :key="i">
+                                        <tr class="hover:bg-slate-50/60 transition">
+                                            <td class="px-5 py-3">
+                                                <div class="flex items-center gap-2.5">
+                                                    <span class="h-7 w-7 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center text-[10px] font-bold shrink-0"
+                                                          x-text="(e.name||'?').trim().split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase()"></span>
+                                                    <div>
+                                                        <span class="font-bold text-slate-800" x-text="e.name"></span>
+                                                        <template x-if="!e.is_active"><span class="ml-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-50 text-red-600 border border-red-200 uppercase">Inactif</span></template>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td class="px-3 py-3 text-slate-600" x-text="e.email"></td>
+                                            <td class="px-3 py-3 text-slate-500" x-text="e.phone"></td>
+                                            <td class="px-3 py-3">
+                                                <span class="text-[10px] font-bold px-2 py-0.5 rounded border" :class="roleColor(e.role)" x-text="e.role"></span>
+                                            </td>
+                                            <td class="px-3 py-3 font-semibold text-slate-700" x-text="e.establishment"></td>
+                                            <td class="px-5 py-3 text-right text-slate-500 whitespace-nowrap" x-text="e.created_at"></td>
+                                        </tr>
+                                    </template>
+                                    <template x-if="filtered.length === 0">
+                                        <tr><td colspan="6" class="px-5 py-12 text-center text-slate-400">
+                                            <span x-text="search ? 'Aucun employé ne correspond à votre recherche.' : 'Aucun employé — ou établissements momentanément injoignables.'"></span>
+                                        </td></tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </template>
+
+                <div x-show="!loading && !data" x-cloak class="rounded-lg border border-red-200 bg-red-50 p-5 text-xs font-bold text-red-700">Impossible de charger la liste des employés. Réessayez.</div>
+            </div>
+
+        @elseif($activeTab === 'revenue' && $isOwner)
+            {{-- ================= RAPPORT & AUDIT FINANCIER ================= --}}
+            <div class="mt-2"
+                 x-data="{
+                    period: 'month', loading: true, data: null,
+                    periods: { today:'Aujourd\'hui', week:'Semaine', month:'Mois', year:'Année' },
+                    fmt(c) { return new Intl.NumberFormat('fr-FR').format(Math.round((c||0)/100)); },
+                    async load() {
+                        this.loading = true;
+                        try {
+                            const url = new URL('{{ route('business.report.data') }}', window.location.origin);
+                            url.searchParams.set('period', this.period);
+                            const r = await fetch(url, { headers: { 'Accept':'application/json' } });
+                            this.data = await r.json();
+                        } catch(e) { this.data = null; }
+                        this.loading = false;
+                    },
+                    exportUrl(fmt) {
+                        const u = new URL('{{ url('business/report/export') }}/' + fmt, window.location.origin);
+                        u.searchParams.set('period', this.period);
+                        return u.toString();
+                    },
+                    methodLabel(m) { return (m||'').replace('_',' ').replace(/\b\w/g, c => c.toUpperCase()); },
+                    get methodMax() { return this.data ? Math.max(...this.data.payment_methods.map(m=>m.total), 1) : 1; }
+                 }" x-init="load()">
+
+                {{-- En-tête + période + exports --}}
+                <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3 mb-6">
+                    <div>
+                        <h1 class="text-2xl font-extrabold tracking-tight text-slate-800 font-heading">Rapport financier</h1>
+                        <p class="text-xs text-slate-500 mt-1">Encaissements, dépenses, audit de caisse — et export de rapports complets.</p>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <div class="inline-flex rounded-lg border border-slate-200 bg-white p-0.5">
+                            <template x-for="(label,key) in periods" :key="key">
+                                <button type="button" @click="period=key; load()" class="px-3 py-1.5 text-xs font-semibold rounded-md transition" :class="period===key ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'" x-text="label"></button>
+                            </template>
+                        </div>
+                        <a :href="exportUrl('excel')" class="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100 transition">
+                            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-3-3v6m-9 4.5V6.75A2.25 2.25 0 015.25 4.5h13.5A2.25 2.25 0 0121 6.75v10.5A2.25 2.25 0 0118.75 19.5H5.25A2.25 2.25 0 013 17.25z" /></svg>
+                            Excel
+                        </a>
+                        <a :href="exportUrl('pdf')" class="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3.5 py-2 text-xs font-bold text-red-700 hover:bg-red-100 transition">
+                            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg>
+                            PDF
+                        </a>
+                    </div>
+                </div>
+
+                <div x-show="loading && !data" class="grid grid-cols-1 sm:grid-cols-4 gap-4"><template x-for="i in 4" :key="i"><div class="h-24 rounded-xl bg-slate-100 animate-pulse"></div></template></div>
+
+                <template x-if="data && data.count === 0">
+                    <div class="rounded-xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-400">
+                        Aucun établissement en ligne pour établir un rapport.
+                        <template x-if="data.unreachable && data.unreachable.length"><p class="text-xs text-amber-600 mt-2">Hors ligne : <span x-text="data.unreachable.join(', ')"></span></p></template>
+                    </div>
+                </template>
+
+                <template x-if="data && data.count > 0">
+                    <div>
+                        {{-- KPI financiers --}}
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Revenu</p>
+                                <p class="text-2xl font-extrabold text-slate-800 mt-2 leading-none"><span x-text="fmt(data.totals.revenue.total)"></span> <span class="text-xs text-slate-400" x-text="data.currency"></span></p>
+                            </div>
+                            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Encaissé</p>
+                                <p class="text-2xl font-extrabold text-emerald-600 mt-2 leading-none"><span x-text="fmt(data.totals.collected)"></span> <span class="text-xs text-slate-400" x-text="data.currency"></span></p>
+                            </div>
+                            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Dépenses</p>
+                                <p class="text-2xl font-extrabold text-amber-600 mt-2 leading-none"><span x-text="fmt(data.totals.expenses)"></span> <span class="text-xs text-slate-400" x-text="data.currency"></span></p>
+                            </div>
+                            <div class="rounded-xl border border-slate-200 bg-gradient-to-br from-indigo-600 to-indigo-700 text-white p-5 shadow-sm">
+                                <p class="text-[11px] font-bold uppercase tracking-wider text-indigo-100">Résultat net</p>
+                                <p class="text-2xl font-extrabold mt-2 leading-none"><span x-text="fmt(data.totals.net)"></span> <span class="text-xs text-indigo-200" x-text="data.currency"></span></p>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
+                            {{-- Facturation & créances + audit caisse --}}
+                            <div class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                                <div class="px-5 py-4 border-b border-slate-100"><h3 class="text-sm font-bold text-slate-800">Facturation & audit</h3></div>
+                                <div class="p-5 space-y-3 text-sm">
+                                    <div class="flex items-center justify-between"><span class="text-slate-500">Facturé</span><span class="font-bold text-slate-800"><span x-text="fmt(data.totals.invoiced)"></span> <span class="text-[10px] text-slate-400" x-text="data.currency"></span></span></div>
+                                    <div class="flex items-center justify-between"><span class="text-slate-500">Payé</span><span class="font-bold text-emerald-600"><span x-text="fmt(data.totals.paid)"></span> <span class="text-[10px] text-slate-400" x-text="data.currency"></span></span></div>
+                                    <div class="flex items-center justify-between border-b border-slate-100 pb-3"><span class="text-slate-500">Créances (dû)</span><span class="font-bold" :class="data.totals.due > 0 ? 'text-red-600':'text-slate-800'"><span x-text="fmt(data.totals.due)"></span> <span class="text-[10px] text-slate-400" x-text="data.currency"></span></span></div>
+                                    <div class="flex items-center justify-between pt-1">
+                                        <span class="text-slate-500">Écart de caisse (déclaré vs théorique)</span>
+                                        <span class="font-bold" :class="data.totals.cash_discrepancy < 0 ? 'text-red-600' : (data.totals.cash_discrepancy > 0 ? 'text-amber-600' : 'text-emerald-600')"><span x-text="fmt(data.totals.cash_discrepancy)"></span> <span class="text-[10px] text-slate-400" x-text="data.currency"></span></span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {{-- Méthodes de paiement --}}
+                            <div class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                                <div class="px-5 py-4 border-b border-slate-100"><h3 class="text-sm font-bold text-slate-800">Encaissements par méthode</h3></div>
+                                <div class="p-5 space-y-3">
+                                    <template x-for="m in data.payment_methods" :key="m.method">
+                                        <div>
+                                            <div class="flex items-center justify-between text-xs mb-1">
+                                                <span class="font-semibold text-slate-700" x-text="methodLabel(m.method) + ' (' + m.count + ')'"></span>
+                                                <span class="font-bold text-slate-800"><span x-text="fmt(m.total)"></span> <span class="text-[10px] text-slate-400" x-text="data.currency"></span></span>
+                                            </div>
+                                            <div class="h-2 rounded-full bg-slate-100 overflow-hidden"><div class="h-full bg-indigo-500 rounded-full" :style="`width:${(m.total/methodMax*100)}%`"></div></div>
+                                        </div>
+                                    </template>
+                                    <template x-if="data.payment_methods.length === 0"><p class="text-xs text-slate-400">Aucun encaissement sur la période.</p></template>
+                                </div>
+                            </div>
+                        </div>
+
+                        {{-- Détail par établissement --}}
+                        <div class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden mb-6">
+                            <div class="px-5 py-4 border-b border-slate-100"><h3 class="text-sm font-bold text-slate-800">Détail par établissement</h3></div>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-xs">
+                                    <thead>
+                                        <tr class="text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
+                                            <th class="px-5 py-3">Établissement</th><th class="px-3 py-3 text-right">Revenu</th><th class="px-3 py-3 text-right">Encaissé</th><th class="px-3 py-3 text-right">Dû</th><th class="px-3 py-3 text-right">Dépenses</th><th class="px-3 py-3 text-right">Écart caisse</th><th class="px-5 py-3 text-right">Net</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-50">
+                                        <template x-for="e in data.establishments" :key="e.slug">
+                                            <tr class="hover:bg-slate-50/60 transition">
+                                                <td class="px-5 py-3 font-bold text-slate-800" x-text="e.name"></td>
+                                                <td class="px-3 py-3 text-right text-slate-700" x-text="fmt(e.revenue)"></td>
+                                                <td class="px-3 py-3 text-right text-emerald-600" x-text="fmt(e.collected)"></td>
+                                                <td class="px-3 py-3 text-right" :class="e.due > 0 ? 'text-red-600':'text-slate-500'" x-text="fmt(e.due)"></td>
+                                                <td class="px-3 py-3 text-right text-amber-600" x-text="fmt(e.expenses)"></td>
+                                                <td class="px-3 py-3 text-right" :class="e.cash_gap < 0 ? 'text-red-600':'text-slate-500'" x-text="fmt(e.cash_gap)"></td>
+                                                <td class="px-5 py-3 text-right font-bold text-slate-800" x-text="fmt(e.net)"></td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        {{-- Dépenses --}}
+                        <div class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                            <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                                <h3 class="text-sm font-bold text-slate-800">Dépenses / décaissements</h3>
+                                <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600" x-text="data.expenses.length + ' opération(s)'"></span>
+                            </div>
+                            <div class="max-h-[360px] overflow-y-auto">
+                                <template x-if="data.expenses.length > 0">
+                                    <table class="w-full text-xs">
+                                        <thead>
+                                            <tr class="text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
+                                                <th class="px-5 py-3">Montant</th><th class="px-3 py-3">Motif</th><th class="px-3 py-3">Par</th><th class="px-3 py-3">Établissement</th><th class="px-5 py-3 text-right">Date</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-slate-50">
+                                            <template x-for="(e,i) in data.expenses" :key="i">
+                                                <tr class="hover:bg-slate-50/60 transition">
+                                                    <td class="px-5 py-2.5 font-bold text-amber-700 whitespace-nowrap"><span x-text="fmt(e.amount)"></span> <span class="text-[10px] text-slate-400" x-text="data.currency"></span></td>
+                                                    <td class="px-3 py-2.5 text-slate-600" x-text="e.reason"></td>
+                                                    <td class="px-3 py-2.5 text-slate-500" x-text="e.user"></td>
+                                                    <td class="px-3 py-2.5 font-semibold text-slate-700" x-text="e.establishment"></td>
+                                                    <td class="px-5 py-2.5 text-right text-slate-400 whitespace-nowrap" x-text="e.at"></td>
+                                                </tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
+                                </template>
+                                <template x-if="data.expenses.length === 0"><div class="px-5 py-10 text-center text-xs text-slate-400">Aucune dépense enregistrée sur la période.</div></template>
+                            </div>
+                        </div>
+
+                        <p class="text-[10px] text-slate-400 mt-4 text-right">Rapport généré le <span x-text="data.generated_at"></span></p>
+                    </div>
+                </template>
+
+                <div x-show="!loading && !data" x-cloak class="rounded-lg border border-red-200 bg-red-50 p-5 text-xs font-bold text-red-700">Impossible de charger le rapport. Réessayez.</div>
             </div>
 
         @elseif($activeTab === 'roles' && $isTech)

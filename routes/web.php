@@ -77,6 +77,8 @@ Route::middleware(['auth', 'role:tech_admin'])->prefix('tech')->name('tech.')->g
 Route::middleware(['auth', 'role:owner'])->prefix('business')->name('business.')->group(function () {
     Route::get('/dashboard', [AdminAuditController::class, 'businessDashboard'])->name('dashboard');
     Route::get('/establishments', [AdminAuditController::class, 'businessDashboard'])->name('establishments');
+    Route::get('/establishments/{tenant}', [AdminAuditController::class, 'businessShowTenant'])->name('establishments.show');
+    Route::get('/establishments/{tenant}/finance-data', [AdminAuditController::class, 'businessEstablishmentFinance'])->name('establishments.finance-data');
     Route::post('/establishments/{tenant}/create-manager', [AdminAuditController::class, 'createTenantManager'])->name('establishments.create-manager');
     Route::get('/analytics', [AdminAuditController::class, 'businessDashboard'])->name('analytics');
     Route::get('/employees', [AdminAuditController::class, 'businessDashboard'])->name('employees');
@@ -85,4 +87,9 @@ Route::middleware(['auth', 'role:owner'])->prefix('business')->name('business.')
     // Données consolidées de la vue d'ensemble 360° (AJAX)
     Route::get('/overview/data', [AdminAuditController::class, 'businessOverviewData'])->name('overview.data');
     Route::get('/revenue/data', [AdminAuditController::class, 'businessRevenueData'])->name('revenue.data');
+    Route::get('/stats/data', [AdminAuditController::class, 'businessStatsData'])->name('stats.data');
+    Route::get('/employees/data', [AdminAuditController::class, 'businessEmployeesData'])->name('employees.data');
+    Route::get('/report/data', [AdminAuditController::class, 'businessReportData'])->name('report.data');
+    Route::get('/report/export/excel', [AdminAuditController::class, 'businessReportExcel'])->name('report.excel');
+    Route::get('/report/export/pdf', [AdminAuditController::class, 'businessReportPdf'])->name('report.pdf');
 });

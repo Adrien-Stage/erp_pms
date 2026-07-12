@@ -1719,6 +1719,73 @@ class AdminAuditController extends Controller
     }
 
     /**
+     * Fiche d'un établissement côté business (propriétaire) : rubriques
+     * génériques (informations, utilisateurs, vue financière). Le propriétaire
+     * ne voit que ses propres établissements.
+     */
+    public function businessShowTenant(Request $request, Tenant $tenant)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isOwner()) { abort(403); }
+        if ($tenant->owner_id !== $user->id) {
+            abort(403, "Cet établissement ne vous appartient pas.");
+        }
+
+        $section = $request->query('section', 'finance');
+        if (!in_array($section, ['finance', 'info', 'users'], true)) {
+            $section = 'finance';
+        }
+
+        $tenantUsers = collect();
+        if ($section === 'users') {
+            try {
+                $pdo = $this->connectToTenantDatabase($tenant);
+                $rows = $pdo->query("SELECT id, name, email, phone, role, is_active FROM users ORDER BY name")
+                    ->fetchAll(\PDO::FETCH_ASSOC);
+                $tenantUsers = collect($rows)->map(fn ($r) => (object) $r);
+
+                if ($tenant->users_count !== $tenantUsers->count()) {
+                    $tenant->update(['users_count' => $tenantUsers->count()]);
+                }
+            } catch (\Exception $e) {
+                session()->now('error', "Impossible de se connecter à l'établissement : " . $e->getMessage());
+            }
+        }
+
+        return view('admin.business.establishment', compact('tenant', 'tenantUsers', 'section'));
+    }
+
+    /**
+     * Données financières d'UN établissement du propriétaire (AJAX) : résumé
+     * + série de revenus, via l'API reporting du tenant.
+     */
+    public function businessEstablishmentFinance(Request $request, Tenant $tenant, \App\Services\BusinessReportingClient $client)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isOwner()) { abort(403); }
+        if ($tenant->owner_id !== $user->id) { abort(403); }
+
+        $period = in_array($request->query('period'), ['today', 'week', 'month', 'year'], true)
+            ? $request->query('period') : 'month';
+
+        $summary = $client->fetch($tenant, 'summary', ['period' => $period]);
+        if ($summary === null) {
+            return response()->json(['reachable' => false]);
+        }
+
+        $revenue = $client->fetch($tenant, 'revenue', ['period' => $period]);
+        $alerts  = $client->fetch($tenant, 'alerts', ['period' => $period]);
+
+        return response()->json([
+            'reachable' => true,
+            'period'    => $period,
+            'summary'   => $summary,
+            'series'    => $revenue['series'] ?? null,
+            'alerts'    => $alerts['alerts'] ?? [],
+        ]);
+    }
+
+    /**
      * Vue d'ensemble 360° (AJAX) : données financières consolidées des
      * établissements du propriétaire, via l'API reporting de chaque tenant.
      */
@@ -1733,6 +1800,144 @@ class AdminAuditController extends Controller
         $tenants = $user->tenants()->whereNotNull('provisioned_at')->orderBy('name')->get();
 
         return response()->json($client->overview($tenants, $period));
+    }
+
+    /**
+     * Rapport financier consolidé (AJAX) : encaissements, dépenses, audit de
+     * caisse, factures et résultat net de tous les établissements du
+     * propriétaire. Page « Rapport ».
+     */
+    public function businessReportData(Request $request, \App\Services\BusinessReportingClient $client)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isOwner()) { abort(403); }
+
+        $period = $this->businessPeriod($request);
+        $tenants = $user->tenants()->whereNotNull('provisioned_at')->orderBy('name')->get();
+
+        return response()->json($client->financeReport($tenants, $period));
+    }
+
+    /** Export Excel (avec graphes) du rapport financier consolidé. */
+    public function businessReportExcel(Request $request, \App\Services\BusinessReportingClient $client, \App\Services\BusinessReportExporter $exporter)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isOwner()) { abort(403); }
+
+        $period = $this->businessPeriod($request);
+        $tenants = $user->tenants()->whereNotNull('provisioned_at')->orderBy('name')->get();
+        $report = $client->financeReport($tenants, $period);
+
+        AuditLog::record($user->id, 'business_report_export', "Export Excel du rapport financier ({$period})", 'business');
+
+        $spreadsheet = $exporter->excel($report);
+        $filename = 'rapport_financier_' . $period . '_' . now()->format('Ymd_His') . '.xlsx';
+
+        return response()->streamDownload(function () use ($spreadsheet) {
+            $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+            $writer->setIncludeCharts(true);
+            $writer->save('php://output');
+        }, $filename, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
+    }
+
+    /** Export PDF du rapport financier consolidé. */
+    public function businessReportPdf(Request $request, \App\Services\BusinessReportingClient $client)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isOwner()) { abort(403); }
+
+        $period = $this->businessPeriod($request);
+        $tenants = $user->tenants()->whereNotNull('provisioned_at')->orderBy('name')->get();
+        $report = $client->financeReport($tenants, $period);
+
+        AuditLog::record($user->id, 'business_report_export', "Export PDF du rapport financier ({$period})", 'business');
+
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('admin.business.report-pdf', [
+            'report'    => $report,
+            'ownerName' => $user->name,
+        ])->setPaper('a4', 'portrait');
+
+        return $pdf->download('rapport_financier_' . $period . '_' . now()->format('Ymd_His') . '.pdf');
+    }
+
+    private function businessPeriod(Request $request): string
+    {
+        return in_array($request->query('period'), ['today', 'week', 'month', 'year'], true)
+            ? $request->query('period') : 'month';
+    }
+
+    /**
+     * Employés (AJAX) : liste consolidée du personnel de tous les
+     * établissements du propriétaire (nom, email, téléphone, poste, date de
+     * création), avec filtre par établissement. Lu directement dans la base
+     * de chaque établissement.
+     */
+    public function businessEmployeesData(Request $request)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isOwner()) { abort(403); }
+
+        $query = $user->tenants()->whereNotNull('provisioned_at')->orderBy('name');
+        if ($request->filled('slug')) {
+            $query->where('slug', $request->string('slug'));
+        }
+        $tenants = $query->get();
+
+        $employees   = [];
+        $unreachable = [];
+
+        foreach ($tenants as $tenant) {
+            try {
+                $pdo = $this->connectToTenantDatabase($tenant);
+                $rows = $pdo->query("SELECT name, email, phone, role, is_active, created_at FROM users ORDER BY name")
+                    ->fetchAll(\PDO::FETCH_ASSOC);
+
+                foreach ($rows as $r) {
+                    $employees[] = [
+                        'name'          => $r['name'],
+                        'email'         => $r['email'],
+                        'phone'         => $r['phone'] ?: '—',
+                        'role'          => $r['role'],
+                        'is_active'     => (bool) $r['is_active'],
+                        'establishment' => $tenant->name,
+                        'slug'          => $tenant->slug,
+                        'created_at'    => $r['created_at'] ? \Carbon\Carbon::parse($r['created_at'])->format('d/m/Y') : '—',
+                        'created_ts'    => $r['created_at'] ? \Carbon\Carbon::parse($r['created_at'])->timestamp : 0,
+                    ];
+                }
+            } catch (\Exception $e) {
+                $unreachable[] = $tenant->name;
+            }
+        }
+
+        // Tri global : plus récents d'abord
+        usort($employees, fn ($a, $b) => $b['created_ts'] <=> $a['created_ts']);
+
+        return response()->json([
+            'employees'   => $employees,
+            'total'       => count($employees),
+            'unreachable' => $unreachable,
+            'generated_at' => now()->format('H:i:s'),
+        ]);
+    }
+
+    /**
+     * Statistiques comparatives (AJAX) : performance et évolution comparées
+     * des établissements du propriétaire. Page « Statistiques ».
+     */
+    public function businessStatsData(Request $request, \App\Services\BusinessReportingClient $client)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isOwner()) { abort(403); }
+
+        $period = in_array($request->query('period'), ['today', 'week', 'month', 'year'], true)
+            ? $request->query('period') : 'month';
+
+        $tenants = $user->tenants()->whereNotNull('provisioned_at')->orderBy('name')->get();
+
+        return response()->json($client->statistics($tenants, $period));
     }
 
     /**
