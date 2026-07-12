@@ -49,6 +49,16 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Secret de service de l'API de reporting business
+    |--------------------------------------------------------------------------
+    | Jeton bearer partagé avec chaque établissement (injecté dans les
+    | containers au provisioning). La console business de pms l'utilise pour
+    | consommer l'API financière (/api/reporting/*) de chaque tenant.
+    */
+    'reporting_secret' => env('REPORTING_SECRET', ''),
+
+    /*
+    |--------------------------------------------------------------------------
     | Réseau Docker partagé
     |--------------------------------------------------------------------------
     | Tous les containers (admin + établissements) sont sur ce réseau.

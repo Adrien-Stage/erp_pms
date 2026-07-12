@@ -81,4 +81,8 @@ Route::middleware(['auth', 'role:owner'])->prefix('business')->name('business.')
     Route::get('/analytics', [AdminAuditController::class, 'businessDashboard'])->name('analytics');
     Route::get('/employees', [AdminAuditController::class, 'businessDashboard'])->name('employees');
     Route::get('/revenue', [AdminAuditController::class, 'businessDashboard'])->name('revenue');
+
+    // Données consolidées de la vue d'ensemble 360° (AJAX)
+    Route::get('/overview/data', [AdminAuditController::class, 'businessOverviewData'])->name('overview.data');
+    Route::get('/revenue/data', [AdminAuditController::class, 'businessRevenueData'])->name('revenue.data');
 });

@@ -885,6 +885,337 @@
                     Impossible de charger les statistiques de supervision — vérifie que le serveur répond, puis réessaie.
                 </div>
             </div>
+        @elseif($activeTab === 'dashboard' && $isOwner)
+            {{-- ================= VUE D'ENSEMBLE 360° (BUSINESS) ================= --}}
+            <div class="mt-2"
+                 x-data="{
+                    period: 'month',
+                    loading: true,
+                    data: null,
+                    chart: null,
+                    chartLoading: false,
+                    periods: { today: 'Aujourd\'hui', week: 'Cette semaine', month: 'Ce mois', year: 'Cette année' },
+                    fmt(cents) {
+                        const v = Math.round((cents || 0) / 100);
+                        return new Intl.NumberFormat('fr-FR').format(v);
+                    },
+                    async load() {
+                        this.loading = true;
+                        try {
+                            const url = new URL('{{ route('business.overview.data') }}', window.location.origin);
+                            url.searchParams.set('period', this.period);
+                            const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+                            this.data = await r.json();
+                        } catch (e) { this.data = null; }
+                        this.loading = false;
+                        this.loadChart();
+                    },
+                    async loadChart() {
+                        this.chartLoading = true;
+                        try {
+                            const url = new URL('{{ route('business.revenue.data') }}', window.location.origin);
+                            url.searchParams.set('period', this.period);
+                            const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+                            this.chart = await r.json();
+                        } catch (e) { this.chart = null; }
+                        this.chartLoading = false;
+                    },
+                    setPeriod(p) { this.period = p; this.load(); },
+                    trendClass(t) {
+                        if (!t) return 'text-slate-400';
+                        return t.direction === 'up' ? 'text-emerald-600' : (t.direction === 'down' ? 'text-red-600' : 'text-slate-400');
+                    },
+                    // Génère le tracé SVG (aire) d'une série de valeurs.
+                    areaPath(values, w, h) {
+                        if (!values || values.length === 0) return '';
+                        const max = Math.max(...values, 1);
+                        const stepX = values.length > 1 ? w / (values.length - 1) : 0;
+                        let d = values.map((v, i) => `${i === 0 ? 'M' : 'L'} ${(i*stepX).toFixed(1)} ${(h - (v/max)*h).toFixed(1)}`).join(' ');
+                        return `${d} L ${w.toFixed(1)} ${h} L 0 ${h} Z`;
+                    },
+                    linePath(values, w, h) {
+                        if (!values || values.length === 0) return '';
+                        const max = Math.max(...values, 1);
+                        const stepX = values.length > 1 ? w / (values.length - 1) : 0;
+                        return values.map((v, i) => `${i === 0 ? 'M' : 'L'} ${(i*stepX).toFixed(1)} ${(h - (v/max)*h).toFixed(1)}`).join(' ');
+                    },
+                    get chartTotals() {
+                        if (!this.chart) return [];
+                        const n = (this.chart.labels || []).length;
+                        const out = [];
+                        for (let i = 0; i < n; i++) {
+                            out.push((this.chart.hotel[i]||0) + (this.chart.restaurant[i]||0) + (this.chart.shop[i]||0));
+                        }
+                        return out;
+                    }
+                 }" x-init="load()">
+
+                {{-- En-tête + sélecteur de période --}}
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+                    <div>
+                        <h1 class="text-2xl font-extrabold tracking-tight text-slate-800 font-heading">Vue d'ensemble</h1>
+                        <p class="text-xs text-slate-500 mt-1">Le pouls de votre business, tous établissements réunis — en direct.</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <div class="inline-flex rounded-lg border border-slate-200 bg-white p-0.5">
+                            <template x-for="(label, key) in periods" :key="key">
+                                <button type="button" @click="setPeriod(key)"
+                                        class="px-3 py-1.5 text-xs font-semibold rounded-md transition"
+                                        :class="period === key ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'"
+                                        x-text="label"></button>
+                            </template>
+                        </div>
+                        <button type="button" @click="load()" :disabled="loading"
+                                class="inline-flex items-center justify-center h-9 w-9 rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 transition disabled:opacity-50 cursor-pointer" title="Actualiser">
+                            <svg class="h-4 w-4" :class="loading ? 'animate-spin' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+                        </button>
+                    </div>
+                </div>
+
+                {{-- Chargement --}}
+                <div x-show="loading && !data" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                    <template x-for="i in 4" :key="i"><div class="h-28 rounded-xl bg-slate-100 animate-pulse"></div></template>
+                </div>
+
+                <template x-if="data">
+                    <div>
+                        {{-- Bandeau établissements injoignables --}}
+                        <template x-if="data.unreachable && data.unreachable.length > 0">
+                            <div class="mb-5 rounded-lg bg-amber-50 border border-amber-200 px-4 py-2.5 text-xs text-amber-800 flex items-center gap-2">
+                                <svg class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>
+                                <span>Données indisponibles pour : <span class="font-semibold" x-text="data.unreachable.join(', ')"></span>. Ces établissements sont peut-être hors ligne.</span>
+                            </div>
+                        </template>
+
+                        {{-- KPI HÉROS --}}
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                            {{-- Revenu total --}}
+                            <div class="rounded-xl border border-slate-200 bg-gradient-to-br from-indigo-600 to-indigo-700 text-white p-5 shadow-sm">
+                                <div class="flex items-center justify-between">
+                                    <p class="text-[11px] font-bold uppercase tracking-wider text-indigo-100">Revenu total</p>
+                                    <svg class="h-5 w-5 text-indigo-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                </div>
+                                <p class="text-3xl font-extrabold mt-2 leading-none"><span x-text="fmt(data.totals.revenue.total)"></span> <span class="text-sm font-semibold text-indigo-200" x-text="data.currency"></span></p>
+                                <div class="mt-2 flex items-center gap-1.5 text-xs" x-show="data.revenue_trend">
+                                    <template x-if="data.revenue_trend.direction === 'up'"><svg class="h-3.5 w-3.5 text-emerald-300" fill="currentColor" viewBox="0 0 20 20"><path d="M12 7a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0V8.414l-4.293 4.293a1 1 0 01-1.414 0L8 10.414l-4.293 4.293a1 1 0 01-1.414-1.414l5-5a1 1 0 011.414 0L11 10.586 14.586 7H12z"/></svg></template>
+                                    <template x-if="data.revenue_trend.direction === 'down'"><svg class="h-3.5 w-3.5 text-red-300" fill="currentColor" viewBox="0 0 20 20"><path d="M12 13a1 1 0 100 2h5a1 1 0 001-1v-5a1 1 0 10-2 0v2.586l-4.293-4.293a1 1 0 00-1.414 0L8 9.586 3.707 5.293a1 1 0 00-1.414 1.414l5 5a1 1 0 001.414 0L11 9.414 14.586 13H12z"/></svg></template>
+                                    <span class="font-semibold text-indigo-100"><span x-text="data.revenue_trend.pct"></span>% vs période précédente</span>
+                                </div>
+                            </div>
+
+                            {{-- Occupation --}}
+                            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <div class="flex items-center justify-between">
+                                    <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Taux d'occupation</p>
+                                    <div class="rounded-lg bg-emerald-50 p-1.5"><svg class="h-4 w-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75" /></svg></div>
+                                </div>
+                                <p class="text-3xl font-extrabold text-slate-800 mt-2 leading-none"><span x-text="data.occupancy_rate"></span><span class="text-lg text-slate-400">%</span></p>
+                                <p class="text-[11px] text-slate-400 mt-2"><span x-text="data.totals.rooms_occupied"></span> / <span x-text="data.totals.rooms_total"></span> chambres occupées</p>
+                            </div>
+
+                            {{-- Réservations --}}
+                            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <div class="flex items-center justify-between">
+                                    <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Réservations</p>
+                                    <div class="rounded-lg bg-amber-50 p-1.5"><svg class="h-4 w-4 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" /></svg></div>
+                                </div>
+                                <p class="text-3xl font-extrabold text-slate-800 mt-2 leading-none" x-text="data.totals.bookings"></p>
+                                <p class="text-[11px] text-slate-400 mt-2">sur la période</p>
+                            </div>
+
+                            {{-- Personnel --}}
+                            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <div class="flex items-center justify-between">
+                                    <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Personnel</p>
+                                    <div class="rounded-lg bg-violet-50 p-1.5"><svg class="h-4 w-4 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" /></svg></div>
+                                </div>
+                                <p class="text-3xl font-extrabold text-slate-800 mt-2 leading-none" x-text="data.totals.staff"></p>
+                                <p class="text-[11px] text-slate-400 mt-2"><span x-text="data.count_reachable"></span> / <span x-text="data.count_total"></span> établissement(s) en ligne</p>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-6">
+                            {{-- Graphe d'évolution du revenu --}}
+                            <div class="lg:col-span-2 rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                                <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                                    <div>
+                                        <h3 class="text-sm font-bold text-slate-800">Évolution du chiffre d'affaires</h3>
+                                        <p class="text-[10px] text-slate-400 mt-0.5">Tous établissements et pôles confondus</p>
+                                    </div>
+                                    <div class="flex items-center gap-3 text-[10px] text-slate-500">
+                                        <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-indigo-500"></span>Hôtel</span>
+                                        <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-amber-500"></span>Restaurant</span>
+                                        <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-emerald-500"></span>Boutique</span>
+                                    </div>
+                                </div>
+                                <div class="p-5">
+                                    <template x-if="chart && chartTotals.length > 0 && chartTotals.some(v => v > 0)">
+                                        <div>
+                                            <svg viewBox="0 0 600 180" class="w-full h-44" preserveAspectRatio="none">
+                                                <defs>
+                                                    <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
+                                                        <stop offset="0%" stop-color="#6366f1" stop-opacity="0.25"/>
+                                                        <stop offset="100%" stop-color="#6366f1" stop-opacity="0"/>
+                                                    </linearGradient>
+                                                </defs>
+                                                <path :d="areaPath(chartTotals, 600, 180)" fill="url(#revGrad)"></path>
+                                                <path :d="linePath(chartTotals, 600, 180)" fill="none" stroke="#6366f1" stroke-width="2.5" stroke-linejoin="round"></path>
+                                            </svg>
+                                            <div class="flex justify-between text-[9px] text-slate-400 mt-1.5">
+                                                <span x-text="chart.labels[0] ?? ''"></span>
+                                                <span x-text="chart.labels[Math.floor(chart.labels.length/2)] ?? ''"></span>
+                                                <span x-text="chart.labels[chart.labels.length-1] ?? ''"></span>
+                                            </div>
+                                        </div>
+                                    </template>
+                                    <template x-if="chart && (chartTotals.length === 0 || !chartTotals.some(v => v > 0))">
+                                        <div class="h-44 flex items-center justify-center text-xs text-slate-400">Aucun revenu enregistré sur cette période.</div>
+                                    </template>
+                                    <div x-show="chartLoading && !chart" class="h-44 rounded-lg bg-slate-50 animate-pulse"></div>
+                                </div>
+                            </div>
+
+                            {{-- Répartition par pôle --}}
+                            <div class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                                <div class="px-5 py-4 border-b border-slate-100">
+                                    <h3 class="text-sm font-bold text-slate-800">Répartition du revenu</h3>
+                                </div>
+                                <div class="p-5 space-y-4">
+                                    @php
+                                        $poles = [
+                                            ['key' => 'hotel', 'label' => 'Hôtel', 'color' => 'bg-indigo-500'],
+                                            ['key' => 'restaurant', 'label' => 'Restaurant', 'color' => 'bg-amber-500'],
+                                            ['key' => 'shop', 'label' => 'Boutique', 'color' => 'bg-emerald-500'],
+                                        ];
+                                    @endphp
+                                    @foreach($poles as $pole)
+                                        <div>
+                                            <div class="flex items-center justify-between text-xs mb-1">
+                                                <span class="font-semibold text-slate-600">{{ $pole['label'] }}</span>
+                                                <span class="font-bold text-slate-800"><span x-text="fmt(data.totals.revenue.{{ $pole['key'] }})"></span> <span class="text-[10px] text-slate-400" x-text="data.currency"></span></span>
+                                            </div>
+                                            <div class="h-2 rounded-full bg-slate-100 overflow-hidden">
+                                                <div class="h-full {{ $pole['color'] }} rounded-full transition-all"
+                                                     :style="`width: ${data.totals.revenue.total > 0 ? (data.totals.revenue.{{ $pole['key'] }} / data.totals.revenue.total * 100) : 0}%`"></div>
+                                            </div>
+                                        </div>
+                                    @endforeach
+                                    {{-- Écart de caisse consolidé --}}
+                                    <div class="pt-3 border-t border-slate-100">
+                                        <div class="flex items-center justify-between text-xs">
+                                            <span class="font-semibold text-slate-600">Écart de caisse</span>
+                                            <span class="font-bold" :class="data.totals.cash_discrepancy < 0 ? 'text-red-600' : (data.totals.cash_discrepancy > 0 ? 'text-amber-600' : 'text-emerald-600')">
+                                                <span x-text="fmt(data.totals.cash_discrepancy)"></span> <span class="text-[10px]" x-text="data.currency"></span>
+                                            </span>
+                                        </div>
+                                        <p class="text-[10px] text-slate-400 mt-1">Différence déclaré vs théorique, toutes caisses</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                            {{-- Classement des établissements --}}
+                            <div class="lg:col-span-2 rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                                <div class="px-5 py-4 border-b border-slate-100">
+                                    <h3 class="text-sm font-bold text-slate-800">Performance par établissement</h3>
+                                    <p class="text-[10px] text-slate-400 mt-0.5">Classés par revenu — repérez d'un coup d'œil qui performe et qui décroche</p>
+                                </div>
+                                <div class="overflow-x-auto">
+                                    <table class="w-full text-xs">
+                                        <thead>
+                                            <tr class="text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
+                                                <th class="px-5 py-3">Établissement</th>
+                                                <th class="px-3 py-3 text-right">Revenu</th>
+                                                <th class="px-3 py-3 text-right">Tendance</th>
+                                                <th class="px-3 py-3 text-right">Occup.</th>
+                                                <th class="px-3 py-3 text-center">Alertes</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-slate-50">
+                                            <template x-for="e in data.establishments" :key="e.id">
+                                                <tr class="hover:bg-slate-50/60 transition">
+                                                    <td class="px-5 py-3">
+                                                        <span class="font-bold text-slate-800" x-text="e.name"></span>
+                                                        <template x-if="!e.reachable"><span class="ml-2 text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-50 text-red-600 border border-red-200 uppercase">Hors ligne</span></template>
+                                                    </td>
+                                                    <td class="px-3 py-3 text-right font-bold text-slate-800">
+                                                        <template x-if="e.reachable"><span><span x-text="fmt(e.revenue)"></span></span></template>
+                                                        <template x-if="!e.reachable"><span class="text-slate-300">—</span></template>
+                                                    </td>
+                                                    <td class="px-3 py-3 text-right">
+                                                        <template x-if="e.reachable && e.revenue_trend">
+                                                            <span class="inline-flex items-center gap-0.5 font-semibold" :class="trendClass(e.revenue_trend)">
+                                                                <span x-text="e.revenue_trend.direction === 'up' ? '▲' : (e.revenue_trend.direction === 'down' ? '▼' : '–')"></span>
+                                                                <span x-text="e.revenue_trend.pct + '%'"></span>
+                                                            </span>
+                                                        </template>
+                                                        <template x-if="!e.reachable"><span class="text-slate-300">—</span></template>
+                                                    </td>
+                                                    <td class="px-3 py-3 text-right text-slate-600">
+                                                        <template x-if="e.reachable"><span x-text="e.occupancy + '%'"></span></template>
+                                                        <template x-if="!e.reachable"><span class="text-slate-300">—</span></template>
+                                                    </td>
+                                                    <td class="px-3 py-3 text-center">
+                                                        <template x-if="e.reachable && e.alerts > 0"><span class="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-red-100 text-red-700 text-[10px] font-bold" x-text="e.alerts"></span></template>
+                                                        <template x-if="e.reachable && e.alerts === 0"><span class="text-emerald-500">✓</span></template>
+                                                        <template x-if="!e.reachable"><span class="text-slate-300">—</span></template>
+                                                    </td>
+                                                </tr>
+                                            </template>
+                                            <template x-if="data.establishments.length === 0">
+                                                <tr><td colspan="5" class="px-5 py-10 text-center text-slate-400">Aucun établissement provisionné.</td></tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            {{-- Centre d'alertes --}}
+                            <div class="rounded-xl border shadow-sm overflow-hidden"
+                                 :class="data.alerts.length > 0 ? 'border-red-200 bg-white' : 'border-slate-200 bg-white'">
+                                <div class="px-5 py-4 border-b flex items-center gap-2"
+                                     :class="data.alerts.length > 0 ? 'border-red-100 bg-red-50/50' : 'border-slate-100'">
+                                    <svg class="h-4 w-4" :class="data.alerts.length > 0 ? 'text-red-600' : 'text-emerald-600'" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /></svg>
+                                    <h3 class="text-sm font-bold text-slate-800">Alertes</h3>
+                                    <span class="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full"
+                                          :class="data.alerts.length > 0 ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'"
+                                          x-text="data.alerts.length"></span>
+                                </div>
+                                <div class="max-h-[360px] overflow-y-auto divide-y divide-slate-50">
+                                    <template x-for="(a, idx) in data.alerts" :key="idx">
+                                        <div class="px-5 py-3">
+                                            <div class="flex items-start gap-2">
+                                                <span class="mt-0.5 h-2 w-2 rounded-full shrink-0" :class="a.severity === 'high' ? 'bg-red-500' : (a.severity === 'medium' ? 'bg-amber-500' : 'bg-slate-300')"></span>
+                                                <div class="min-w-0">
+                                                    <p class="text-xs font-semibold text-slate-800" x-text="a.title"></p>
+                                                    <p class="text-[11px] text-slate-500 leading-snug mt-0.5" x-text="a.message"></p>
+                                                    <p class="text-[10px] text-slate-400 mt-1"><span class="font-semibold" x-text="a.establishment"></span> · <span x-text="a.at"></span></p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </template>
+                                    <template x-if="data.alerts.length === 0">
+                                        <div class="px-5 py-10 text-center">
+                                            <svg class="h-8 w-8 text-emerald-400 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                            <p class="text-xs text-slate-500 font-medium">Tout est sous contrôle</p>
+                                            <p class="text-[10px] text-slate-400 mt-0.5">Aucune anomalie détectée sur la période.</p>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
+
+                        <p class="text-[10px] text-slate-400 mt-4 text-right">Dernière actualisation : <span x-text="data.generated_at"></span></p>
+                    </div>
+                </template>
+
+                {{-- Échec --}}
+                <div x-show="!loading && !data" x-cloak class="rounded-lg border border-red-200 bg-red-50 p-5 text-xs font-bold text-red-700">
+                    Impossible de charger votre tableau de bord. Réessayez dans un instant.
+                </div>
+            </div>
+
         @elseif($activeTab === 'roles' && $isTech)
             {{-- ================= RÔLES & PERMISSIONS ================= --}}
             @php
