@@ -267,7 +267,11 @@ class TenantProvisioningService
         $appPort      = $tenant->app_port;
         $dbPort       = $tenant->db_port ?? 5432;
         $appKey       = $this->resolveAppKey($composePath);
-        $appUrl       = 'http://' . $tenant->slug . '.localhost';
+        // URL navigable depuis le navigateur (port mappé sur l'hôte) : sert
+        // de base à asset()/config('app.url') pour que les images (chambres,
+        // logo...) exposées à un service externe comme le site vitrine
+        // pointent vers une URL réellement joignable, pas le hostname interne.
+        $appUrl       = 'http://localhost:' . $appPort;
         $currency     = $tenant->currency ?? 'XAF';
         // Le logo importé côté admin reste côté admin (storage propre à erp_pms) :
         // pas de lien inter-conteneurs. Le manager importe son propre logo depuis
@@ -285,6 +289,14 @@ class TenantProvisioningService
         // (Support > Mode assistance). Injecté ici pour que le container
         // dispose de la même clé que celle qui signe les jetons côté pms.
         $assistanceSecret = (string) config('assistance.secret');
+        // Clés VAPID communes pour les notifications Web Push des tenants
+        // (identifient l'éditeur de l'application, pas l'établissement).
+        $vapidSubject = (string) env('VAPID_SUBJECT', 'mailto:admin@meka-erp.local');
+        $vapidPublic  = (string) env('VAPID_PUBLIC_KEY', '');
+        $vapidPrivate = (string) env('VAPID_PRIVATE_KEY', '');
+        // Secret de service pour que la console business de pms consomme
+        // l'API de reporting (données financières) de cet établissement.
+        $reportingSecret = (string) env('REPORTING_SECRET', '');
 
         $appService = <<<YAML
   {$appContainer}:
@@ -310,9 +322,15 @@ class TenantProvisioningService
       TENANT_SETTINGS: '{$settingsJson}'
       TENANT_MODULES: '{$modulesJson}'
       ASSISTANCE_SECRET: "{$assistanceSecret}"
+      VAPID_SUBJECT: "{$vapidSubject}"
+      VAPID_PUBLIC_KEY: "{$vapidPublic}"
+      VAPID_PRIVATE_KEY: "{$vapidPrivate}"
+      REPORTING_SECRET: "{$reportingSecret}"
       SESSION_DRIVER: database
       CACHE_STORE: database
       QUEUE_CONNECTION: database
+    volumes:
+      - meka_erp_{$tenant->slug}_storage:/var/www/html/storage/app/public
     depends_on:
       {$dbContainer}:
         condition: service_healthy
@@ -362,6 +380,10 @@ YAML;
       TENANT_SLUG: "{$tenant->slug}"
       CMS_API_URL: "http://{$cmsContainer}"
       TENANT_API_URL: "http://{$appContainer}"
+      # Origine publique du site (navigateur) : requise par adapter-node
+      # SvelteKit pour valider les POST de formulaire (protection CSRF),
+      # sinon toute soumission est rejetée en "cross-site".
+      ORIGIN: "http://localhost:{$webPort}"
     depends_on:
       - {$appContainer}
     networks:
@@ -371,7 +393,7 @@ YAML;
         }
 
         $yaml = "services:\n\n" . implode("\n", $services)
-            . "\nnetworks:\n  {$network}:\n    external: true\n\nvolumes:\n  meka_erp_{$tenant->slug}_pgdata:\n";
+            . "\nnetworks:\n  {$network}:\n    external: true\n\nvolumes:\n  meka_erp_{$tenant->slug}_pgdata:\n  meka_erp_{$tenant->slug}_storage:\n";
 
         if (file_put_contents($composePath, $yaml) === false) {
             throw new RuntimeException("Impossible d'écrire le fichier docker-compose : {$composePath}");
@@ -754,7 +776,8 @@ YAML;
             $this->exec('docker rm -f ' . escapeshellarg($appContainer) . ' 2>/dev/null');
             $this->exec('docker rm -f ' . escapeshellarg($dbContainer)  . ' 2>/dev/null');
             $this->exec('docker volume rm meka_erp_' . $slug . '_pgdata 2>/dev/null');
-            $log('docker', "Conteneurs orphelins et volume supprimés.", 'warning');
+            $this->exec('docker volume rm meka_erp_' . $slug . '_storage 2>/dev/null');
+            $log('docker', "Conteneurs orphelins et volumes supprimés.", 'warning');
         }
 
         // Filet de sécurité : le container "web" peut avoir été laissé orphelin

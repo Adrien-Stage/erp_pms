@@ -386,6 +386,63 @@
                     </div>
                 </div>
 
+                <!-- Propriétaire (owner / compte business) -->
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mt-6">
+                    <div class="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
+                        <svg class="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+                        </svg>
+                        <h3 class="text-sm font-bold text-slate-800">Propriétaire (compte business)</h3>
+                    </div>
+                    @if($tenant->owner)
+                        <div class="p-6">
+                            <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 text-sm">
+                                <div>
+                                    <dt class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Nom</dt>
+                                    <dd class="mt-1 font-semibold text-slate-800">{{ $tenant->owner->name }}</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Entreprise</dt>
+                                    <dd class="mt-1 font-semibold text-slate-800">{{ $tenant->owner->company_name ?? 'N/A' }}</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Email</dt>
+                                    <dd class="mt-1 font-semibold text-slate-800">
+                                        @if($tenant->owner->email)
+                                            <a href="mailto:{{ $tenant->owner->email }}" class="text-indigo-600 hover:text-indigo-800 hover:underline">{{ $tenant->owner->email }}</a>
+                                        @else N/A @endif
+                                    </dd>
+                                </div>
+                                <div>
+                                    <dt class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Téléphone</dt>
+                                    <dd class="mt-1 font-semibold text-slate-800">{{ $tenant->owner->phone ?? 'N/A' }}</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Nationalité</dt>
+                                    <dd class="mt-1 font-semibold text-slate-800">{{ $tenant->owner->nationality ?? 'N/A' }}</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Statut du compte</dt>
+                                    <dd class="mt-1">
+                                        <span class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-bold border {{ $tenant->owner->is_active ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200' }}">
+                                            <span class="h-1.5 w-1.5 rounded-full {{ $tenant->owner->is_active ? 'bg-green-500' : 'bg-red-500' }}"></span>
+                                            {{ $tenant->owner->is_active ? 'Actif' : 'Inactif' }}
+                                        </span>
+                                    </dd>
+                                </div>
+                                @if($tenant->owner->last_login_at)
+                                    <div>
+                                        <dt class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Dernière connexion</dt>
+                                        <dd class="mt-1 font-semibold text-slate-800">{{ $tenant->owner->last_login_at->format('d/m/Y à H:i') }}</dd>
+                                    </div>
+                                @endif
+                            </dl>
+                        </div>
+                    @else
+                        <div class="p-6 text-sm text-slate-400 italic">Aucun propriétaire rattaché à cet établissement.</div>
+                    @endif
+                </div>
+
             {{-- ==================== INFORMATIONS ==================== --}}
             @elseif($section === 'info')
                 <div class="mb-6">

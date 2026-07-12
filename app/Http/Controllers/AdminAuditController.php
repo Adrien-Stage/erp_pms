@@ -1718,6 +1718,72 @@ class AdminAuditController extends Controller
         return view('admin.dashboard', compact('activeTab', 'tenants'));
     }
 
+    /**
+     * Vue d'ensemble 360° (AJAX) : données financières consolidées des
+     * établissements du propriétaire, via l'API reporting de chaque tenant.
+     */
+    public function businessOverviewData(Request $request, \App\Services\BusinessReportingClient $client)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isOwner()) { abort(403); }
+
+        $period = in_array($request->query('period'), ['today', 'week', 'month', 'year'], true)
+            ? $request->query('period') : 'month';
+
+        $tenants = $user->tenants()->whereNotNull('provisioned_at')->orderBy('name')->get();
+
+        return response()->json($client->overview($tenants, $period));
+    }
+
+    /**
+     * Séries de revenus consolidées (graphe d'évolution) : additionne les
+     * séries de chaque établissement point par point.
+     */
+    public function businessRevenueData(Request $request, \App\Services\BusinessReportingClient $client)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isOwner()) { abort(403); }
+
+        $period = in_array($request->query('period'), ['today', 'week', 'month', 'year'], true)
+            ? $request->query('period') : 'month';
+
+        $tenants = $user->tenants()->whereNotNull('provisioned_at')->orderBy('name')->get();
+
+        $labels = [];
+        $hotel = [];
+        $restaurant = [];
+        $shop = [];
+
+        foreach ($tenants as $tenant) {
+            $data = $client->fetch($tenant, 'revenue', ['period' => $period]);
+            $series = $data['series'] ?? null;
+            if (!$series) {
+                continue;
+            }
+
+            // Le premier établissement joignable fixe les labels ; les suivants
+            // sont additionnés point par point (mêmes bornes de période).
+            if (empty($labels)) {
+                $labels = $series['labels'] ?? [];
+                $hotel = $series['hotel'] ?? [];
+                $restaurant = $series['restaurant'] ?? [];
+                $shop = $series['shop'] ?? [];
+            } else {
+                foreach (($series['hotel'] ?? []) as $i => $v) { $hotel[$i] = ($hotel[$i] ?? 0) + $v; }
+                foreach (($series['restaurant'] ?? []) as $i => $v) { $restaurant[$i] = ($restaurant[$i] ?? 0) + $v; }
+                foreach (($series['shop'] ?? []) as $i => $v) { $shop[$i] = ($shop[$i] ?? 0) + $v; }
+            }
+        }
+
+        return response()->json([
+            'period' => $period,
+            'labels' => $labels,
+            'hotel' => array_values($hotel),
+            'restaurant' => array_values($restaurant),
+            'shop' => array_values($shop),
+        ]);
+    }
+
     public function createTenantManager(Request $request, Tenant $tenant)
     {
         $user = Auth::user();
