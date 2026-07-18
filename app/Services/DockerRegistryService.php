@@ -32,7 +32,8 @@ class DockerRegistryService
     {
         $token = $this->getAnonymousToken($imagePath, 'ghcr.io');
 
-        $response = Http::withToken($token)
+        $response = $this->http()
+            ->withToken($token)
             ->get("https://ghcr.io/v2/{$imagePath}/tags/list");
 
         return $response->successful() ? (array) $response->json('tags', []) : [];
@@ -45,7 +46,8 @@ class DockerRegistryService
     {
         $token = $this->getAnonymousToken($imagePath, 'ghcr.io');
 
-        $response = Http::withToken($token)
+        $response = $this->http()
+            ->withToken($token)
             ->withHeaders(['Accept' => self::MANIFEST_ACCEPT])
             ->get("https://ghcr.io/v2/{$imagePath}/manifests/{$tag}");
 
@@ -58,10 +60,23 @@ class DockerRegistryService
 
     private function getAnonymousToken(string $imagePath, string $registryHost): string
     {
-        $response = Http::get("https://{$registryHost}/token", [
+        $response = $this->http()->get("https://{$registryHost}/token", [
             'scope' => "repository:{$imagePath}:pull",
         ]);
 
         return (string) $response->json('token', '');
+    }
+
+    /**
+     * Client HTTP borné : sans délai d'expiration, un appel au registre peut se
+     * figer indéfiniment sur une connexion instable. On limite l'établissement
+     * de la connexion et la durée totale, et on retente les erreurs réseau
+     * transitoires avant d'abandonner.
+     */
+    private function http(): \Illuminate\Http\Client\PendingRequest
+    {
+        return Http::connectTimeout(10)
+            ->timeout(30)
+            ->retry(3, 1500, throw: false);
     }
 }

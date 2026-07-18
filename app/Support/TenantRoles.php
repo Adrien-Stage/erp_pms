@@ -60,12 +60,17 @@ class TenantRoles
             ],
             'restaurant_chief' => [
                 'label' => 'Chef restaurant',
-                'description' => 'Carte, commandes, facturation et garde-manger du restaurant.',
+                'description' => 'Carte, fiches techniques, garde-manger, cuisine et facturation du restaurant.',
                 'module' => 'restaurant',
             ],
             'restaurant_staff' => [
-                'label' => 'Personnel restaurant',
-                'description' => 'Prise et suivi des commandes en salle.',
+                'label' => 'Serveur (salle)',
+                'description' => 'Service en salle : prise de commande, navette avec la cuisine et service des plats.',
+                'module' => 'restaurant',
+            ],
+            'restaurant_cook' => [
+                'label' => 'Cuisinier (cuisine)',
+                'description' => 'Cuisine : réception des bons de commande et signalement des plats prêts.',
                 'module' => 'restaurant',
             ],
             'shop_manager' => [
@@ -111,6 +116,7 @@ class TenantRoles
             'housekeeping'        => ['housekeeping'],
             'restaurant_chief'    => ['restaurant'],
             'restaurant_staff'    => ['restaurant'],
+            'restaurant_cook'     => ['restaurant'],
             'shop_manager'        => ['shop'],
             'shop_cashier'        => ['shop'],
         ];

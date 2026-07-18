@@ -773,6 +773,12 @@ class AdminAuditController extends Controller
             ob_implicit_flush(true);
 
             $send = function (string $step, string $message, string $level = 'info') {
+                // Chaque ligne streamée (dont les battements de cœur du pull, ~12s)
+                // repousse la limite d'exécution : une mise à jour longue sur une
+                // connexion lente ne doit pas être coupée par le timer PHP, tant
+                // qu'elle progresse.
+                set_time_limit(300);
+
                 if (mb_strlen($message) > 3000) {
                     $message = mb_substr($message, 0, 3000) . '…';
                 }
