@@ -1,6 +1,6 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────────────────────────────
-# MEKA ERP — Entrypoint du conteneur admin
+# WeTchah ERP — Entrypoint du conteneur admin
 # Ce script fixe les permissions du socket Docker avant de lancer supervisord.
 # ─────────────────────────────────────────────────────────────────────────────
 set -e

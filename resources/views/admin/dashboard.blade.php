@@ -127,7 +127,7 @@
             <div class="flex items-center gap-8">
                 <div class="flex items-center gap-2">
                     <div class="text-sm font-extrabold uppercase tracking-wider text-white">
-                        MEKA ERP
+                        WeTchah ERP
                     </div>
                     @if($isTech)
                         <span class="inline-flex items-center rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-400 border border-emerald-500/30">

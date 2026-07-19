@@ -38,7 +38,7 @@
         <div class="mx-auto max-w-7xl px-5 lg:px-8 flex items-center justify-between h-16">
             <div class="flex items-center gap-8">
                 <div class="text-sm font-extrabold uppercase tracking-wider text-white">
-                    MEKA ERP
+                    WeTchah ERP
                 </div>
                 <nav class="hidden md:flex items-center gap-1.5" aria-label="Navigation administration">
                     @foreach($tabs as $key => $tab)
@@ -330,13 +330,13 @@
                             <!-- Owner Name -->
                             <div>
                                 <label for="owner_name" class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase">Nom complet <span class="text-red-400">*</span></label>
-                                <input type="text" id="owner_name" name="owner_name" x-model="ownerName" placeholder="Ex: Jean-Pierre Meka"
+                                <input type="text" id="owner_name" name="owner_name" x-model="ownerName" placeholder="Ex: Jean-Pierre Kamga"
                                        class="mt-1.5 block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition">
                             </div>
                             <!-- Owner Email -->
                             <div>
                                 <label for="owner_email" class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase">Adresse e-mail <span class="text-red-400">*</span></label>
-                                <input type="email" id="owner_email" name="owner_email" x-model="ownerEmail" placeholder="jp.meka@mekagroup.com"
+                                <input type="email" id="owner_email" name="owner_email" x-model="ownerEmail" placeholder="jp.kamga@example.com"
                                        class="mt-1.5 block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition">
                             </div>
                         </div>
@@ -345,7 +345,7 @@
                             <!-- Owner Company Name -->
                             <div class="sm:col-span-2">
                                 <label for="owner_company" class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase">Nom de l'entreprise / Groupe <span class="text-red-400">*</span></label>
-                                <input type="text" id="owner_company" name="owner_company" x-model="ownerCompany" placeholder="Ex: Meka Resort Group"
+                                <input type="text" id="owner_company" name="owner_company" x-model="ownerCompany" placeholder="Ex: Groupe Hôtelier Boutanga"
                                        class="mt-1.5 block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition">
                                 <p class="text-[9px] text-slate-400 mt-1">Sera utilisé pour suggérer des valeurs de configuration de l'instance.</p>
                             </div>
@@ -441,7 +441,7 @@
                             <!-- Database Name -->
                             <div>
                                 <label for="db_name" class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase">Nom de la base de données <span class="text-red-400">*</span></label>
-                                <input type="text" id="db_name" name="db_name" x-model="dbName" placeholder="Ex: meka_resort_db" required
+                                <input type="text" id="db_name" name="db_name" x-model="dbName" placeholder="Ex: villa_boutanga_db" required
                                        class="mt-1.5 block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 font-mono outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition">
                                 <p class="text-[9px] text-slate-400 mt-1">Sera créée de façon isolée sur le serveur PostgreSQL.</p>
                             </div>
@@ -570,13 +570,13 @@
                             <!-- Name -->
                             <div>
                                 <label for="name" class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase">Nom de l'établissement <span class="text-red-400">*</span></label>
-                                <input type="text" id="name" name="name" x-model="name" @input="generateSlug()" required placeholder="Ex: Meka Resort Douala"
+                                <input type="text" id="name" name="name" x-model="name" @input="generateSlug()" required placeholder="Ex: Villa Boutanga Douala"
                                        class="mt-1.5 block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition">
                             </div>
                             <!-- Slug -->
                             <div>
                                 <label for="slug" class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase">Slug / Sous-domaine <span class="text-red-400">*</span></label>
-                                <input type="text" id="slug" name="slug" x-model="slug" @input="autoSlug = false" required placeholder="ex: meka-resort-douala"
+                                <input type="text" id="slug" name="slug" x-model="slug" @input="autoSlug = false" required placeholder="ex: villa-boutanga-douala"
                                        class="mt-1.5 block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 font-mono outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition">
                                 <p class="text-[9px] text-slate-400 mt-1">Sert d'accès en local : <code class="font-bold font-mono">http://[slug].localhost:8080</code></p>
                             </div>
@@ -620,7 +620,7 @@
                             <!-- Email -->
                             <div>
                                 <label for="email" class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase">E-mail de contact</label>
-                                <input type="email" id="email" name="email" x-model="email" placeholder="contact@mekaresort.com"
+                                <input type="email" id="email" name="email" x-model="email" placeholder="contact@villaboutanga.com"
                                        class="mt-1.5 block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 transition">
                             </div>
                         </div>

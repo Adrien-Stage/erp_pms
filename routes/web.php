@@ -18,7 +18,7 @@ Route::get('/login', [AuthenticatedSessionController::class, 'create'])->name('l
 Route::post('/login', [AuthenticatedSessionController::class, 'store']);
 Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
 
-// === API PUBLIQUE (consommée par template_site — pas d'authentification) ===
+// === API PUBLIQUE (consommée par wetchah_site — pas d'authentification) ===
 Route::get('/api/public/establishments/{tenant:slug}/content', [AdminAuditController::class, 'publicSiteContent'])->name('api.public.establishments.content');
 
 // === ESPACE TECH (Supervision Technique) ===

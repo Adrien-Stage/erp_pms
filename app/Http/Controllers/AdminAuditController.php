@@ -568,7 +568,7 @@ class AdminAuditController extends Controller
 
     /**
      * API publique (lecture seule, pas d'auth) : contenu marketing d'un
-     * établissement, consommée par template_site. Résout les images en URLs
+     * établissement, consommée par wetchah_site. Résout les images en URLs
      * absolues — le storage vit dans pms, pas dans le container du site.
      */
     public function publicSiteContent(Tenant $tenant)
@@ -1100,7 +1100,7 @@ class AdminAuditController extends Controller
 
     /**
      * Support — Logs applicatifs : journal d'activité lu dans la table
-     * audit_logs de l'application de chaque établissement (meka_template) —
+     * audit_logs de l'application de chaque établissement (wetchah_app) —
      * connexions et actions internes, avec l'utilisateur concerné. Sans
      * filtre d'établissement, agrège tous les tenants joignables. Lecture
      * seule, timeout court par base, une base injoignable est signalée.

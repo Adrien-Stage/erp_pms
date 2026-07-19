@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * Client de la console business : interroge l'API de reporting de chaque
- * établissement d'un propriétaire (meka_template) et consolide les données
+ * établissement d'un propriétaire (wetchah_app) et consolide les données
  * pour la vue 360°. Chaque établissement calcule SES propres chiffres
  * (source unique de vérité) ; ce service agrège entre établissements,
  * classe, et remonte les alertes avec attribution.

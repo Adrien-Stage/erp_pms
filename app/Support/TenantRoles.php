@@ -4,7 +4,7 @@ namespace App\Support;
 
 /**
  * Catalogue des rôles opérationnels de l'application établissement
- * (meka_template) — miroir consultatif des constantes ROLE_* et des
+ * (wetchah_app) — miroir consultatif des constantes ROLE_* et des
  * middlewares "role:" du template. Sert l'onglet Rôles du dashboard TECH :
  * pms ne crée pas ces rôles, il les documente et compte leur répartition
  * dans la base de chaque établissement.
@@ -88,7 +88,7 @@ class TenantRoles
 
     /**
      * Matrice consultative rôle -> modules accessibles, déduite des
-     * middlewares "role:" de meka_template. Colonnes affichées dans
+     * middlewares "role:" de wetchah_app. Colonnes affichées dans
      * l'onglet Rôles ('core' = Hôtel & réception, toujours actif).
      */
     public static function moduleColumns(): array

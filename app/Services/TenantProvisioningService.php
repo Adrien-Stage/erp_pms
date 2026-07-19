@@ -319,7 +319,7 @@ class TenantProvisioningService
 
     /**
      * Équivalent de pullDockerImage()/pinToTag() pour l'image du site vitrine
-     * (template_site), sur un registre distinct de l'image applicative — le
+     * (wetchah_site), sur un registre distinct de l'image applicative — le
      * digest est figé séparément (Tenant::web_image_tag) pour ne pas coupler
      * les mises à jour des deux images.
      */

@@ -34,11 +34,11 @@ class UserSeeder extends Seeder
 
         // Créer un établissement de démonstration lié au propriétaire
         \App\Models\Tenant::firstOrCreate(
-            ['slug' => 'meka-resort'],
+            ['slug' => 'demo-resort'],
             [
-                'name' => 'Meka Resort',
+                'name' => 'Résidence Démo',
                 'owner_id' => $owner->id,
-                'db_name' => 'meka_resort_db',
+                'db_name' => 'demo_resort_db',
                 'is_active' => true,
                 'currency' => 'XAF',
                 'settings' => [
