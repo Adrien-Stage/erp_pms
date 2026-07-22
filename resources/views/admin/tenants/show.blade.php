@@ -848,9 +848,16 @@
                         @foreach($moduleDefs as $key => $def)
                             <label class="relative flex flex-col gap-3 rounded-xl border p-4 cursor-pointer select-none transition hover:bg-slate-50"
                                    :class="modules.{{ $key }} ? 'border-indigo-600 ring-2 ring-indigo-50 bg-indigo-50/10' : 'border-slate-200'">
-                                <input type="checkbox" name="modules[]" value="{{ $key }}" hidden
+                                {{-- Case à cocher d'UI uniquement (sans name : elle ne se soumet pas).
+                                     La soumission passe par le champ caché ci-dessous, présent
+                                     seulement quand le module est activé — évite l'ambiguïté d'une
+                                     case liée en x-model, qui empêchait la désactivation de prendre. --}}
+                                <input type="checkbox" hidden
                                        x-model="modules.{{ $key }}"
                                        @if(in_array($key, ['api', 'website'], true)) @change="toggleModuleDependency('{{ $key }}')" @endif>
+                                <template x-if="modules.{{ $key }}">
+                                    <input type="hidden" name="modules[]" value="{{ $key }}">
+                                </template>
                                 <div class="flex items-start justify-between gap-2">
                                     <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition"
                                          :class="modules.{{ $key }} ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'">
@@ -1126,7 +1133,8 @@
 
                 <div class="space-y-6" x-data="{
                     showDeleteModal: false, confirmSlug: '',
-                    showUpdateModal: false, availableTags: [], selectedTag: '', loadingTags: false, updating: false
+                    showUpdateModal: false, availableTags: [], selectedTag: '', loadingTags: false, updating: false,
+                    showWebModal: false, webUpdating: false
                 }">
                     <!-- Technical details card (read-only) -->
                     <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -1206,13 +1214,11 @@
                                         {{ $tenant->web_image_tag ? \Illuminate\Support\Str::limit($tenant->web_image_tag, 22, '…') : 'Non résolu' }}
                                     </span>
                                 </div>
-                                <form action="{{ route('tech.establishments.update-website', $tenant) }}" method="POST"
-                                      onsubmit="const b = this.querySelector('button'); b.disabled = true; b.textContent = 'Mise à jour en cours…';">
-                                    @csrf
-                                    <button type="submit" class="shrink-0 rounded-lg bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-sm cursor-pointer disabled:opacity-60 disabled:cursor-wait">
-                                        Mettre à jour le site
-                                    </button>
-                                </form>
+                                <button type="button"
+                                        @click="showWebModal = true"
+                                        class="shrink-0 rounded-lg bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-sm cursor-pointer">
+                                    Mettre à jour le site
+                                </button>
                             </div>
                         </div>
                     @endif
@@ -1381,6 +1387,69 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Update Website Modal -->
+                    <div x-show="showWebModal"
+                         class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+                         x-transition:enter="transition ease-out duration-300"
+                         x-transition:enter-start="opacity-0"
+                         x-transition:enter-end="opacity-100"
+                         x-transition:leave="transition ease-in duration-200"
+                         x-transition:leave-start="opacity-100"
+                         x-transition:leave-end="opacity-0"
+                         x-cloak>
+
+                        <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden max-w-lg w-full"
+                             @click.away="if (!webUpdating) { showWebModal = false }"
+                             x-transition:enter="transition ease-out duration-300 transform scale-95"
+                             x-transition:enter-start="opacity-0 scale-95"
+                             x-transition:enter-end="opacity-100 scale-100"
+                             x-transition:leave="transition ease-in duration-200 transform scale-100"
+                             x-transition:leave-start="opacity-100 scale-100"
+                             x-transition:leave-end="opacity-0 scale-95">
+
+                            <!-- Header -->
+                            <div class="bg-slate-950 px-6 py-5 flex items-center gap-3">
+                                <div class="rounded-lg bg-indigo-500/20 p-2">
+                                    <svg class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418" />
+                                    </svg>
+                                </div>
+                                <h3 class="text-sm font-bold text-white tracking-wide">Mettre à jour le site vitrine</h3>
+                            </div>
+
+                            <!-- Confirmation (avant lancement) -->
+                            <div class="p-6 space-y-4" x-show="!webUpdating">
+                                <p class="text-xs text-slate-600 leading-relaxed">
+                                    Le container du site public sera recréé avec la dernière image publiée sur le registre (tag « latest »). Le contenu marketing et la configuration de l'établissement ne sont pas affectés. Si le site est déjà à jour, aucune action n'est effectuée.
+                                </p>
+                            </div>
+
+                            <!-- Logs en direct (pendant la mise à jour) -->
+                            <div x-show="webUpdating" class="p-6">
+                                <div id="web-update-log-output" class="font-mono text-xs text-slate-300 space-y-1.5 bg-slate-950/70 rounded-lg p-5 border border-slate-850 overflow-y-auto h-64" style="word-break: break-word; overflow-wrap: break-word;"></div>
+                                <div class="mt-3 flex justify-end">
+                                    <button type="button" onclick="copyLogText('web-update-log-output', this)"
+                                            class="rounded border border-slate-700 bg-slate-800 px-2.5 py-1 text-[10px] font-bold text-slate-300 hover:bg-slate-700 hover:text-white transition cursor-pointer">
+                                        Copier les logs
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Footer Actions -->
+                            <div class="bg-slate-50 px-6 py-4 border-t border-slate-100 flex items-center justify-end gap-3">
+                                <button @click="showWebModal = false" type="button" x-show="!webUpdating"
+                                        class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer">
+                                    Annuler
+                                </button>
+                                <button type="button" x-show="!webUpdating"
+                                        @click="webUpdating = true; startWebsiteUpdateStream()"
+                                        class="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 transition cursor-pointer shadow-sm">
+                                    Lancer la mise à jour
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <script>
@@ -1423,6 +1492,53 @@
                             }
                         } catch (e) {
                             console.error('Error parsing update stream payload:', e);
+                        }
+                    };
+
+                    evtSource.onerror = function () {
+                        evtSource.close();
+                    };
+                }
+
+                function startWebsiteUpdateStream() {
+                    const logOutput = document.getElementById('web-update-log-output');
+                    logOutput.innerHTML = '';
+                    const streamUrl = '{{ route("tech.establishments.update-website.stream", $tenant) }}';
+                    const evtSource = new EventSource(streamUrl);
+
+                    evtSource.onmessage = function (event) {
+                        try {
+                            const data = JSON.parse(event.data);
+                            const line = document.createElement('div');
+                            line.className = 'flex gap-2.5 items-start py-0.5 border-b border-slate-900/10';
+
+                            const timeSpan = document.createElement('span');
+                            timeSpan.className = 'text-slate-500 shrink-0 font-semibold select-none';
+                            timeSpan.textContent = `[${data.time}]`;
+
+                            const msgSpan = document.createElement('span');
+                            msgSpan.className = {
+                                'success': 'text-emerald-400 font-semibold',
+                                'error':   'text-red-400 font-semibold',
+                                'warning': 'text-amber-400',
+                                'info':    'text-slate-300',
+                            }[data.level] || 'text-slate-300';
+                            msgSpan.textContent = data.message;
+
+                            line.appendChild(timeSpan);
+                            line.appendChild(msgSpan);
+                            logOutput.appendChild(line);
+                            logOutput.scrollTop = logOutput.scrollHeight;
+
+                            if (data.step === 'done' || data.step === 'finished') {
+                                evtSource.close();
+                                setTimeout(() => location.reload(), 1500);
+                            }
+                            if (data.level === 'error' || data.step === 'error') {
+                                evtSource.close();
+                            }
+                        } catch (e) {
+                            console.error('Error parsing website update stream payload:', e);
                         }
                     };
 

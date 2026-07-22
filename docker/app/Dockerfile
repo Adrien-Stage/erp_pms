@@ -39,6 +39,8 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
 WORKDIR /var/www/html
 
 COPY docker/app/nginx.conf /etc/nginx/sites-available/default
+# Chargé en dernier (préfixe zz-) pour surcharger docker-php-ext-opcache.ini.
+COPY docker/app/php-opcache.ini /usr/local/etc/php/conf.d/zz-opcache.ini
 COPY docker/app/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY docker/app/php-fpm-docker.conf /usr/local/etc/php-fpm.d/zz-docker.conf
 COPY docker/app/entrypoint.sh /usr/local/bin/entrypoint.sh

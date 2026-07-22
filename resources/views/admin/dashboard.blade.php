@@ -85,6 +85,12 @@
                 'description' => 'Rapports détaillés de performance et croissance.',
                 'items' => ['Volume réservations', 'Fidélité client', 'Fréquentation'],
             ],
+            'clients' => [
+                'label' => 'Clients',
+                'title' => 'Analyse de la clientèle',
+                'description' => 'Meilleurs clients, rentabilité et provenance géographique de votre clientèle.',
+                'items' => ['Meilleurs clients', 'Rentabilité', 'Marchés émetteurs', 'Segmentation RFM'],
+            ],
             'employees' => [
                 'label' => 'Employés',
                 'title' => 'Gestion des employés',
@@ -1462,6 +1468,347 @@
 
                 <div x-show="!loading && !data" x-cloak class="rounded-lg border border-red-200 bg-red-50 p-5 text-xs font-bold text-red-700">Impossible de charger les statistiques. Réessayez.</div>
             </div>
+
+        @elseif($activeTab === 'clients' && $isOwner)
+            {{-- ================= CLIENTS (VALEUR, RENTABILITÉ, PROVENANCE) ================= --}}
+            {{-- Fond de carte et projection chargés seulement sur cet onglet. --}}
+            <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+            <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
+
+            <div class="mt-2"
+                 x-data="{
+                    period: 'month', loading: true, data: null,
+                    periods: { today:'Aujourd\'hui', week:'Semaine', month:'Mois', year:'Année' },
+                    rfmMeta: {
+                        champions:    { label:'Champions',    color:'#4f46e5', hint:'Récents, fréquents, gros paniers' },
+                        fideles:      { label:'Fidèles',      color:'#16a34a', hint:'Reviennent régulièrement' },
+                        prometteurs:  { label:'Prometteurs',  color:'#0ea5e9', hint:'Deuxième séjour récent' },
+                        nouveaux:     { label:'Nouveaux',     color:'#f59e0b', hint:'Première visite récente' },
+                        a_risque:     { label:'À risque',     color:'#f97316', hint:'Habitués qui s\'espacent' },
+                        endormis:     { label:'Endormis',     color:'#94a3b8', hint:'Plus d\'un an sans séjour' },
+                        occasionnels: { label:'Occasionnels', color:'#cbd5e1', hint:'Passage unique et ancien' },
+                    },
+                    contColor: { 'Afrique':'#4f46e5','Europe':'#0ea5e9','Amériques':'#16a34a','Asie':'#f59e0b','Océanie':'#ec4899','Inconnu':'#94a3b8' },
+                    fmt(c) { return new Intl.NumberFormat('fr-FR').format(Math.round((c||0)/100)); },
+                    fmtShort(c) {
+                        const v = (c||0)/100;
+                        if (v >= 1000000) return (v/1000000).toFixed(2).replace('.',',') + ' M';
+                        if (v >= 1000) return Math.round(v/1000) + ' k';
+                        return Math.round(v);
+                    },
+                    initials(name) {
+                        return (name||'?').split(' ').filter(Boolean).map(w => w[0]).join('').slice(0,2).toUpperCase();
+                    },
+                    async load() {
+                        this.loading = true;
+                        try {
+                            const url = new URL('{{ route('business.clients.data') }}', window.location.origin);
+                            url.searchParams.set('period', this.period);
+                            const r = await fetch(url, { headers: { 'Accept':'application/json' } });
+                            this.data = await r.json();
+                        } catch(e) { this.data = null; }
+                        this.loading = false;
+                        this.$nextTick(() => { if (this.data) renderClientsMap(this.data.geo); });
+                    },
+                    get maxCountry() {
+                        if (!this.data || !this.data.geo.length) return 1;
+                        return Math.max(...this.data.geo.map(g => g.customers), 1);
+                    },
+                    get totalGeo() {
+                        if (!this.data) return 0;
+                        return this.data.geo.reduce((s,g) => s + g.customers, 0);
+                    },
+                    get continentRows() {
+                        if (!this.data) return [];
+                        const total = this.totalGeo || 1;
+                        return Object.entries(this.data.continents || {})
+                            .map(([name, n]) => ({ name, n, pct: Math.round(n/total*100) }));
+                    },
+                    get rfmRows() {
+                        if (!this.data) return [];
+                        return Object.entries(this.data.rfm || {})
+                            .filter(([k]) => this.rfmMeta[k])
+                            .map(([k,v]) => ({ key:k, count:v, ...this.rfmMeta[k] }));
+                    }
+                 }" x-init="load()">
+
+                {{-- En-tête --}}
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+                    <div>
+                        <h1 class="text-2xl font-extrabold tracking-tight text-slate-800 font-heading">Clients</h1>
+                        <p class="text-xs text-slate-500 mt-1">Qui sont vos meilleurs clients, lesquels rapportent le plus, et d'où viennent-ils.</p>
+                    </div>
+                    <div class="inline-flex rounded-lg border border-slate-200 bg-white p-0.5">
+                        <template x-for="(label,key) in periods" :key="key">
+                            <button type="button" @click="period=key; load()" class="px-3 py-1.5 text-xs font-semibold rounded-md transition" :class="period===key ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'" x-text="label"></button>
+                        </template>
+                    </div>
+                </div>
+
+                <div x-show="loading && !data" class="grid grid-cols-1 sm:grid-cols-5 gap-4 mb-6"><template x-for="i in 5" :key="i"><div class="h-24 rounded-xl bg-slate-100 animate-pulse"></div></template></div>
+
+                <template x-if="data && data.count === 0">
+                    <div class="rounded-xl border border-slate-200 bg-white p-10 text-center">
+                        <p class="text-sm text-slate-500 font-semibold">Aucune donnée client disponible.</p>
+                        <p class="text-xs text-slate-400 mt-2 max-w-md mx-auto leading-relaxed">
+                            Vérifiez que vos établissements sont démarrés et qu'ils tournent sur une version de l'application prenant en charge l'analyse de la clientèle — sinon, mettez-les à jour depuis l'espace technique.
+                        </p>
+                        <template x-if="data.unreachable && data.unreachable.length">
+                            <p class="text-xs text-amber-600 mt-3">Sans réponse : <span x-text="data.unreachable.join(', ')"></span></p>
+                        </template>
+                    </div>
+                </template>
+
+                <template x-if="data && data.count > 0">
+                    <div>
+                        {{-- Qualité de la donnée géographique : sans pays renseigné, la carte ment par omission. --}}
+                        <template x-if="data.totals.country_completeness < 90">
+                            <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 mb-5 flex items-start gap-3">
+                                <svg class="h-4 w-4 text-amber-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"/></svg>
+                                <p class="text-[11px] text-amber-900 leading-relaxed">
+                                    Seuls <strong x-text="data.totals.country_completeness + '%'"></strong> de vos clients ont un pays renseigné.
+                                    La carte et les marchés émetteurs ne reflètent que cette part — le pays est désormais obligatoire à la création d'un client, la couverture va se compléter au fil des nouvelles réservations.
+                                </p>
+                            </div>
+                        </template>
+
+                        {{-- KPI --}}
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+                            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Base clients</p>
+                                <p class="text-2xl font-extrabold text-slate-800 mt-2 leading-none" x-text="new Intl.NumberFormat('fr-FR').format(data.totals.customers)"></p>
+                                <p class="text-[11px] text-emerald-600 mt-2 font-semibold">+<span x-text="data.totals.new"></span> nouveaux</p>
+                            </div>
+                            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Taux de retour</p>
+                                <p class="text-2xl font-extrabold text-slate-800 mt-2 leading-none"><span x-text="data.totals.repeat_rate"></span>%</p>
+                                <p class="text-[11px] text-slate-400 mt-2">clients revenus au moins 2 fois</p>
+                            </div>
+                            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Valeur vie moyenne</p>
+                                <p class="text-2xl font-extrabold text-slate-800 mt-2 leading-none"><span x-text="fmtShort(data.totals.avg_ltv)"></span> <span class="text-xs text-slate-400" x-text="data.currency"></span></p>
+                                <p class="text-[11px] text-slate-400 mt-2">cumul par client</p>
+                            </div>
+                            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Panier moyen</p>
+                                <p class="text-2xl font-extrabold text-slate-800 mt-2 leading-none"><span x-text="fmtShort(data.totals.avg_basket)"></span> <span class="text-xs text-slate-400" x-text="data.currency"></span></p>
+                                <p class="text-[11px] text-slate-400 mt-2">par séjour</p>
+                            </div>
+                            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Clients internationaux</p>
+                                <p class="text-2xl font-extrabold text-slate-800 mt-2 leading-none"><span x-text="data.totals.international_share"></span>%</p>
+                                <p class="text-[11px] text-slate-400 mt-2"><span x-text="data.totals.countries"></span> pays représentés</p>
+                            </div>
+                        </div>
+
+                        {{-- Carte du monde + marchés émetteurs --}}
+                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+                            <div class="lg:col-span-2 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <div class="flex items-baseline justify-between mb-1">
+                                    <h3 class="text-sm font-bold text-slate-800">D'où viennent vos clients</h3>
+                                    <span class="text-[10px] text-slate-400">intensité = nombre de clients</span>
+                                </div>
+                                <div id="clients-map" class="w-full min-h-[280px] flex items-center justify-center">
+                                    <span class="text-xs text-slate-400">Chargement de la carte…</span>
+                                </div>
+                                <div class="flex items-center gap-2 mt-2">
+                                    <span class="text-[10px] text-slate-400">Moins</span>
+                                    <div class="flex-1 h-2 rounded-full" style="background:linear-gradient(90deg,#e0e7ff,#818cf8,#312e81)"></div>
+                                    <span class="text-[10px] text-slate-400">Plus</span>
+                                </div>
+                            </div>
+
+                            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col gap-5">
+                                <div>
+                                    <h3 class="text-sm font-bold text-slate-800 mb-3">Top pays émetteurs</h3>
+                                    <template x-if="!data.geo.length">
+                                        <p class="text-xs text-slate-400">Aucun pays renseigné pour l'instant.</p>
+                                    </template>
+                                    <div class="space-y-2.5">
+                                        <template x-for="g in data.geo.slice(0,8)" :key="g.country">
+                                            <div>
+                                                <div class="flex items-center gap-2">
+                                                    <span class="font-mono text-[10px] w-7 text-center py-0.5 rounded bg-slate-50 border border-slate-200 text-slate-600" x-text="g.country"></span>
+                                                    <span class="text-xs text-slate-700 flex-1 truncate" x-text="g.name"></span>
+                                                    <span class="text-[11px] text-slate-400 font-semibold tabular-nums" x-text="g.customers"></span>
+                                                </div>
+                                                <div class="h-1.5 rounded-full bg-slate-100 mt-1 overflow-hidden">
+                                                    <div class="h-full rounded-full" :style="`width:${Math.max(3, g.customers/maxCountry*100)}%; background:${contColor[g.continent] || '#94a3b8'}`"></div>
+                                                </div>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+
+                                <div class="border-t border-slate-100 pt-4">
+                                    <h3 class="text-sm font-bold text-slate-800 mb-3">Par continent</h3>
+                                    <div class="space-y-2">
+                                        <template x-for="c in continentRows" :key="c.name">
+                                            <div class="flex items-center gap-2">
+                                                <span class="h-2 w-2 rounded-full" :style="`background:${contColor[c.name] || '#94a3b8'}`"></span>
+                                                <span class="text-xs text-slate-700 flex-1" x-text="c.name"></span>
+                                                <span class="text-[11px] text-slate-400 font-semibold tabular-nums" x-text="c.pct + '%'"></span>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {{-- Classements --}}
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+                            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <div class="flex items-baseline justify-between mb-3">
+                                    <h3 class="text-sm font-bold text-slate-800">Meilleurs clients</h3>
+                                    <span class="text-[10px] text-slate-400">chiffre d'affaires de la période</span>
+                                </div>
+                                <template x-if="!data.top_revenue.length"><p class="text-xs text-slate-400">Aucun client actif sur la période.</p></template>
+                                <div>
+                                    <template x-for="(c,i) in data.top_revenue" :key="i">
+                                        <div class="flex items-center gap-3 py-2 border-b border-slate-100 last:border-0">
+                                            <span class="text-[11px] text-slate-400 w-4 tabular-nums" x-text="i+1"></span>
+                                            <span class="h-7 w-7 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[9px] font-bold text-indigo-700" x-text="initials(c.name)"></span>
+                                            <div class="flex-1 min-w-0">
+                                                <p class="text-xs font-semibold text-slate-800 truncate">
+                                                    <span x-text="c.name"></span>
+                                                    <template x-if="c.is_vip"><span class="ml-1 text-[9px] px-1 py-0.5 rounded bg-amber-100 text-amber-700 font-bold">VIP</span></template>
+                                                </p>
+                                                <p class="text-[10px] text-slate-400 truncate">
+                                                    <span x-text="c.country || '—'"></span> ·
+                                                    <span x-text="c.bookings"></span> séjour<span x-show="c.bookings > 1">s</span> ·
+                                                    <span x-text="c.nights"></span> nuitées
+                                                    <template x-if="c.establishments && c.establishments.length > 1">
+                                                        <span class="ml-1 text-indigo-500 font-semibold" x-text="'· ' + c.establishments.length + ' établissements'"></span>
+                                                    </template>
+                                                </p>
+                                            </div>
+                                            <span class="text-xs font-bold text-slate-800 tabular-nums shrink-0"><span x-text="fmtShort(c.revenue)"></span> <span class="text-[9px] text-slate-400 font-semibold" x-text="data.currency"></span></span>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+
+                            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <div class="flex items-baseline justify-between mb-3">
+                                    <h3 class="text-sm font-bold text-slate-800">Clients les plus rentables</h3>
+                                    <span class="text-[10px] text-slate-400">revenu par nuitée</span>
+                                </div>
+                                <template x-if="!data.top_profitable.length"><p class="text-xs text-slate-400">Aucune nuitée vendue sur la période.</p></template>
+                                <div>
+                                    <template x-for="(c,i) in data.top_profitable" :key="i">
+                                        <div class="flex items-center gap-3 py-2 border-b border-slate-100 last:border-0">
+                                            <span class="text-[11px] text-slate-400 w-4 tabular-nums" x-text="i+1"></span>
+                                            <span class="h-7 w-7 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center text-[9px] font-bold text-emerald-700" x-text="initials(c.name)"></span>
+                                            <div class="flex-1 min-w-0">
+                                                <p class="text-xs font-semibold text-slate-800 truncate" x-text="c.name"></p>
+                                                <p class="text-[10px] text-slate-400 truncate">
+                                                    <span x-text="c.country || '—'"></span> ·
+                                                    <span x-text="c.nights"></span> nuitées ·
+                                                    total <span x-text="fmtShort(c.revenue)"></span>
+                                                </p>
+                                            </div>
+                                            <span class="text-xs font-bold text-slate-800 tabular-nums shrink-0"><span x-text="fmtShort(c.revenue_per_night)"></span> <span class="text-[9px] text-slate-400 font-semibold">/nuit</span></span>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
+
+                        {{-- Segmentation RFM --}}
+                        <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                            <div class="flex items-baseline justify-between mb-4">
+                                <h3 class="text-sm font-bold text-slate-800">Segmentation RFM</h3>
+                                <span class="text-[10px] text-slate-400">Récence · Fréquence · Montant</span>
+                            </div>
+                            <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+                                <template x-for="s in rfmRows" :key="s.key">
+                                    <div class="rounded-lg border border-slate-200 p-3" :style="`border-left:3px solid ${s.color}`">
+                                        <p class="text-[10px] text-slate-500 font-semibold" x-text="s.label"></p>
+                                        <p class="text-lg font-extrabold text-slate-800 leading-tight tabular-nums" x-text="s.count"></p>
+                                        <p class="text-[9px] text-slate-400 leading-snug mt-0.5" x-text="s.hint"></p>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+
+                        <p class="text-[10px] text-slate-400 mt-4 text-right">
+                            Dernière actualisation : <span x-text="data.generated_at"></span>
+                            <template x-if="data.unreachable && data.unreachable.length">
+                                <span class="text-amber-600"> · hors ligne : <span x-text="data.unreachable.join(', ')"></span></span>
+                            </template>
+                        </p>
+                    </div>
+                </template>
+
+                <div x-show="!loading && !data" x-cloak class="rounded-lg border border-red-200 bg-red-50 p-5 text-xs font-bold text-red-700">Impossible de charger l'analyse clients. Réessayez.</div>
+            </div>
+
+            <script>
+            // Fond de carte mis en cache : changer de période ne doit pas le retélécharger.
+            let __worldAtlas = null;
+
+            async function renderClientsMap(geo) {
+                const el = document.getElementById('clients-map');
+                if (!el) return;
+
+                if (typeof d3 === 'undefined' || typeof topojson === 'undefined') {
+                    el.innerHTML = '<p class="text-xs text-slate-400">Carte indisponible — la classement par pays ci-contre reste exploitable.</p>';
+                    return;
+                }
+
+                const byNum = {};
+                let max = 0;
+                (geo || []).forEach(g => {
+                    if (!g.numeric) return;
+                    byNum[+g.numeric] = g.customers;
+                    if (g.customers > max) max = g.customers;
+                });
+
+                try {
+                    if (!__worldAtlas) {
+                        __worldAtlas = await d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json');
+                    }
+
+                    el.innerHTML = '';
+                    const width = el.clientWidth || 620;
+                    const height = 300;
+
+                    // L'Antarctique n'apporte rien et écrase la projection.
+                    const features = topojson.feature(__worldAtlas, __worldAtlas.objects.countries)
+                        .features.filter(f => String(f.id) !== '010');
+
+                    const projection = d3.geoNaturalEarth1();
+                    const path = d3.geoPath(projection);
+                    projection.fitSize([width, height], { type: 'FeatureCollection', features });
+
+                    // Racine carrée : sans elle, un marché domestique très dominant
+                    // écrase toute la nuance des marchés secondaires.
+                    const color = d3.scaleSequentialSqrt()
+                        .domain([0, Math.max(max, 1)])
+                        .interpolator(d3.interpolateRgb('#e0e7ff', '#312e81'));
+
+                    const svg = d3.select(el).append('svg')
+                        .attr('viewBox', `0 0 ${width} ${height}`)
+                        .attr('width', '100%')
+                        .style('height', 'auto')
+                        .style('display', 'block');
+
+                    svg.append('g').selectAll('path').data(features).enter().append('path')
+                        .attr('d', path)
+                        .attr('fill', d => byNum[+d.id] ? color(byNum[+d.id]) : '#f1f5f9')
+                        .attr('stroke', '#ffffff')
+                        .attr('stroke-width', 0.4)
+                        .append('title')
+                        .text(d => {
+                            const n = byNum[+d.id];
+                            const name = (d.properties && d.properties.name) ? d.properties.name : '';
+                            return n ? `${name} — ${n} client${n > 1 ? 's' : ''}` : name;
+                        });
+                } catch (e) {
+                    el.innerHTML = '<p class="text-xs text-slate-400">Carte indisponible (fond de carte inaccessible) — le classement par pays ci-contre reste exploitable.</p>';
+                }
+            }
+            </script>
 
         @elseif($activeTab === 'employees' && $isOwner)
             {{-- ================= EMPLOYÉS (CONSOLIDÉ) ================= --}}

@@ -322,12 +322,16 @@ class AdminAuditController extends Controller
         $user = Auth::user();
         if (!$user || !$user->isTechAdmin()) { abort(403); }
 
-        $validated = $request->validate([
-            'modules' => ['nullable', 'array'],
-            'modules.*' => ['string', Rule::in(['restaurant', 'shop', 'housekeeping', 'discussions', 'analytics', 'api', 'website'])],
-        ]);
+        $request->validate(['modules' => ['nullable', 'array']]);
 
-        $modules = $this->applyModuleDependencies($validated['modules'] ?? []);
+        // On ne garde que les modules valides réellement soumis. Une case décochée
+        // n'envoie rien → le module disparaît de la liste (désactivation). On filtre
+        // par intersection plutôt qu'avec Rule::in : une entrée vide/parasite ne doit
+        // pas faire échouer toute la requête et laisser la désactivation sans effet.
+        $allowed = ['restaurant', 'shop', 'housekeeping', 'discussions', 'analytics', 'api', 'website'];
+        $modules = array_values(array_intersect($allowed, (array) $request->input('modules', [])));
+
+        $modules = $this->applyModuleDependencies($modules);
         $tenant->update(['modules' => $modules]);
 
         if (empty($tenant->docker_image_tag)) {
@@ -390,6 +394,82 @@ class AdminAuditController extends Controller
         } catch (\RuntimeException $e) {
             return back()->with('error', "Échec de la mise à jour du site : " . $e->getMessage());
         }
+    }
+
+    /**
+     * SSE endpoint : met à jour le site vitrine vers la dernière image publiée
+     * (tag « latest »), en temps réel — même visualisation que la mise à jour
+     * applicative. updateWeb() renvoie false quand le site est déjà à jour.
+     */
+    public function updateTenantWebsiteStream(Tenant $tenant, Request $request, \App\Services\TenantProvisioningService $provisioner)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isTechAdmin()) { abort(403); }
+
+        set_time_limit(600);
+        ini_set('max_execution_time', '600');
+
+        return response()->stream(function () use ($tenant, $provisioner) {
+            if (ob_get_level()) {
+                ob_end_clean();
+            }
+            ob_implicit_flush(true);
+
+            $send = function (string $step, string $message, string $level = 'info') {
+                // Chaque ligne streamée (dont les battements de cœur du pull)
+                // repousse la limite d'exécution : une mise à jour longue sur une
+                // connexion lente ne doit pas être coupée par le timer PHP tant
+                // qu'elle progresse.
+                set_time_limit(300);
+
+                if (mb_strlen($message) > 3000) {
+                    $message = mb_substr($message, 0, 3000) . '…';
+                }
+                $payload = json_encode([
+                    'step'    => $step,
+                    'message' => $message,
+                    'level'   => $level,
+                    'time'    => now()->format('H:i:s'),
+                ]);
+                echo "data: {$payload}\n\n";
+                if (ob_get_level()) {
+                    ob_flush();
+                }
+                flush();
+            };
+
+            try {
+                $updated = $provisioner->updateWeb($tenant, $send);
+
+                if (!$updated) {
+                    $send('finished', 'Le site est déjà à la dernière version.', 'success');
+                    return;
+                }
+
+                AuditLog::record(
+                    Auth::id(),
+                    'update_tenant_website',
+                    "Site vitrine mis à jour pour l'établissement {$tenant->name}",
+                    'tech_admin'
+                );
+
+                $send('finished', 'Site vitrine mis à jour avec succès.', 'success');
+
+            } catch (\Throwable $e) {
+                $send('error', $e->getMessage(), 'error');
+
+                AuditLog::record(
+                    Auth::id(),
+                    'update_tenant_website_error',
+                    "Échec de la mise à jour du site de {$tenant->name} : " . $e->getMessage(),
+                    'tech_admin'
+                );
+            }
+        }, 200, [
+            'Content-Type'      => 'text/event-stream',
+            'Cache-Control'     => 'no-cache',
+            'X-Accel-Buffering' => 'no',
+        ]);
     }
 
     /**
@@ -1714,7 +1794,7 @@ class AdminAuditController extends Controller
         $segment = $request->segment(2); // business/{segment}
         $activeTab = $request->input('tab', $segment ?: 'dashboard');
 
-        if (!in_array($activeTab, ['dashboard', 'establishments', 'analytics', 'employees', 'revenue'])) {
+        if (!in_array($activeTab, ['dashboard', 'establishments', 'analytics', 'clients', 'employees', 'revenue'])) {
             $activeTab = 'dashboard';
         }
 
@@ -1944,6 +2024,23 @@ class AdminAuditController extends Controller
         $tenants = $user->tenants()->whereNotNull('provisioned_at')->orderBy('name')->get();
 
         return response()->json($client->statistics($tenants, $period));
+    }
+
+    /**
+     * Analytique de la clientèle consolidée (page « Clients ») : meilleurs
+     * clients, rentabilité, segmentation RFM et marchés émetteurs.
+     */
+    public function businessClientsData(Request $request, \App\Services\BusinessReportingClient $client)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isOwner()) { abort(403); }
+
+        $period = in_array($request->query('period'), ['today', 'week', 'month', 'year'], true)
+            ? $request->query('period') : 'month';
+
+        $tenants = $user->tenants()->whereNotNull('provisioned_at')->orderBy('name')->get();
+
+        return response()->json($client->customers($tenants, $period));
     }
 
     /**

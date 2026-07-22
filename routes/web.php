@@ -55,6 +55,7 @@ Route::middleware(['auth', 'role:tech_admin'])->prefix('tech')->name('tech.')->g
     Route::get('/establishments/{tenant}/versions', [AdminAuditController::class, 'availableVersions'])->name('establishments.versions');
     Route::get('/establishments/{tenant}/update-version/stream', [AdminAuditController::class, 'updateTenantVersionStream'])->name('establishments.update-version.stream');
     Route::post('/establishments/{tenant}/update-website', [AdminAuditController::class, 'updateTenantWebsite'])->name('establishments.update-website');
+    Route::get('/establishments/{tenant}/update-website/stream', [AdminAuditController::class, 'updateTenantWebsiteStream'])->name('establishments.update-website.stream');
 
     // Gestion des Utilisateurs ( TECH et BUSINESS )
     Route::post('/users/{user}/toggle-active', [AdminAuditController::class, 'toggleUserActive'])->name('users.toggle-active');
@@ -81,6 +82,7 @@ Route::middleware(['auth', 'role:owner'])->prefix('business')->name('business.')
     Route::get('/establishments/{tenant}/finance-data', [AdminAuditController::class, 'businessEstablishmentFinance'])->name('establishments.finance-data');
     Route::post('/establishments/{tenant}/create-manager', [AdminAuditController::class, 'createTenantManager'])->name('establishments.create-manager');
     Route::get('/analytics', [AdminAuditController::class, 'businessDashboard'])->name('analytics');
+    Route::get('/clients', [AdminAuditController::class, 'businessDashboard'])->name('clients');
     Route::get('/employees', [AdminAuditController::class, 'businessDashboard'])->name('employees');
     Route::get('/revenue', [AdminAuditController::class, 'businessDashboard'])->name('revenue');
 
@@ -88,6 +90,7 @@ Route::middleware(['auth', 'role:owner'])->prefix('business')->name('business.')
     Route::get('/overview/data', [AdminAuditController::class, 'businessOverviewData'])->name('overview.data');
     Route::get('/revenue/data', [AdminAuditController::class, 'businessRevenueData'])->name('revenue.data');
     Route::get('/stats/data', [AdminAuditController::class, 'businessStatsData'])->name('stats.data');
+    Route::get('/clients/data', [AdminAuditController::class, 'businessClientsData'])->name('clients.data');
     Route::get('/employees/data', [AdminAuditController::class, 'businessEmployeesData'])->name('employees.data');
     Route::get('/report/data', [AdminAuditController::class, 'businessReportData'])->name('report.data');
     Route::get('/report/export/excel', [AdminAuditController::class, 'businessReportExcel'])->name('report.excel');
