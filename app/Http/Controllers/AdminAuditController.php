@@ -239,17 +239,16 @@ class AdminAuditController extends Controller
 
         $section = request('section', 'overview');
         $tenantUsers = collect();
+        // Rôles proposés à l'affectation, lus dans la base de l'établissement :
+        // chaque établissement a son propre référentiel de rôles.
+        $tenantRoles = collect();
 
         if ($section === 'users') {
             try {
-                $pdo = $this->connectToTenantDatabase($tenant);
+                $tenantDb = app(\App\Services\TenantDatabase::class);
 
-                $stmt = $pdo->query("SELECT id, name, email, phone, role, is_active FROM users ORDER BY name");
-                $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-
-                $tenantUsers = collect($rows)->map(function ($row) {
-                    return (object) $row;
-                });
+                $tenantUsers = collect($tenantDb->users($tenant));
+                $tenantRoles = collect($tenantDb->assignableRoles($tenant));
 
                 // users_count est un compteur dénormalisé (incrémenté à la création
                 // d'un manager) — il peut dériver si un utilisateur est supprimé
@@ -264,7 +263,7 @@ class AdminAuditController extends Controller
             }
         }
 
-        return view('admin.tenants.show', compact('tenant', 'tenantUsers', 'section'));
+        return view('admin.tenants.show', compact('tenant', 'tenantUsers', 'tenantRoles', 'section'));
     }
 
     /**
@@ -497,7 +496,17 @@ class AdminAuditController extends Controller
     public function updateSiteContent(Request $request, Tenant $tenant)
     {
         $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) { abort(403); }
+        if (!$user) { abort(401); }
+
+        // Trois profils peuvent éditer ce contenu : l'administrateur technique,
+        // le propriétaire de l'établissement, et l'éditeur qui y est rattaché.
+        // Ce dernier est borné à SON établissement — la comparaison sur
+        // tenant_id est ce qui l'empêche d'atteindre le site d'un autre.
+        $autorise = $user->isTechAdmin()
+            || $tenant->owner_id === $user->id
+            || ($user->isSiteEditor() && $user->tenant_id === $tenant->id);
+
+        if (!$autorise) { abort(403, "Vous n'avez pas l'autorisation de modifier le contenu de ce site."); }
 
         // Règles de validation dérivées du schéma (une entrée par champ)
         $rules = [

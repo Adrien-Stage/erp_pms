@@ -15,11 +15,19 @@ class User extends Authenticatable
     public const ROLE_TECH_ADMIN = 'tech_admin';
     public const ROLE_OWNER = 'owner';
 
+    /**
+     * Éditeur du contenu du site vitrine d'un seul établissement.
+     * Rôle volontairement étroit : il n'accède ni aux autres établissements
+     * ni au reste de l'ERP, seulement au contenu marketing de son site.
+     */
+    public const ROLE_SITE_EDITOR = 'site_editor';
+
     protected $fillable = [
         'name',
         'email',
         'password',
         'role',
+        'tenant_id',
         'phone',
         'is_active',
         'company_name',
@@ -61,6 +69,23 @@ class User extends Authenticatable
     public function isOwner(): bool
     {
         return $this->role === self::ROLE_OWNER;
+    }
+
+    /**
+     * Helper : Éditeur du contenu du site d'un établissement.
+     */
+    public function isSiteEditor(): bool
+    {
+        return $this->role === self::ROLE_SITE_EDITOR;
+    }
+
+    /**
+     * Établissement auquel un compte cloisonné est rattaché.
+     * Nul pour les comptes techniques et les propriétaires.
+     */
+    public function tenant(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(Tenant::class, 'tenant_id');
     }
 
     /**

@@ -16,6 +16,12 @@
                 'description' => 'Creation, configuration, activation, suspension et diagnostic des tenants.',
                 'items' => ['Creation tenant', 'Configuration generale', 'Modules actifs', 'Etat onboarding'],
             ],
+            // Page à part entière, pas un onglet du tableau de bord : « url »
+            // détourne le lien de navigation vers sa propre route.
+            'owners' => [
+                'label' => 'Proprietaires',
+                'url'   => route('tech.owners.index'),
+            ],
             'managers' => [
                 'label' => 'Managers',
                 'title' => 'Gestion des managers',
@@ -107,7 +113,9 @@
     }
 
     $activeTab = $activeTab ?? request('tab', 'dashboard');
-    if (!array_key_exists($activeTab, $tabs)) {
+    // Une entrée porteuse d'« url » est un lien vers une page à part, pas un
+    // onglet de ce tableau de bord : elle n'a ni titre ni contenu à rendre ici.
+    if (!array_key_exists($activeTab, $tabs) || isset($tabs[$activeTab]['url'])) {
         $activeTab = 'dashboard';
     }
     $active = $tabs[$activeTab];
@@ -148,7 +156,7 @@
                 <nav class="hidden md:flex items-center gap-1.5" aria-label="Navigation administration">
                     @foreach($tabs as $key => $tab)
                         <a
-                            href="{{ route($isTech ? 'tech.dashboard' : 'business.dashboard', ['tab' => $key]) }}"
+                            href="{{ $tab['url'] ?? route($isTech ? 'tech.dashboard' : 'business.dashboard', ['tab' => $key]) }}"
                             class="rounded-md px-3 py-1.5 text-xs font-semibold tracking-wide transition {{ $activeTab === $key ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-300 hover:bg-slate-800 hover:text-white' }}"
                         >
                             {{ $tab['label'] }}
@@ -169,7 +177,7 @@
             <div class="flex gap-1.5 min-w-max">
                 @foreach($tabs as $key => $tab)
                     <a
-                        href="{{ route($isTech ? 'tech.dashboard' : 'business.dashboard', ['tab' => $key]) }}"
+                        href="{{ $tab['url'] ?? route($isTech ? 'tech.dashboard' : 'business.dashboard', ['tab' => $key]) }}"
                         class="rounded-md px-2.5 py-1 text-xs font-semibold transition {{ $activeTab === $key ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white' }}"
                     >
                         {{ $tab['label'] }}
