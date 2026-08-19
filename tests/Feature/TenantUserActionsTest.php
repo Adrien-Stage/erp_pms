@@ -84,6 +84,46 @@ class TenantDatabaseDouble extends TenantDatabase
     {
         return $this->employes[$userId] ?? null;
     }
+
+    /** La fiche lit davantage de colonnes : on complète l'employé du double. */
+    public function userDetail(Tenant $tenant, int $userId): ?object
+    {
+        if (!$this->joignable) {
+            throw new PDOException('Conteneur injoignable');
+        }
+
+        $employe = $this->employes[$userId] ?? null;
+
+        if (!$employe) {
+            return null;
+        }
+
+        return (object) ((array) $employe + [
+            'last_login_at'     => '2026-08-01 09:30:00',
+            'email_verified_at' => null,
+            'created_at'        => '2026-05-12 08:00:00',
+            'updated_at'        => '2026-08-01 09:30:00',
+            'roles'             => $this->rolesAffectes,
+        ]);
+    }
+
+    /** @var array<int, array<string, mixed>> Rôles rattachés à l'employé consulté. */
+    public array $rolesAffectes = [];
+
+    /** @var array<int, object> Rôles proposés à l'affectation. */
+    public array $rolesAssignables = [];
+
+    public function assignableRoles(Tenant $tenant): array
+    {
+        return $this->rolesAssignables;
+    }
+
+    public int $managers = 2;
+
+    public function activeManagerCount(Tenant $tenant): int
+    {
+        return $this->managers;
+    }
 }
 
 function doubleService(array $employes = [], bool $joignable = true): TenantDatabaseDouble
@@ -257,4 +297,101 @@ test('un rôle coché sans niveau précisé donne l\'écriture', function () {
     $insert = collect($double->requetes)->first(fn ($r) => str_contains($r['sql'], 'INSERT INTO role_user'));
 
     expect($insert['params'])->toBe([7, 4, 'write']);
+});
+
+// ── Fiche détaillée ───────────────────────────────────────────────────────────
+
+test('la fiche d\'un employé affiche ses informations et ses accès', function () {
+    $tenant = actionTenant();
+    $double = doubleService([7 => employe(7)]);
+    $double->rolesAffectes = [
+        ['id' => 3, 'slug' => 'reception', 'name' => 'Réception', 'module' => 'hebergement',
+         'description' => 'Arrivées et départs', 'level' => 'read'],
+    ];
+    $double->rolesAssignables = [
+        (object) ['id' => 3, 'name' => 'Réception', 'slug' => 'reception', 'description' => 'Arrivées et départs', 'module' => 'hebergement', 'icon' => null],
+        (object) ['id' => 5, 'name' => 'Caisse', 'slug' => 'cashier', 'description' => null, 'module' => 'boutique', 'icon' => null],
+    ];
+
+    $admin = User::factory()->create(['role' => User::ROLE_TECH_ADMIN, 'is_active' => true]);
+
+    $this->actingAs($admin)
+        ->get(route('tech.establishments.users.show', ['tenant' => $tenant, 'user' => 7]))
+        ->assertOk()
+        ->assertSee('Serge Mbarga')
+        ->assertSee('serge@example.com')
+        ->assertSee('Accès par module')
+        // Le rôle déjà attribué et celui qui ne l'est pas figurent tous deux :
+        // l'écran présente l'ensemble, l'absence de case valant retrait.
+        ->assertSee('Réception')
+        ->assertSee('Caisse');
+});
+
+test('la fiche est accessible pour un manager comme pour tout autre employé', function () {
+    $tenant = actionTenant();
+    $double = doubleService([9 => employe(9, 'Alice Ngo', 'manager')]);
+    $double->managers = 3;
+
+    $admin = User::factory()->create(['role' => User::ROLE_TECH_ADMIN, 'is_active' => true]);
+
+    $this->actingAs($admin)
+        ->get(route('tech.establishments.users.show', ['tenant' => $tenant, 'user' => 9]))
+        ->assertOk()
+        ->assertSee('Alice Ngo')
+        ->assertSee('Supprimer définitivement');
+});
+
+test('le dernier manager ne peut pas être supprimé depuis sa fiche', function () {
+    $tenant = actionTenant();
+    $double = doubleService([9 => employe(9, 'Alice Ngo', 'manager')]);
+    $double->managers = 1;
+
+    $admin = User::factory()->create(['role' => User::ROLE_TECH_ADMIN, 'is_active' => true]);
+
+    // Le refus se dit avant le clic plutôt qu'après : le bouton cède la place
+    // à l'explication.
+    $this->actingAs($admin)
+        ->get(route('tech.establishments.users.show', ['tenant' => $tenant, 'user' => 9]))
+        ->assertOk()
+        ->assertSee('Suppression impossible')
+        ->assertDontSee('Supprimer définitivement');
+});
+
+test('un employé inconnu renvoie à la liste avec un message', function () {
+    $tenant = actionTenant();
+    doubleService([]);
+
+    $admin = User::factory()->create(['role' => User::ROLE_TECH_ADMIN, 'is_active' => true]);
+
+    $this->actingAs($admin)
+        ->get(route('tech.establishments.users.show', ['tenant' => $tenant, 'user' => 404]))
+        ->assertRedirect()
+        ->assertSessionHas('error');
+});
+
+test('un propriétaire n\'ouvre pas la fiche d\'un employé', function () {
+    $tenant = actionTenant();
+    doubleService([7 => employe(7)]);
+
+    $etranger = User::factory()->create(['role' => User::ROLE_OWNER, 'is_active' => true]);
+
+    // Le middleware « tech_admin » de la route renvoie le propriétaire vers son
+    // propre espace plutôt que d'afficher un 403 : la fiche n'est jamais rendue.
+    $reponse = $this->actingAs($etranger)
+        ->get(route('tech.establishments.users.show', ['tenant' => $tenant, 'user' => 7]));
+
+    $reponse->assertRedirect();
+    expect($reponse->getContent())->not->toContain('Serge Mbarga');
+});
+
+test('une base injoignable renvoie un message plutôt qu\'une erreur brute', function () {
+    $tenant = actionTenant();
+    doubleService([7 => employe(7)], joignable: false);
+
+    $admin = User::factory()->create(['role' => User::ROLE_TECH_ADMIN, 'is_active' => true]);
+
+    $this->actingAs($admin)
+        ->get(route('tech.establishments.users.show', ['tenant' => $tenant, 'user' => 7]))
+        ->assertRedirect()
+        ->assertSessionHas('error');
 });

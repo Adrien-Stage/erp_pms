@@ -77,6 +77,7 @@ Route::middleware(['auth', 'role:tech_admin'])->prefix('tech')->name('tech.')->g
 
     // Employés de l'établissement : ils vivent dans la base du tenant, donc
     // toute modification faite ici est immédiatement effective dans wetchah_app.
+    Route::get('/establishments/{tenant}/users/{user}', [TenantUserController::class, 'show'])->whereNumber('user')->name('establishments.users.show');
     Route::post('/establishments/{tenant}/users/{user}', [TenantUserController::class, 'update'])->name('establishments.users.update');
     Route::post('/establishments/{tenant}/users/{user}/toggle-active', [TenantUserController::class, 'toggleActive'])->name('establishments.users.toggle-active');
     Route::delete('/establishments/{tenant}/users/{user}', [TenantUserController::class, 'destroy'])->name('establishments.users.destroy');

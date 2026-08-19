@@ -92,6 +92,74 @@ class TenantDatabase
     }
 
     /**
+     * Fiche complète d'un employé : toutes ses colonnes et ses rôles détaillés.
+     *
+     * Distincte de findUser(), qui ne lit que le strict nécessaire aux actions.
+     * Ici on veut de quoi remplir un écran — d'où les dates et les rôles.
+     *
+     * Les colonnes ajoutées par wetchah_app (rôle, téléphone, activation,
+     * dernière connexion) peuvent manquer sur un établissement resté sur une
+     * version antérieure : on retombe alors sur le socle Laravel plutôt que de
+     * laisser l'écran en erreur.
+     */
+    public function userDetail(Tenant $tenant, int $userId): ?object
+    {
+        $pdo = $this->connect($tenant);
+
+        try {
+            $stmt = $pdo->prepare(
+                'SELECT id, name, email, phone, role, is_active, last_login_at,
+                        email_verified_at, created_at, updated_at
+                 FROM users WHERE id = ?'
+            );
+            $stmt->execute([$userId]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        } catch (PDOException $e) {
+            $stmt = $pdo->prepare('SELECT id, name, email, created_at, updated_at FROM users WHERE id = ?');
+            $stmt->execute([$userId]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        }
+
+        if (!$row) {
+            return null;
+        }
+
+        $row += ['phone' => null, 'role' => null, 'is_active' => true,
+                 'last_login_at' => null, 'email_verified_at' => null];
+
+        $row['roles'] = [];
+
+        try {
+            $stmt = $pdo->prepare('
+                SELECT r.id, r.slug, r.name, r.module, r.description, ru.level
+                FROM role_user ru
+                JOIN roles r ON r.id = ru.role_id
+                WHERE ru.user_id = ?
+                ORDER BY r.sort_order, r.name
+            ');
+            $stmt->execute([$userId]);
+            $row['roles'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (PDOException $e) {
+            // Établissement antérieur au multi-rôles : la colonne « role »
+            // reste sa seule source d'autorisation.
+        }
+
+        return (object) $row;
+    }
+
+    /** Nombre de managers actifs — un établissement doit en garder au moins un. */
+    public function activeManagerCount(Tenant $tenant): int
+    {
+        try {
+            return (int) $this->connect($tenant)
+                ->query("SELECT COUNT(*) FROM users WHERE role = 'manager' AND is_active = true")
+                ->fetchColumn();
+        } catch (PDOException $e) {
+            return 0;
+        }
+    }
+
+    /**
      * Rôles assignables de l'établissement, groupés par module.
      * Vide si l'établissement n'a pas encore la table des rôles.
      *

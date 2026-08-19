@@ -42,12 +42,61 @@ class TenantUserController extends Controller
             "Vous n'avez pas l'autorisation de gérer cet établissement.");
     }
 
-    private function retour(Tenant $tenant): RedirectResponse
+    /**
+     * Retour après action.
+     *
+     * Quand l'action part de la fiche d'un employé, on y revient : renvoyer à
+     * la liste ferait perdre le contexte de consultation. La suppression fait
+     * exception — la fiche n'existe plus.
+     */
+    private function retour(Tenant $tenant, ?int $userId = null): RedirectResponse
     {
+        if ($userId !== null
+            && request()->input('return_to') === 'fiche'
+            && Auth::user()->isTechAdmin()) {
+            return redirect()->route('tech.establishments.users.show', [
+                'tenant' => $tenant,
+                'user'   => $userId,
+            ]);
+        }
+
         return redirect()->route(
             Auth::user()->isTechAdmin() ? 'tech.establishments.show' : 'business.establishments.show',
             ['tenant' => $tenant, 'section' => 'users']
         );
+    }
+
+    /**
+     * Fiche détaillée d'un employé.
+     *
+     * Rassemble sur un seul écran ce qui était éparpillé entre une ligne de
+     * tableau et une modale : identité, état du compte, et surtout le détail
+     * des accès module par module avec leur niveau — l'information qui décide
+     * de ce que cette personne peut réellement faire.
+     */
+    public function show(Tenant $tenant, int $user)
+    {
+        $this->authorizeTenant($tenant);
+
+        try {
+            $employe = $this->tenantDb->userDetail($tenant, $user);
+
+            if (!$employe) {
+                return $this->retour($tenant)->with('error', 'Cet employé est introuvable dans cet établissement.');
+            }
+
+            $rolesAssignables = collect($this->tenantDb->assignableRoles($tenant));
+            $managersActifs   = $this->tenantDb->activeManagerCount($tenant);
+        } catch (\Throwable $e) {
+            return $this->retour($tenant)->with('error', $this->messageErreur($e));
+        }
+
+        // Retirer le dernier manager fermerait l'administration de
+        // l'établissement depuis wetchah_app : l'écran le dit avant le clic
+        // plutôt qu'après.
+        $dernierManager = $employe->role === 'manager' && $managersActifs <= 1;
+
+        return view('admin.tenants.user', compact('tenant', 'employe', 'rolesAssignables', 'dernierManager'));
     }
 
     /** Activation / désactivation d'un employé. */
@@ -68,14 +117,14 @@ class TenantUserController extends Controller
                 ->prepare('UPDATE users SET is_active = ?, updated_at = NOW() WHERE id = ?');
             $stmt->execute([$nouvelEtat ? 'true' : 'false', $user]);
         } catch (\Throwable $e) {
-            return $this->retour($tenant)->with('error', $this->messageErreur($e));
+            return $this->retour($tenant, $user)->with('error', $this->messageErreur($e));
         }
 
         $etat = $nouvelEtat ? 'activé' : 'désactivé';
         AuditLog::record(Auth::id(), 'tenant_user_toggle_active',
             "Employé {$employe->name} {$etat} dans {$tenant->name}", 'tenant_users');
 
-        return $this->retour($tenant)->with('success', "Le compte de {$employe->name} a été {$etat}.");
+        return $this->retour($tenant, $user)->with('success', "Le compte de {$employe->name} a été {$etat}.");
     }
 
     /** Suppression définitive d'un employé de l'établissement. */
@@ -93,7 +142,7 @@ class TenantUserController extends Controller
             // Le dernier manager retiré, plus personne ne peut administrer
             // l'établissement depuis wetchah_app : on refuse.
             if ($employe->role === 'manager' && $this->compteManagers($tenant) <= 1) {
-                return $this->retour($tenant)->with('error',
+                return $this->retour($tenant, $user)->with('error',
                     "Impossible de supprimer {$employe->name} : c'est le dernier manager de l'établissement. "
                     . 'Créez-en un autre avant de le retirer.');
             }
@@ -103,7 +152,7 @@ class TenantUserController extends Controller
 
             $tenant->update(['users_count' => max(0, $tenant->users_count - 1)]);
         } catch (\Throwable $e) {
-            return $this->retour($tenant)->with('error', $this->messageErreur($e));
+            return $this->retour($tenant, $user)->with('error', $this->messageErreur($e));
         }
 
         AuditLog::record(Auth::id(), 'tenant_user_delete',
@@ -148,7 +197,7 @@ class TenantUserController extends Controller
             $stmt = $pdo->prepare('SELECT 1 FROM users WHERE email = ? AND id <> ?');
             $stmt->execute([$validated['email'], $user]);
             if ($stmt->fetch()) {
-                return $this->retour($tenant)
+                return $this->retour($tenant, $user)
                     ->with('error', 'Cette adresse est déjà utilisée par un autre employé de cet établissement.');
             }
 
@@ -180,13 +229,13 @@ class TenantUserController extends Controller
                 $pdo->rollBack();
             }
 
-            return $this->retour($tenant)->with('error', $this->messageErreur($e));
+            return $this->retour($tenant, $user)->with('error', $this->messageErreur($e));
         }
 
         AuditLog::record(Auth::id(), 'tenant_user_update',
             "Employé {$validated['name']} modifié dans {$tenant->name}", 'tenant_users');
 
-        return $this->retour($tenant)->with('success', "Les accès de {$validated['name']} ont été enregistrés.");
+        return $this->retour($tenant, $user)->with('success', "Les accès de {$validated['name']} ont été enregistrés.");
     }
 
     /**

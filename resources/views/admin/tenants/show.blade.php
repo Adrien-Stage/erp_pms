@@ -677,7 +677,12 @@
                         <tbody class="divide-y divide-slate-100">
                             @forelse($tenantUsers as $user)
                                 <tr class="hover:bg-slate-50 transition">
-                                    <td class="px-5 py-3 font-semibold text-slate-800">{{ $user->name }}</td>
+                                    <td class="px-5 py-3">
+                                        <a href="{{ route('tech.establishments.users.show', ['tenant' => $tenant, 'user' => $user->id]) }}"
+                                           class="font-semibold text-slate-800 hover:text-indigo-600 hover:underline">
+                                            {{ $user->name }}
+                                        </a>
+                                    </td>
                                     <td class="px-5 py-3 text-slate-600 font-mono">{{ $user->email }}</td>
                                     <td class="px-5 py-3">
                                         <div class="flex flex-wrap gap-1">
