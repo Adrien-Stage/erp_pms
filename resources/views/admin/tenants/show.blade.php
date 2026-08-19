@@ -833,6 +833,7 @@
                         'housekeeping' => ['label' => 'Housekeeping', 'desc' => 'Planification et suivi du nettoyage des chambres.', 'icon' => 'brush-cleaning'],
                         'discussions'  => ['label' => 'Discussions', 'desc' => 'Messagerie interne entre membres du personnel.', 'icon' => 'message-circle'],
                         'analytics'    => ['label' => 'Analytics', 'desc' => 'Tour de contrôle : statistiques et tableaux de bord.', 'icon' => 'chart-column'],
+                        'ledger'       => ['label' => 'Comptabilité avancée', 'desc' => 'Grand livre SYSCOHADA : plan de comptes, journaux, balance, clôture, comptes de tiers et lettrage, factures fournisseurs et retenues à la source, analytique. La comptabilité de caisse reste active sans ce module.', 'icon' => 'book-open'],
                         'api'          => ['label' => 'API d\'intégration', 'desc' => 'Expose des routes API sécurisées pour connecter des applications mobiles tierces ou des PMS externes.', 'icon' => 'plug'],
                         'website'      => ['label' => 'Site web', 'desc' => 'Site vitrine public (chambres, menu, contenu CMS) — provisionne un 3ᵉ container. Nécessite l\'API d\'intégration active.', 'icon' => 'globe'],
                     ];

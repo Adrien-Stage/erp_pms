@@ -115,6 +115,7 @@
             discussions: true,
             analytics: true,
             accounting: true,
+            ledger: true,
             ai: false,
             api: true,
             website: true
@@ -867,6 +868,20 @@
                                     <span class="text-xs font-bold text-slate-800">Module Analytics</span>
                                     <p class="text-[10px] text-slate-500 leading-relaxed">
                                         Tour de contrôle : statistiques d'occupation, de revenus et tableaux de bord pour le manager.
+                                    </p>
+                                </div>
+                            </label>
+
+                            <!-- Module: Comptabilité avancée (grand livre SYSCOHADA) -->
+                            <label class="relative flex items-start gap-4 rounded-xl border p-4 cursor-pointer select-none transition hover:bg-slate-50 duration-200"
+                                :class="modules.ledger ? 'border-indigo-600 ring-2 ring-indigo-50 bg-indigo-50/10' : 'border-slate-200'">
+                                <input type="checkbox" name="modules[ledger]" x-model="modules.ledger" class="mt-1 h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500 shrink-0">
+                                <div class="space-y-1">
+                                    <span class="text-xs font-bold text-slate-800">Module Comptabilité avancée</span>
+                                    <p class="text-[10px] text-slate-500 leading-relaxed">
+                                        Grand livre SYSCOHADA : plan de comptes, journaux, balance, clôture journalière et
+                                        verrouillage des périodes, comptes de tiers et lettrage, factures fournisseurs et
+                                        retenues à la source, analytique par point de vente.
                                     </p>
                                 </div>
                             </label>
