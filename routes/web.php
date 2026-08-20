@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Auth;
 use App\Http\Controllers\AdminAuditController;
+use App\Http\Controllers\ModuleCatalogController;
 use App\Http\Controllers\OwnerController;
 use App\Http\Controllers\SiteEditorController;
 use App\Http\Controllers\TenantUserController;
@@ -57,6 +58,10 @@ Route::middleware(['auth', 'role:tech_admin'])->prefix('tech')->name('tech.')->g
     Route::post('/support/assistance', [AdminAuditController::class, 'assistanceOpen'])->name('support.assistance.open');
     Route::post('/support/assistance/{session}/revoke', [AdminAuditController::class, 'assistanceRevoke'])->name('support.assistance.revoke');
     Route::get('/support/{tenant}/diagnostic', [AdminAuditController::class, 'supportDiagnostic'])->name('support.diagnostic');
+
+    // Répertoire des modules de l'application établissement : fiche et guide
+    // d'utilisation de chaque module, ouverts depuis l'onglet « Modules ».
+    Route::get('/modules/{module}', [ModuleCatalogController::class, 'show'])->name('modules.show');
 
     // Registre des propriétaires — une entrée par personne, d'où l'on ouvre
     // directement la fiche de l'un de ses établissements.

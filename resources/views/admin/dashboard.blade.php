@@ -22,12 +22,6 @@
                 'label' => 'Proprietaires',
                 'url'   => route('tech.owners.index'),
             ],
-            'managers' => [
-                'label' => 'Managers',
-                'title' => 'Gestion des managers',
-                'description' => 'Creation, activation, reinitialisation et rattachement des managers aux etablissements.',
-                'items' => ['Compte manager', 'Reinitialisation mot de passe', 'Activation compte', 'Rattachement tenant'],
-            ],
             'roles' => [
                 'label' => 'Roles',
                 'title' => 'Roles et permissions',
@@ -2328,6 +2322,18 @@
                     appLogsLoading: false,
                     appLogsFilter: '',
                     appLogsUnreachable: [],
+                    appLogsPage: 1,
+                    appLogsPerPage: 20,
+                    get appLogsTotal() { return this.appLogs ? this.appLogs.length : 0; },
+                    get appLogsPages() { return Math.max(1, Math.ceil(this.appLogsTotal / this.appLogsPerPage)); },
+                    get appLogsVisible() {
+                        if (!this.appLogs) return [];
+                        const debut = (this.appLogsPage - 1) * this.appLogsPerPage;
+                        return this.appLogs.slice(debut, debut + this.appLogsPerPage);
+                    },
+                    get appLogsFrom() { return this.appLogsTotal === 0 ? 0 : (this.appLogsPage - 1) * this.appLogsPerPage + 1; },
+                    get appLogsTo() { return Math.min(this.appLogsPage * this.appLogsPerPage, this.appLogsTotal); },
+                    appLogsGoTo(p) { this.appLogsPage = Math.min(Math.max(1, p), this.appLogsPages); },
                     async loadDiag() {
                         if (!this.selected) { this.diag = null; return; }
                         this.diagLoading = true;
@@ -2339,6 +2345,9 @@
                     },
                     async loadAppLogs() {
                         this.appLogsLoading = true;
+                        // Rechargement ou changement d'établissement : on repart
+                        // de la première page, sinon on retombe sur une page vide.
+                        this.appLogsPage = 1;
                         try {
                             const url = new URL('{{ route('tech.support.app-logs') }}', window.location.origin);
                             if (this.appLogsFilter) url.searchParams.set('slug', this.appLogsFilter);
@@ -2555,7 +2564,7 @@
                                         </tr>
                                     </thead>
                                     <tbody class="divide-y divide-slate-50">
-                                        <template x-for="log in appLogs" :key="log.slug + '-' + log.event_type + '-' + log.ts + '-' + log.action">
+                                        <template x-for="log in appLogsVisible" :key="log.slug + '-' + log.event_type + '-' + log.ts + '-' + log.action">
                                             <tr class="hover:bg-slate-50/60 transition align-top">
                                                 <td class="px-5 py-2.5 whitespace-nowrap">
                                                     <p class="font-semibold text-slate-700" x-text="log.at"></p>
@@ -2586,6 +2595,37 @@
                                 </table>
                             </div>
                         </template>
+
+                        {{-- Pagination : la liste est déjà entièrement chargée côté
+                             navigateur, le découpage en pages de 20 est donc immédiat
+                             et sans nouvel appel au serveur. --}}
+                        <div x-show="appLogs && !appLogsLoading && appLogsTotal > 0" x-cloak
+                             class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/60 px-5 py-3">
+                            <p class="text-[10px] text-slate-400">
+                                Lignes <span class="font-semibold text-slate-600" x-text="appLogsFrom"></span>–<span class="font-semibold text-slate-600" x-text="appLogsTo"></span>
+                                sur <span class="font-semibold text-slate-600" x-text="appLogsTotal"></span>
+                                · page <span class="font-semibold text-slate-600" x-text="appLogsPage"></span>/<span x-text="appLogsPages"></span>
+                            </p>
+
+                            <div class="flex items-center gap-1" x-show="appLogsPages > 1">
+                                <button type="button" @click="appLogsGoTo(appLogsPage - 1)" :disabled="appLogsPage === 1"
+                                        class="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer">
+                                    Précédent
+                                </button>
+
+                                <template x-for="p in appLogsPages" :key="p">
+                                    <button type="button" @click="appLogsGoTo(p)"
+                                            class="min-w-[28px] rounded-md px-2 py-1.5 text-[11px] font-bold transition cursor-pointer"
+                                            :class="p === appLogsPage ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'"
+                                            x-text="p"></button>
+                                </template>
+
+                                <button type="button" @click="appLogsGoTo(appLogsPage + 1)" :disabled="appLogsPage === appLogsPages"
+                                        class="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer">
+                                    Suivant
+                                </button>
+                            </div>
+                        </div>
 
                         <div x-show="!appLogsLoading && !appLogs" x-cloak class="p-5 text-xs font-bold text-red-700 bg-red-50">
                             Impossible de charger les logs applicatifs.
@@ -2759,6 +2799,91 @@
                     </div>
                 </div>
             </div>
+        @elseif($activeTab === 'modules' && $isTech)
+            {{-- ================= RÉPERTOIRE DES MODULES ================= --}}
+            @php
+                $catalog      = \App\Support\ModuleCatalog::all();
+                $adoption     = \App\Support\ModuleCatalog::adoption($tenants);
+                $totalTenants = $tenants->count();
+                $coreTotal    = count(array_filter($catalog, fn ($m) => $m['type'] === 'core'));
+                $optionalTotal = count($catalog) - $coreTotal;
+            @endphp
+
+            <p class="text-[10px] font-bold tracking-widest text-indigo-600 uppercase">MODULES</p>
+
+            <div class="mt-2 flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-2 border-b border-slate-200 pb-4">
+                <div>
+                    <h1 class="text-2xl font-extrabold tracking-tight text-slate-800 font-heading">Répertoire des modules</h1>
+                    <p class="text-xs text-slate-500 mt-1">
+                        Tous les modules développés dans l'application établissement : à quoi ils servent, qui les utilise
+                        et comment on s'en sert. Ouvrez une fiche pour son guide d'utilisation.
+                    </p>
+                </div>
+                <a href="{{ route('tech.dashboard', ['tab' => 'tenants']) }}"
+                   class="shrink-0 inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50">
+                    <i data-lucide="building-2" class="h-3.5 w-3.5"></i>
+                    Activer sur un établissement
+                </a>
+            </div>
+
+            <div class="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+                @foreach([
+                    ['Modules répertoriés', count($catalog), 'text-slate-800'],
+                    ['Modules cœur', $coreTotal, 'text-indigo-600'],
+                    ['Activables par établissement', $optionalTotal, 'text-amber-600'],
+                    ['Établissements', $totalTenants, 'text-slate-800'],
+                ] as [$label, $value, $color])
+                    <div class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                        <p class="text-[9px] font-bold uppercase tracking-wider text-slate-400">{{ $label }}</p>
+                        <p class="mt-2 text-3xl font-extrabold {{ $color }}">{{ $value }}</p>
+                    </div>
+                @endforeach
+            </div>
+
+            <div class="mt-6" x-data="{ q: '', type: 'all' }">
+
+                {{-- Filtres : le tri se fait dans le navigateur, sur les cartes déjà rendues --}}
+                <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
+                    <div class="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
+                        @foreach(['all' => 'Tous', 'core' => 'Cœur', 'optionnel' => 'Optionnels'] as $value => $label)
+                            <button type="button" @click="type = '{{ $value }}'"
+                                    class="rounded-md px-3 py-1.5 text-xs font-bold transition"
+                                    :class="type === '{{ $value }}' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'">
+                                {{ $label }}
+                            </button>
+                        @endforeach
+                    </div>
+                    <div class="relative w-full sm:w-72">
+                        <i data-lucide="search" class="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400"></i>
+                        <input type="search" x-model="q" placeholder="Rechercher un module…"
+                               class="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    @foreach($catalog as $slug => $module)
+                        <div data-type="{{ $module['type'] }}"
+                             data-search="{{ \Illuminate\Support\Str::lower($module['label'] . ' ' . $module['tagline'] . ' ' . $slug . ' ' . ($module['key'] ?? '')) }}"
+                             x-show="(type === 'all'
+                                        || (type === 'core' && $el.dataset.type === 'core')
+                                        || (type === 'optionnel' && $el.dataset.type !== 'core'))
+                                     && (q.trim() === '' || $el.dataset.search.includes(q.trim().toLowerCase()))">
+                            @include('admin.modules.partials.card', [
+                                'module' => array_merge(['slug' => $slug], $module),
+                                'count'  => $module['key'] ? ($adoption[$module['key']] ?? 0) : $totalTenants,
+                                'total'  => $totalTenants,
+                            ])
+                        </div>
+                    @endforeach
+                </div>
+
+                <p x-show="q.trim() !== '' && [...$root.querySelectorAll('[data-search]')].every(el => !el.dataset.search.includes(q.trim().toLowerCase()))"
+                   x-cloak
+                   class="mt-6 rounded-lg border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-xs text-slate-500">
+                    Aucun module ne correspond à cette recherche.
+                </p>
+            </div>
+
         @elseif($activeTab !== 'audit')
             <!-- Placeholder Layout for other tabs -->
             <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] mt-6">

@@ -2,7 +2,6 @@
     $tabs = [
         'dashboard' => ['label' => 'Supervision'],
         'tenants' => ['label' => 'Etablissements'],
-        'managers' => ['label' => 'Managers'],
         'roles' => ['label' => 'Roles'],
         'modules' => ['label' => 'Modules'],
         'audit' => ['label' => 'Audit'],
