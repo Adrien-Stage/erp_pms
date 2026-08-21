@@ -97,6 +97,9 @@ return [
             'prefix_indexes' => true,
             'search_path' => 'public',
             'sslmode' => env('DB_SSLMODE', 'prefer'),
+            // Aligne la session PostgreSQL sur le fuseau de l'application :
+            // sans cela NOW() et CURRENT_DATE répondent en UTC.
+            'timezone' => env('APP_TIMEZONE', 'Africa/Douala'),
         ],
 
         'sqlsrv' => [

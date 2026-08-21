@@ -27,6 +27,56 @@ class TenantProvisioningService
         return (string) shell_exec($cmd);
     }
 
+    /**
+     * Les containers déjà en place appartiennent-ils bien au projet Docker que
+     * le compose courant déclare ?
+     *
+     * Les établissements provisionnés avant l'ajout du « name: » dans le
+     * compose portent le projet « compose », hérité du dossier .compose. Un
+     * « up » sous le nouveau nom de projet ne les reconnaît pas : il tente de
+     * les créer et bute sur un conflit de nom Docker illisible.
+     *
+     * Surtout, les volumes nommés sont eux aussi préfixés par le projet : une
+     * recréation à l'aveugle démarrerait Postgres sur un volume vide, et
+     * l'établissement paraîtrait vidé alors que ses données dorment dans
+     * l'ancien volume. D'où l'arrêt net plutôt qu'un rattrapage automatique :
+     * la reprise des volumes doit être décidée, pas subie.
+     */
+    private function assertComposeProjectMatches(Tenant $tenant, callable $log): void
+    {
+        $projet = 'meka-erp-' . $tenant->slug;
+
+        foreach (['app', 'db', 'web'] as $role) {
+            $container = 'meka-erp-' . $tenant->slug . '-' . $role;
+
+            $projetActuel = trim($this->exec(
+                'docker inspect ' . escapeshellarg($container)
+                . ' --format "{{index .Config.Labels \"com.docker.compose.project\"}}" 2>' . $this->nullDevice()
+            ));
+
+            if ($projetActuel === '' || $projetActuel === $projet) {
+                continue;
+            }
+
+            $log('docker', "⛔ Containers rattachés au projet Docker « {$projetActuel} », attendu « {$projet} ».", 'error');
+
+            throw new RuntimeException(
+                "Cet établissement a été provisionné avant l'isolation des projets Docker : ses containers "
+                . "appartiennent au projet « {$projetActuel} » et ses données sont dans les volumes "
+                . "« {$projetActuel}_meka_erp_{$tenant->slug}_pgdata » et « …_storage ».\n\n"
+                . "Recréer les containers maintenant les ferait démarrer sur des volumes vides. "
+                . "Reprenez d'abord les volumes vers le projet « {$projet} », supprimez les anciens "
+                . "containers, puis relancez cette mise à jour."
+            );
+        }
+    }
+
+    /** Poubelle de sortie du shell hôte — l'ERP tourne aussi bien sous Windows. */
+    private function nullDevice(): string
+    {
+        return DIRECTORY_SEPARATOR === '\\' ? 'NUL' : '/dev/null';
+    }
+
     private function execOrFail(string $cmd, string $errorMessage): string
     {
         Log::debug("[Provisioning] execOrFail: {$cmd}");
@@ -434,6 +484,11 @@ class TenantProvisioningService
         // Secret de service pour que la console business de pms consomme
         // l'API de reporting (données financières) de cet établissement.
         $reportingSecret = (string) env('REPORTING_SECRET', '');
+        // Fuseau de la plateforme, propagé au conteneur : l'application, son
+        // horloge système et sa base doivent afficher la même heure, sinon une
+        // clôture de caisse et son écriture comptable tombent des jours
+        // différents autour de minuit.
+        $fuseau = (string) config('app.timezone');
 
         $appService = <<<YAML
   {$appContainer}:
@@ -466,6 +521,8 @@ class TenantProvisioningService
       SESSION_DRIVER: database
       CACHE_STORE: database
       QUEUE_CONNECTION: database
+      APP_TIMEZONE: "{$fuseau}"
+      TZ: "{$fuseau}"
     volumes:
       - meka_erp_{$tenant->slug}_storage:/var/www/html/storage/app/public
     depends_on:
@@ -490,6 +547,8 @@ YAML;
       POSTGRES_DB: {$dbName}
       POSTGRES_USER: {$dbUser}
       POSTGRES_PASSWORD: {$dbPass}
+      TZ: "{$fuseau}"
+      PGTZ: "{$fuseau}"
     volumes:
       - meka_erp_{$tenant->slug}_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -743,6 +802,7 @@ YAML;
             : null;
 
         $composePath = $this->generateDockerCompose($tenant, $imageRef, $webImageRef, $log);
+        $this->assertComposeProjectMatches($tenant, $log);
 
         $log('docker', "🔄 Recréation du container applicatif…", 'info');
         $this->execOrFail(
@@ -798,6 +858,7 @@ YAML;
         $webImageRef = $this->pullPinnedWebImage($tenant, $log);
         $appImageRef = config('provisioning.registry_image') . '@' . $tenant->docker_image_tag;
         $composePath = $this->generateDockerCompose($tenant, $appImageRef, $webImageRef, $log);
+        $this->assertComposeProjectMatches($tenant, $log);
 
         $log('docker', "🔄 Recréation du container du site…", 'info');
         $this->execOrFail(
@@ -838,6 +899,11 @@ YAML;
 
         $registryImage = config('provisioning.registry_image');
         $imageRef      = $registryImage . '@' . $tenant->docker_image_tag;
+
+        // Contrôlé avant toute suppression de container : sur un établissement
+        // au projet Docker hérité, retirer le « web » puis échouer sur le « up »
+        // laisserait l'établissement dans un état intermédiaire.
+        $this->assertComposeProjectMatches($tenant, $log);
 
         $wantsWebsite = $this->hasWebsiteModule($tenant);
         $webContainer = 'meka-erp-' . $tenant->slug . '-web';

@@ -159,12 +159,114 @@
                 </nav>
             </div>
             
-            <form method="POST" action="{{ route('logout') }}">
-                @csrf
-                <button type="submit" class="rounded-md border border-slate-700 bg-slate-800 px-3.5 py-1.5 text-xs font-bold text-slate-200 transition hover:bg-slate-700 hover:text-white">
-                    Déconnexion
-                </button>
-            </form>
+            <div class="flex items-center gap-3">
+                @if($isTech)
+                    {{-- Cloche : tickets encore non pris en charge, remontés par les
+                         établissements. Relue toutes les deux minutes — chaque relève
+                         interroge la base de chaque établissement, inutile d'y aller
+                         plus souvent. --}}
+                    <div class="relative"
+                         x-data="{
+                            open: false,
+                            nouveaux: 0,
+                            derniers: [],
+                            indisponible: false,
+                            marquerCommeLu() {
+                                const maxTs = Math.max(0, ...this.derniers.map(t => t.ts || 0), Math.floor(Date.now() / 1000));
+                                localStorage.setItem('wetchah_support_tickets_last_seen', maxTs);
+                                this.nouveaux = 0;
+                            },
+                            async releve() {
+                                try {
+                                    const r = await fetch('{{ route('tech.support.tickets') }}', { headers: { 'Accept': 'application/json' } });
+                                    const d = await r.json();
+                                    const tickets = d.tickets ?? [];
+                                    const lastSeen = parseInt(localStorage.getItem('wetchah_support_tickets_last_seen') || '0', 10);
+                                    const params = new URLSearchParams(window.location.search);
+                                    const surPageTickets = (params.get('tab') === 'support' && (params.get('sub') === 'justification' || !params.get('sub')));
+                                    
+                                    if (surPageTickets) {
+                                        const maxTs = Math.max(0, ...tickets.map(t => t.ts || 0), Math.floor(Date.now() / 1000));
+                                        localStorage.setItem('wetchah_support_tickets_last_seen', maxTs);
+                                        this.nouveaux = 0;
+                                    } else {
+                                        const unread = tickets.filter(t => t.status === 'nouveau' && (!lastSeen || (t.ts && t.ts > lastSeen)));
+                                        this.nouveaux = unread.length;
+                                    }
+                                    this.derniers = tickets.filter(t => t.status === 'nouveau').slice(0, 6);
+                                    this.indisponible = false;
+                                } catch (e) { this.indisponible = true; }
+                            }
+                         }"
+                         x-init="releve(); setInterval(() => releve(), 120000); window.addEventListener('tickets-vus', (e) => {
+                             const maxTs = e.detail?.maxTs || Math.floor(Date.now() / 1000);
+                             localStorage.setItem('wetchah_support_tickets_last_seen', maxTs);
+                             nouveaux = 0;
+                         })">
+
+                        <button type="button" @click="open = !open" @click.outside="open = false"
+                                class="relative rounded-md border border-slate-700 bg-slate-800 p-2 text-slate-300 transition hover:bg-slate-700 hover:text-white"
+                                :aria-expanded="open" aria-label="Tickets remontés par les établissements">
+                            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+                            </svg>
+                            <span x-show="nouveaux > 0" x-cloak
+                                  class="absolute -top-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full border border-slate-900 bg-red-500 px-1 text-[9px] font-bold text-white"
+                                  x-text="nouveaux > 99 ? '99+' : nouveaux"></span>
+                        </button>
+
+                        <div x-show="open" x-cloak x-transition.opacity.duration.100ms
+                             class="absolute right-0 z-40 mt-2 w-80 overflow-hidden rounded-lg border border-slate-200 bg-white text-slate-800 shadow-xl">
+                            <div class="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-2.5">
+                                <span class="text-xs font-bold text-slate-800">Tickets à traiter</span>
+                                <div class="flex items-center gap-2">
+                                    <button x-show="nouveaux > 0" x-cloak type="button" @click="marquerCommeLu()"
+                                            class="text-[10px] font-semibold text-indigo-600 hover:text-indigo-800 transition cursor-pointer">
+                                        Tout marquer comme lu
+                                    </button>
+                                    <span class="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600" x-text="nouveaux"></span>
+                                </div>
+                            </div>
+
+                            <div class="max-h-72 overflow-y-auto">
+                                <p x-show="indisponible" x-cloak class="px-4 py-6 text-center text-[11px] text-red-600">
+                                    Les tickets n'ont pas pu être relevés.
+                                </p>
+                                <p x-show="!indisponible && derniers.length === 0" x-cloak class="px-4 py-6 text-center text-[11px] text-slate-400">
+                                    Aucun ticket en attente.
+                                </p>
+                                <template x-for="t in derniers" :key="t.slug + '-' + t.id">
+                                    <a href="{{ route('tech.dashboard', ['tab' => 'support', 'sub' => 'justification']) }}"
+                                       @click="marquerCommeLu()"
+                                       class="flex flex-col gap-0.5 border-b border-slate-50 px-4 py-2.5 transition hover:bg-slate-50">
+                                        <span class="flex items-center justify-between gap-2">
+                                            <span class="truncate text-[11px] font-bold text-slate-800" x-text="t.subject"></span>
+                                            <span class="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase"
+                                                  :class="t.type === 'probleme' ? 'bg-red-50 text-red-600' : 'bg-violet-50 text-violet-600'"
+                                                  x-text="t.type === 'probleme' ? 'Problème' : 'Idée'"></span>
+                                        </span>
+                                        <span class="truncate text-[10px] text-slate-500" x-text="t.author + ' · ' + t.tenant"></span>
+                                        <span class="text-[9px] text-slate-400" x-text="t.ago"></span>
+                                    </a>
+                                </template>
+                            </div>
+
+                            <a href="{{ route('tech.dashboard', ['tab' => 'support', 'sub' => 'justification']) }}"
+                               @click="marquerCommeLu()"
+                               class="block bg-slate-50 px-4 py-2.5 text-center text-[11px] font-bold text-indigo-600 transition hover:bg-slate-100">
+                                Ouvrir le kanban des tickets
+                            </a>
+                        </div>
+                    </div>
+                @endif
+
+                <form method="POST" action="{{ route('logout') }}">
+                    @csrf
+                    <button type="submit" class="rounded-md border border-slate-700 bg-slate-800 px-3.5 py-1.5 text-xs font-bold text-slate-200 transition hover:bg-slate-700 hover:text-white">
+                        Déconnexion
+                    </button>
+                </form>
+            </div>
         </div>
         <!-- Mobile Navigation -->
         <div class="md:hidden border-t border-slate-800 px-5 py-2 overflow-x-auto">
@@ -2309,9 +2411,21 @@
             </div>
         @elseif($activeTab === 'support' && $isTech)
             {{-- ================= SUPPORT OPÉRATIONNEL ================= --}}
+            @php
+                // Sous-onglet ouvrable par lien direct : la cloche de la barre
+                // supérieure pointe sur ?tab=support&sub=justification.
+                $supportSubs = [
+                    'read' => 'Mode lecture',
+                    'logs' => 'Logs applicatifs',
+                    'assist' => 'Mode assistance',
+                    'justification' => 'Justification',
+                    'history' => 'Historique interventions',
+                ];
+                $supportSub = array_key_exists(request('sub'), $supportSubs) ? request('sub') : 'read';
+            @endphp
             <div class="mt-6"
                  x-data="{
-                    sub: 'read',
+                    sub: '{{ $supportSub }}',
                     selected: '',
                     diag: null,
                     diagLoading: false,
@@ -2334,6 +2448,91 @@
                     get appLogsFrom() { return this.appLogsTotal === 0 ? 0 : (this.appLogsPage - 1) * this.appLogsPerPage + 1; },
                     get appLogsTo() { return Math.min(this.appLogsPage * this.appLogsPerPage, this.appLogsTotal); },
                     appLogsGoTo(p) { this.appLogsPage = Math.min(Math.max(1, p), this.appLogsPages); },
+
+                    /* ---- Tickets remontés par les établissements (kanban) ---- */
+                    tickets: null,
+                    ticketsLoading: false,
+                    ticketsUnreachable: [],
+                    ticketsOutdated: [],
+                    ticketsFilter: '',
+                    ticketOuvert: null,
+                    ticketReply: '',
+                    ticketSaving: false,
+                    ticketError: '',
+                    dragId: null,
+                    async loadTickets() {
+                        this.ticketsLoading = true;
+                        this.ticketError = '';
+                        try {
+                            const url = new URL('{{ route('tech.support.tickets') }}', window.location.origin);
+                            if (this.ticketsFilter) url.searchParams.set('slug', this.ticketsFilter);
+                            const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+                            const d = await r.json();
+                            this.tickets = d.tickets ?? [];
+                            this.ticketsUnreachable = d.unreachable ?? [];
+                            this.ticketsOutdated = d.outdated ?? [];
+
+                            // Marquer les tickets comme vus lorsqu'on consulte la liste
+                            const maxTs = Math.max(0, ...(this.tickets ?? []).map(t => t.ts || 0), Math.floor(Date.now() / 1000));
+                            window.dispatchEvent(new CustomEvent('tickets-vus', { detail: { maxTs } }));
+                        } catch (e) { this.tickets = null; }
+                        this.ticketsLoading = false;
+                    },
+                    ticketsParStatut(statut) {
+                        return (this.tickets ?? []).filter(t => t.status === statut);
+                    },
+                    ouvrirTicket(t) {
+                        this.ticketOuvert = t;
+                        this.ticketReply = t.reply ?? '';
+                        this.ticketError = '';
+                        window.dispatchEvent(new CustomEvent('tickets-vus', { detail: { maxTs: Math.floor(Date.now() / 1000) } }));
+                    },
+                    /* Déplacement optimiste : la carte suit le geste, et revient
+                       à sa place si l'écriture dans la base du tenant échoue. */
+                    async deplacerTicket(ticket, statut, reponse) {
+                        if (!ticket || (ticket.status === statut && !reponse)) return;
+                        const precedent = ticket.status;
+                        ticket.status = statut;
+                        this.ticketSaving = true;
+                        this.ticketError = '';
+                        try {
+                            const r = await fetch('{{ route('tech.support.tickets.update') }}', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Accept': 'application/json',
+                                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                                },
+                                body: JSON.stringify({
+                                    tenant_id: ticket.tenant_id,
+                                    ticket_id: ticket.id,
+                                    status: statut,
+                                    reply: reponse ?? null,
+                                }),
+                            });
+                            const d = await r.json().catch(() => ({}));
+                            if (!r.ok || !d.ok) {
+                                ticket.status = precedent;
+                                this.ticketError = d.message || 'Le ticket n\'a pas pu être mis à jour.';
+                            } else {
+                                if (reponse) { ticket.reply = reponse; }
+                                ticket.handled_by = '{{ auth()->user()->name }}';
+                            }
+                        } catch (e) {
+                            ticket.status = precedent;
+                            this.ticketError = 'Écriture impossible : vérifiez que le conteneur de l\'établissement répond.';
+                        }
+                        this.ticketSaving = false;
+                    },
+                    /* Reprend un ticket dans le formulaire d'intervention ci-dessous. */
+                    justifierDepuisTicket(t) {
+                        const cible = document.getElementById('justif-tenant');
+                        const motif = document.getElementById('justif-reason');
+                        if (cible) cible.value = t.tenant_id;
+                        if (motif) motif.value = `Ticket #${t.id} — ${t.subject} (signalé par ${t.author}, ${t.tenant})`;
+                        this.ticketOuvert = null;
+                        document.getElementById('justif-form')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    },
                     async loadDiag() {
                         if (!this.selected) { this.diag = null; return; }
                         this.diagLoading = true;
@@ -2377,7 +2576,15 @@
                  x-init="$watch('sub', v => {
                     if (v === 'history' && interventions === null) loadInterventions();
                     if (v === 'logs' && appLogs === null) loadAppLogs();
-                 })">
+                    if (v === 'justification') {
+                        if (tickets === null) loadTickets();
+                        else {
+                            const maxTs = Math.max(0, ...(tickets ?? []).map(t => t.ts || 0), Math.floor(Date.now() / 1000));
+                            window.dispatchEvent(new CustomEvent('tickets-vus', { detail: { maxTs } }));
+                        }
+                    }
+                 });
+                 if (sub === 'justification') loadTickets();">
 
                 <div class="mb-5">
                     <h2 class="text-xl font-bold text-slate-800 tracking-tight">Support opérationnel</h2>
@@ -2386,15 +2593,6 @@
 
                 {{-- Sous-onglets internes --}}
                 <div class="flex flex-wrap gap-1 border-b border-slate-200 mb-6">
-                    @php
-                        $supportSubs = [
-                            'read' => 'Mode lecture',
-                            'logs' => 'Logs applicatifs',
-                            'assist' => 'Mode assistance',
-                            'justification' => 'Justification',
-                            'history' => 'Historique interventions',
-                        ];
-                    @endphp
                     @foreach($supportSubs as $subKey => $subLabel)
                         <button type="button" @click="sub = '{{ $subKey }}'"
                                 class="px-4 py-2.5 text-xs font-bold transition border-b-2 -mb-px cursor-pointer"
@@ -2716,14 +2914,188 @@
 
                 {{-- ---- Justification : ouvre une session d'assistance ---- --}}
                 <div x-show="sub === 'justification'" x-cloak>
-                    <form method="POST" action="{{ route('tech.support.assistance.open') }}" class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm max-w-2xl">
+
+                    {{-- ---- Tickets remontés depuis les applications ---- --}}
+                    @php
+                        // Colonnes du kanban : miroir des statuts acceptés par
+                        // SupportTicketController, dans l'ordre du traitement.
+                        $ticketColonnes = [
+                            'nouveau'  => ['label' => 'Reçus',      'accent' => 'border-t-sky-500',     'puce' => 'bg-sky-100 text-sky-700'],
+                            'en_cours' => ['label' => 'En cours',   'accent' => 'border-t-amber-500',   'puce' => 'bg-amber-100 text-amber-700'],
+                            'resolu'   => ['label' => 'Résolus',    'accent' => 'border-t-emerald-500', 'puce' => 'bg-emerald-100 text-emerald-700'],
+                            'rejete'   => ['label' => 'Écartés',    'accent' => 'border-t-slate-400',   'puce' => 'bg-slate-100 text-slate-600'],
+                        ];
+                    @endphp
+
+                    <div class="mb-8">
+                        <div class="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-800">Tickets reçus des établissements</h3>
+                                <p class="text-[10px] text-slate-400 mt-0.5">
+                                    Problèmes et suggestions remontés par le personnel depuis le bouton « Suggestion » de leur application.
+                                    Faites glisser une carte pour la changer de colonne — le statut est écrit dans la base de l'établissement, son auteur le voit.
+                                </p>
+                            </div>
+                            <div class="flex items-center gap-2 shrink-0">
+                                <select x-model="ticketsFilter" @change="loadTickets()"
+                                        class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 outline-none focus:border-indigo-500">
+                                    <option value="">Tous les établissements</option>
+                                    @foreach($tenants as $t)
+                                        <option value="{{ $t->slug }}">{{ $t->name }}</option>
+                                    @endforeach
+                                </select>
+                                <button type="button" @click="loadTickets()" :disabled="ticketsLoading"
+                                        class="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition disabled:opacity-50 cursor-pointer">
+                                    <svg class="h-3.5 w-3.5" :class="ticketsLoading ? 'animate-spin' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+                                    Actualiser
+                                </button>
+                            </div>
+                        </div>
+
+                        <template x-if="ticketsUnreachable.length > 0">
+                            <div class="mb-3 rounded-md bg-red-50 border border-red-200 px-4 py-2 text-[10px] text-red-700">
+                                Bases injoignables : <span class="font-semibold" x-text="ticketsUnreachable.join(', ')"></span>
+                            </div>
+                        </template>
+
+                        <template x-if="ticketsOutdated.length > 0">
+                            <div class="mb-3 rounded-md bg-amber-50 border border-amber-200 px-4 py-2 text-[10px] text-amber-700">
+                                Applications antérieures au bouton « Suggestion » (rien à remonter tant que leur image n'est pas mise à jour) :
+                                <span class="font-semibold" x-text="ticketsOutdated.join(', ')"></span>
+                            </div>
+                        </template>
+
+                        <p x-show="ticketError" x-cloak class="mb-3 rounded-md bg-red-50 border border-red-200 px-4 py-2 text-[10px] font-semibold text-red-700" x-text="ticketError"></p>
+
+                        <div x-show="ticketsLoading" class="rounded-lg border border-slate-200 bg-white p-10 text-center text-xs text-slate-400">
+                            Lecture des tickets…
+                        </div>
+
+                        <div x-show="!ticketsLoading && tickets" x-cloak class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                            @foreach($ticketColonnes as $statut => $colonne)
+                                <div class="rounded-lg border border-slate-200 border-t-4 {{ $colonne['accent'] }} bg-slate-50/70 min-h-[160px]"
+                                     @dragover.prevent
+                                     @drop.prevent="deplacerTicket((tickets ?? []).find(t => t.id + '-' + t.slug === dragId), '{{ $statut }}'); dragId = null">
+
+                                    <div class="flex items-center justify-between gap-2 px-3 py-2.5 border-b border-slate-200/70">
+                                        <span class="text-[11px] font-bold text-slate-700 uppercase tracking-wider">{{ $colonne['label'] }}</span>
+                                        <span class="rounded-full px-2 py-0.5 text-[10px] font-bold {{ $colonne['puce'] }}"
+                                              x-text="ticketsParStatut('{{ $statut }}').length"></span>
+                                    </div>
+
+                                    <div class="space-y-2 p-2.5">
+                                        <template x-for="t in ticketsParStatut('{{ $statut }}')" :key="t.slug + '-' + t.id">
+                                            <div draggable="true"
+                                                 @dragstart="dragId = t.id + '-' + t.slug"
+                                                 @dragend="dragId = null"
+                                                 @click="ouvrirTicket(t)"
+                                                 class="cursor-pointer rounded-lg border border-slate-200 bg-white p-3 shadow-sm transition hover:border-indigo-300 hover:shadow">
+                                                <div class="flex items-start justify-between gap-2">
+                                                    <span class="rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider border"
+                                                          :class="t.type === 'probleme' ? 'bg-red-50 text-red-600 border-red-200' : 'bg-violet-50 text-violet-600 border-violet-200'"
+                                                          x-text="t.type === 'probleme' ? 'Problème' : 'Suggestion'"></span>
+                                                    <span class="font-mono text-[9px] text-slate-300" x-text="'#' + t.id"></span>
+                                                </div>
+                                                <p class="mt-1.5 text-xs font-bold text-slate-800 leading-snug" x-text="t.subject"></p>
+                                                <p class="mt-1 text-[10px] text-slate-500 line-clamp-2" x-text="t.message"></p>
+                                                <div class="mt-2 flex items-center justify-between gap-2 border-t border-slate-100 pt-2">
+                                                    <span class="min-w-0">
+                                                        <span class="block truncate text-[10px] font-semibold text-slate-600" x-text="t.author"></span>
+                                                        <span class="block truncate text-[9px] text-slate-400" x-text="t.tenant"></span>
+                                                    </span>
+                                                    <span class="shrink-0 text-[9px] text-slate-400" x-text="t.ago"></span>
+                                                </div>
+                                            </div>
+                                        </template>
+
+                                        <p x-show="ticketsParStatut('{{ $statut }}').length === 0" class="px-1 py-6 text-center text-[10px] text-slate-400">
+                                            Aucun ticket
+                                        </p>
+                                    </div>
+                                </div>
+                            @endforeach
+                        </div>
+
+                        <div x-show="!ticketsLoading && !tickets" x-cloak class="rounded-lg border border-red-200 bg-red-50 p-5 text-xs font-bold text-red-700">
+                            Impossible de charger les tickets des établissements.
+                        </div>
+                    </div>
+
+                    {{-- Fiche d'un ticket : message complet, réponse et traitement --}}
+                    <div x-show="ticketOuvert" x-cloak
+                         class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/50 p-4 sm:p-8"
+                         @click.self="ticketOuvert = null" @keydown.escape.window="ticketOuvert = null">
+                        <template x-if="ticketOuvert">
+                            <div class="w-full max-w-xl overflow-hidden rounded-xl bg-white shadow-2xl">
+                                <div class="flex items-start justify-between gap-3 bg-slate-900 px-5 py-3.5">
+                                    <div class="min-w-0">
+                                        <h3 class="truncate text-sm font-bold text-white" x-text="ticketOuvert.subject"></h3>
+                                        <p class="text-[10px] text-slate-400">
+                                            <span x-text="ticketOuvert.tenant"></span> ·
+                                            <span x-text="ticketOuvert.author"></span>
+                                            <span x-show="ticketOuvert.role" x-text="' (' + ticketOuvert.role + ')'"></span> ·
+                                            <span x-text="ticketOuvert.at"></span>
+                                        </p>
+                                    </div>
+                                    <button type="button" @click="ticketOuvert = null" class="shrink-0 text-slate-400 hover:text-white transition">
+                                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                                    </button>
+                                </div>
+
+                                <div class="space-y-4 p-5">
+                                    <p class="whitespace-pre-line rounded-lg bg-slate-50 p-3.5 text-xs leading-relaxed text-slate-700" x-text="ticketOuvert.message"></p>
+
+                                    <template x-if="ticketOuvert.context_url">
+                                        <p class="text-[10px] text-slate-400">
+                                            Écran concerné : <span class="font-mono text-slate-600" x-text="ticketOuvert.context_url"></span>
+                                        </p>
+                                    </template>
+
+                                    <div>
+                                        <label class="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                            Réponse à l'auteur <span class="font-normal normal-case text-slate-400">(visible dans son application)</span>
+                                        </label>
+                                        <textarea x-model="ticketReply" rows="3" maxlength="2000"
+                                                  placeholder="Ce qui a été fait, ou ce qu'on attend de lui."
+                                                  class="block w-full rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"></textarea>
+                                    </div>
+
+                                    <p x-show="ticketError" x-cloak class="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-[10px] font-semibold text-red-700" x-text="ticketError"></p>
+
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        @foreach($ticketColonnes as $statut => $colonne)
+                                            <button type="button" :disabled="ticketSaving"
+                                                    @click="deplacerTicket(ticketOuvert, '{{ $statut }}', ticketReply)"
+                                                    class="rounded-lg border px-3 py-2 text-[11px] font-bold transition disabled:opacity-50 cursor-pointer"
+                                                    :class="ticketOuvert.status === '{{ $statut }}' ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-50'">
+                                                {{ $colonne['label'] }}
+                                            </button>
+                                        @endforeach
+                                    </div>
+
+                                    <div class="flex items-center justify-between gap-3 border-t border-slate-100 pt-4">
+                                        <p class="text-[10px] text-slate-400" x-show="ticketOuvert.handled_by">
+                                            Dernier traitement : <span class="font-semibold text-slate-600" x-text="ticketOuvert.handled_by"></span>
+                                        </p>
+                                        <button type="button" @click="justifierDepuisTicket(ticketOuvert)"
+                                                class="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-[11px] font-bold text-white transition hover:bg-indigo-700 cursor-pointer">
+                                            Ouvrir une intervention sur ce ticket
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+
+                    {{-- ---- Enregistrement manuel d'une intervention ---- --}}
+                    <form id="justif-form" method="POST" action="{{ route('tech.support.assistance.open') }}" class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm max-w-2xl">
                         @csrf
                         <h3 class="text-sm font-bold text-slate-800">Justifier et ouvrir une intervention</h3>
                         <p class="text-xs text-slate-500 mt-1 leading-relaxed">Documente le motif avant d'accéder à un établissement. La justification est obligatoire, jointe à l'audit, et ouvre une <strong>session d'assistance</strong> à durée limitée (visible dans l'onglet Mode assistance).</p>
                         <div class="mt-5 space-y-4">
                             <div>
                                 <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Établissement concerné</label>
-                                <select name="tenant_id" required
+                                <select id="justif-tenant" name="tenant_id" required
                                         class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">
                                     <option value="">— Choisir —</option>
                                     @foreach($tenants as $t)
@@ -2733,7 +3105,7 @@
                             </div>
                             <div>
                                 <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Motif de l'intervention <span class="text-slate-400 normal-case font-normal">(10 caractères min.)</span></label>
-                                <textarea name="reason" rows="4" required minlength="10" maxlength="1000" placeholder="Ex : reproduction d'un bug signalé sur la création de réservation…"
+                                <textarea id="justif-reason" name="reason" rows="4" required minlength="10" maxlength="1000" placeholder="Ex : reproduction d'un bug signalé sur la création de réservation…"
                                           class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">{{ old('reason') }}</textarea>
                             </div>
                             <div class="flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">

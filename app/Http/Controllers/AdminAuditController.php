@@ -287,11 +287,20 @@ class AdminAuditController extends Controller
             \PDO::ATTR_TIMEOUT => 3,
         ];
 
+        // Connexion PDO directe, hors connecteur Laravel : le fuseau de
+        // config/database.php ne s'y applique pas, on le pose à la main pour
+        // que NOW() et CURRENT_DATE répondent dans le fuseau de la plateforme.
+        $fuseau = str_replace("'", "''", (string) config('app.timezone'));
+
         try {
-            return new \PDO("pgsql:host={$dbContainer};port=5432;dbname={$safeDbName}", $dbUser, $dbPass, $options);
+            $pdo = new \PDO("pgsql:host={$dbContainer};port=5432;dbname={$safeDbName}", $dbUser, $dbPass, $options);
         } catch (\PDOException $e) {
-            return new \PDO("pgsql:host=127.0.0.1;port={$tenant->db_port};dbname={$safeDbName}", $dbUser, $dbPass, $options);
+            $pdo = new \PDO("pgsql:host=127.0.0.1;port={$tenant->db_port};dbname={$safeDbName}", $dbUser, $dbPass, $options);
         }
+
+        $pdo->exec("SET TIME ZONE '{$fuseau}'");
+
+        return $pdo;
     }
 
     public function updateTenant(Request $request, Tenant $tenant)

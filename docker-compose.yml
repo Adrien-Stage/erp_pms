@@ -21,6 +21,10 @@ services:
       APP_URL: http://localhost:8080
       APP_ENV: local
       DB_CONNECTION: sqlite
+      # GMT+1 : APP_TIMEZONE pour Laravel, TZ pour l'horloge du conteneur
+      # (journaux, supervisord) — les deux doivent dire la même heure.
+      APP_TIMEZONE: Africa/Douala
+      TZ: Africa/Douala
     networks:
       pms:
         # Le conteneur répond aussi à l'ancien nom : les sites d'établissements
@@ -53,6 +57,8 @@ services:
       POSTGRES_DB: pms
       POSTGRES_USER: pms
       POSTGRES_PASSWORD: secret
+      TZ: Africa/Douala
+      PGTZ: Africa/Douala
     volumes:
       - pms_pgdata:/var/lib/postgresql/data
     networks:

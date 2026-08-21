@@ -6,6 +6,7 @@ use App\Http\Controllers\AdminAuditController;
 use App\Http\Controllers\ModuleCatalogController;
 use App\Http\Controllers\OwnerController;
 use App\Http\Controllers\SiteEditorController;
+use App\Http\Controllers\SupportTicketController;
 use App\Http\Controllers\TenantUserController;
 
 // ==========================================
@@ -58,6 +59,11 @@ Route::middleware(['auth', 'role:tech_admin'])->prefix('tech')->name('tech.')->g
     Route::post('/support/assistance', [AdminAuditController::class, 'assistanceOpen'])->name('support.assistance.open');
     Route::post('/support/assistance/{session}/revoke', [AdminAuditController::class, 'assistanceRevoke'])->name('support.assistance.revoke');
     Route::get('/support/{tenant}/diagnostic', [AdminAuditController::class, 'supportDiagnostic'])->name('support.diagnostic');
+
+    // Tickets remontés par le personnel des établissements depuis wetchah_app :
+    // lecture agrégée pour le kanban, et traitement écrit dans la base du tenant.
+    Route::get('/support/tickets', [SupportTicketController::class, 'index'])->name('support.tickets');
+    Route::post('/support/tickets', [SupportTicketController::class, 'update'])->name('support.tickets.update');
 
     // Répertoire des modules de l'application établissement : fiche et guide
     // d'utilisation de chaque module, ouverts depuis l'onglet « Modules ».

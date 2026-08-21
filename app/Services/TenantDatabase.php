@@ -36,10 +36,30 @@ class TenantDatabase
         ];
 
         try {
-            return new PDO("pgsql:host={$dbContainer};port=5432;dbname={$safeDbName}", $dbUser, $dbPass, $options);
+            return $this->alignerFuseau(
+                new PDO("pgsql:host={$dbContainer};port=5432;dbname={$safeDbName}", $dbUser, $dbPass, $options)
+            );
         } catch (PDOException $e) {
-            return new PDO("pgsql:host=127.0.0.1;port={$tenant->db_port};dbname={$safeDbName}", $dbUser, $dbPass, $options);
+            return $this->alignerFuseau(
+                new PDO("pgsql:host=127.0.0.1;port={$tenant->db_port};dbname={$safeDbName}", $dbUser, $dbPass, $options)
+            );
         }
+    }
+
+    /**
+     * Cale la session sur le fuseau de la plateforme.
+     *
+     * Ces connexions sont ouvertes en PDO direct, hors du connecteur Laravel :
+     * elles n'héritent donc pas du « timezone » de config/database.php. Sans ce
+     * réglage, un NOW() écrit par l'ERP dans la base d'un établissement serait
+     * décalé d'une heure par rapport aux dates que l'application y écrit.
+     */
+    private function alignerFuseau(PDO $connexion): PDO
+    {
+        $fuseau = str_replace("'", "''", (string) config('app.timezone'));
+        $connexion->exec("SET TIME ZONE '{$fuseau}'");
+
+        return $connexion;
     }
 
     /** Employés de l'établissement, avec leurs rôles et niveaux d'accès. */
@@ -179,5 +199,73 @@ class TenantDatabase
         } catch (PDOException $e) {
             return [];
         }
+    }
+
+    /**
+     * Tickets remontés par le personnel depuis le bouton « Suggestion » de
+     * l'application. Il n'y a pas de copie côté ERP : le kanban lit ces lignes
+     * là où elles sont écrites.
+     *
+     * Une base sans la table « support_tickets » tourne sur une image
+     * antérieure à la fonctionnalité. Ce n'est pas une panne : on le signale
+     * séparément d'un établissement injoignable, qui lui demande une action.
+     *
+     * @return array{tickets: array<int, array>, disponible: bool}
+     */
+    public function supportTickets(Tenant $tenant, int $limite = 120): array
+    {
+        // La connexion reste hors du try : une base injoignable doit remonter
+        // au contrôleur, alors qu'une table absente se traite ici.
+        $pdo = $this->connect($tenant);
+
+        try {
+            $stmt = $pdo->prepare(
+                'SELECT id, author_name, author_role, type, subject, message, context_url,
+                        status, reply, handled_by, handled_at, created_at
+                 FROM support_tickets
+                 ORDER BY created_at DESC
+                 LIMIT :lim'
+            );
+            $stmt->bindValue(':lim', $limite, PDO::PARAM_INT);
+            $stmt->execute();
+        } catch (PDOException $e) {
+            return ['tickets' => [], 'disponible' => false];
+        }
+
+        return ['tickets' => $stmt->fetchAll(PDO::FETCH_ASSOC), 'disponible' => true];
+    }
+
+    /**
+     * Traitement d'un ticket depuis l'ERP : nouveau statut et, éventuellement,
+     * la réponse que l'auteur verra dans son application.
+     *
+     * « updated_at » est renseigné à la main : cette base n'est pas touchée par
+     * Eloquent ici, aucun horodatage automatique ne s'applique.
+     */
+    public function updateSupportTicket(
+        Tenant $tenant,
+        int $ticketId,
+        string $statut,
+        ?string $reponse,
+        string $traitePar
+    ): bool {
+        $stmt = $this->connect($tenant)->prepare(
+            'UPDATE support_tickets
+                SET status = :statut,
+                    reply = COALESCE(:reponse, reply),
+                    handled_by = :par,
+                    handled_at = NOW(),
+                    updated_at = NOW()
+              WHERE id = :id'
+        );
+
+        $stmt->execute([
+            ':statut'  => $statut,
+            ':reponse' => ($reponse === null || $reponse === '') ? null : $reponse,
+            ':par'     => $traitePar,
+            ':id'      => $ticketId,
+        ]);
+
+        return $stmt->rowCount() > 0;
     }
 }
