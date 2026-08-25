@@ -236,6 +236,27 @@ class TenantDatabase
     }
 
     /**
+     * Une ligne de ticket précise. Sert aux traitements qui doivent s'appuyer
+     * sur le contenu réel du ticket plutôt que sur ce que le navigateur
+     * affirme — l'ouverture d'une session d'assistance, dont le motif part au
+     * journal d'audit.
+     */
+    public function supportTicket(Tenant $tenant, int $ticketId): ?array
+    {
+        $stmt = $this->connect($tenant)->prepare(
+            'SELECT id, author_name, author_role, type, subject, message, context_url,
+                    status, reply, handled_by, handled_at, created_at
+               FROM support_tickets
+              WHERE id = :id'
+        );
+
+        $stmt->execute([':id' => $ticketId]);
+        $ligne = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return $ligne ?: null;
+    }
+
+    /**
      * Traitement d'un ticket depuis l'ERP : nouveau statut et, éventuellement,
      * la réponse que l'auteur verra dans son application.
      *
@@ -267,5 +288,38 @@ class TenantDatabase
         ]);
 
         return $stmt->rowCount() > 0;
+    }
+
+    /**
+     * Création d'un ticket de support directement dans la base d'un établissement.
+     */
+    public function createSupportTicket(
+        Tenant $tenant,
+        string $authorName,
+        ?string $authorRole,
+        string $type,
+        string $subject,
+        string $message,
+        ?string $contextUrl = null
+    ): ?int {
+        $pdo = $this->connect($tenant);
+        $stmt = $pdo->prepare(
+            'INSERT INTO support_tickets (author_name, author_role, type, subject, message, context_url, status, created_at, updated_at)
+             VALUES (:author_name, :author_role, :type, :subject, :message, :context_url, :status, NOW(), NOW())
+             RETURNING id'
+        );
+
+        $stmt->execute([
+            ':author_name' => $authorName,
+            ':author_role' => $authorRole,
+            ':type'        => $type,
+            ':subject'     => $subject,
+            ':message'     => $message,
+            ':context_url' => $contextUrl,
+            ':status'      => 'nouveau',
+        ]);
+
+        $res = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $res ? (int) $res['id'] : (int) $pdo->lastInsertId();
     }
 }

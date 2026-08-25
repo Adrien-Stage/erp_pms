@@ -61,9 +61,12 @@ Route::middleware(['auth', 'role:tech_admin'])->prefix('tech')->name('tech.')->g
     Route::get('/support/{tenant}/diagnostic', [AdminAuditController::class, 'supportDiagnostic'])->name('support.diagnostic');
 
     // Tickets remontés par le personnel des établissements depuis wetchah_app :
-    // lecture agrégée pour le kanban, et traitement écrit dans la base du tenant.
+    // lecture agrégée pour le kanban, création manuelle et traitement écrit dans la base du tenant.
     Route::get('/support/tickets', [SupportTicketController::class, 'index'])->name('support.tickets');
     Route::post('/support/tickets', [SupportTicketController::class, 'update'])->name('support.tickets.update');
+    Route::post('/support/tickets/create', [SupportTicketController::class, 'store'])->name('support.tickets.create');
+    // Entrer en assistance se demande ticket par ticket : jamais un effet de bord de la lecture ci-dessus.
+    Route::post('/support/tickets/assist', [SupportTicketController::class, 'assist'])->name('support.tickets.assist');
 
     // Répertoire des modules de l'application établissement : fiche et guide
     // d'utilisation de chaque module, ouverts depuis l'onglet « Modules ».

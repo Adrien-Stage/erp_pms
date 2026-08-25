@@ -2460,6 +2460,73 @@
                     ticketSaving: false,
                     ticketError: '',
                     dragId: null,
+                    modalNouveauTicket: false,
+                    nouveauTicket: { tenant_id: '', type: 'probleme', subject: '', message: '', context_url: '' },
+                    ticketCreating: false,
+                    ticketCreateError: '',
+                    assistPending: null,
+                    assistError: '',
+                    // Entrer en assistance connecte le support dans l'application de
+                    // l'établissement : cela se demande ticket par ticket, et se trace.
+                    async ouvrirAssistance(t) {
+                        this.assistPending = t.id;
+                        this.assistError = '';
+                        try {
+                            const r = await fetch('{{ route('tech.support.tickets.assist') }}', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Accept': 'application/json',
+                                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                                },
+                                body: JSON.stringify({ tenant_id: t.tenant_id, ticket_id: t.id }),
+                            });
+                            const d = await r.json().catch(() => ({}));
+                            if (!r.ok || !d.ok) {
+                                this.assistError = d.message || 'Impossible d\'ouvrir la session d\'assistance.';
+                            } else {
+                                // Le lien est posé sur la carte avant l'ouverture : si le
+                                // navigateur bloque la fenêtre, « Entrer » reste cliquable.
+                                t.assistance_url = d.assistance_url;
+                                if (this.ticketOuvert && this.ticketOuvert.id === t.id) {
+                                    this.ticketOuvert.assistance_url = d.assistance_url;
+                                }
+                                window.open(d.assistance_url, '_blank');
+                            }
+                        } catch (e) {
+                            this.assistError = 'Impossible de contacter le serveur.';
+                        }
+                        this.assistPending = null;
+                    },
+                    async creerTicketManuel() {
+                        this.ticketCreating = true;
+                        this.ticketCreateError = '';
+                        try {
+                            const r = await fetch('{{ route('tech.support.tickets.create') }}', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Accept': 'application/json',
+                                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                                },
+                                body: JSON.stringify(this.nouveauTicket),
+                            });
+                            const d = await r.json().catch(() => ({}));
+                            if (!r.ok || !d.ok) {
+                                this.ticketCreateError = d.message || 'Erreur lors de la création du ticket.';
+                            } else {
+                                this.modalNouveauTicket = false;
+                                this.nouveauTicket = { tenant_id: '', type: 'probleme', subject: '', message: '', context_url: '' };
+                                await this.loadTickets();
+                                if (d.assistance_url) {
+                                    window.open(d.assistance_url, '_blank');
+                                }
+                            }
+                        } catch (e) {
+                            this.ticketCreateError = 'Impossible de contacter le serveur.';
+                        }
+                        this.ticketCreating = false;
+                    },
                     async loadTickets() {
                         this.ticketsLoading = true;
                         this.ticketError = '';
@@ -2937,6 +3004,11 @@
                                 </p>
                             </div>
                             <div class="flex items-center gap-2 shrink-0">
+                                <button type="button" @click="modalNouveauTicket = true; ticketCreateError = ''"
+                                        class="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700 transition shadow-sm cursor-pointer">
+                                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+                                    Nouveau ticket
+                                </button>
                                 <select x-model="ticketsFilter" @change="loadTickets()"
                                         class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 outline-none focus:border-indigo-500">
                                     <option value="">Tous les établissements</option>
@@ -2966,6 +3038,7 @@
                         </template>
 
                         <p x-show="ticketError" x-cloak class="mb-3 rounded-md bg-red-50 border border-red-200 px-4 py-2 text-[10px] font-semibold text-red-700" x-text="ticketError"></p>
+                        <p x-show="assistError" x-cloak class="mb-3 rounded-md bg-red-50 border border-red-200 px-4 py-2 text-[10px] font-semibold text-red-700" x-text="assistError"></p>
 
                         <div x-show="ticketsLoading" class="rounded-lg border border-slate-200 bg-white p-10 text-center text-xs text-slate-400">
                             Lecture des tickets…
@@ -3005,6 +3078,30 @@
                                                     </span>
                                                     <span class="shrink-0 text-[9px] text-slate-400" x-text="t.ago"></span>
                                                 </div>
+                                                <div class="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between">
+                                                    <template x-if="t.assistance_url">
+                                                        <span class="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-600">
+                                                            <span class="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                                            Assistance active
+                                                        </span>
+                                                    </template>
+                                                    <template x-if="!t.assistance_url">
+                                                        <span class="text-[9px] text-slate-400">Assistance fermée</span>
+                                                    </template>
+                                                    <template x-if="t.assistance_url">
+                                                        <a :href="t.assistance_url" target="_blank" @click.stop
+                                                           class="inline-flex items-center gap-1 rounded bg-emerald-50 px-2 py-0.5 text-[9px] font-bold text-emerald-700 hover:bg-emerald-100 transition">
+                                                            Entrer
+                                                            <svg class="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
+                                                        </a>
+                                                    </template>
+                                                    <template x-if="!t.assistance_url">
+                                                        <button type="button" @click.stop="ouvrirAssistance(t)" :disabled="assistPending === t.id"
+                                                                class="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 text-[9px] font-bold text-slate-600 hover:bg-slate-200 transition disabled:opacity-50 cursor-pointer">
+                                                            <span x-text="assistPending === t.id ? 'Ouverture…' : 'Ouvrir l\'assistance'"></span>
+                                                        </button>
+                                                    </template>
+                                                </div>
                                             </div>
                                         </template>
 
@@ -3018,6 +3115,70 @@
 
                         <div x-show="!ticketsLoading && !tickets" x-cloak class="rounded-lg border border-red-200 bg-red-50 p-5 text-xs font-bold text-red-700">
                             Impossible de charger les tickets des établissements.
+                        </div>
+                    </div>
+
+                    {{-- Modale de création manuelle d'un ticket --}}
+                    <div x-show="modalNouveauTicket" x-cloak
+                         class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/50 p-4 sm:p-8"
+                         @click.self="modalNouveauTicket = false" @keydown.escape.window="modalNouveauTicket = false">
+                        <div class="w-full max-w-lg overflow-hidden rounded-xl bg-white shadow-2xl">
+                            <div class="flex items-center justify-between bg-slate-900 px-5 py-3.5">
+                                <h3 class="text-sm font-bold text-white">Nouveau ticket de support</h3>
+                                <button type="button" @click="modalNouveauTicket = false" class="text-slate-400 hover:text-white transition">
+                                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                                </button>
+                            </div>
+                            <form @submit.prevent="creerTicketManuel()" class="space-y-4 p-5">
+                                <p x-show="ticketCreateError" x-cloak class="rounded-md bg-red-50 border border-red-200 px-3.5 py-2 text-xs font-semibold text-red-700" x-text="ticketCreateError"></p>
+
+                                <div>
+                                    <label class="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-500">Établissement</label>
+                                    <select x-model="nouveauTicket.tenant_id" required
+                                            class="block w-full rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-700 outline-none focus:border-indigo-500">
+                                        <option value="">— Sélectionner un établissement —</option>
+                                        @foreach($tenants as $t)
+                                            <option value="{{ $t->id }}">{{ $t->name }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label class="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-500">Type de ticket</label>
+                                    <select x-model="nouveauTicket.type" required
+                                            class="block w-full rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-700 outline-none focus:border-indigo-500">
+                                        <option value="probleme">Problème / Incident</option>
+                                        <option value="suggestion">Suggestion / Demande</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label class="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-500">Sujet</label>
+                                    <input type="text" x-model="nouveauTicket.subject" required minlength="3" maxlength="160" placeholder="Ex : Blocage lors de la clôture de caisse…"
+                                           class="block w-full rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-700 outline-none focus:border-indigo-500">
+                                </div>
+
+                                <div>
+                                    <label class="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-500">Description</label>
+                                    <textarea x-model="nouveauTicket.message" rows="4" required minlength="5" maxlength="2000" placeholder="Détails du problème ou de l'intervention…"
+                                              class="block w-full rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-700 outline-none focus:border-indigo-500"></textarea>
+                                </div>
+
+                                <div class="rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-[11px] text-emerald-800 flex items-center gap-2">
+                                    <svg class="h-4 w-4 shrink-0 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                    <span>La création du ticket ouvre automatiquement une <strong>session d'assistance active</strong> pour cet établissement.</span>
+                                </div>
+
+                                <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                                    <button type="button" @click="modalNouveauTicket = false" class="rounded-lg border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition cursor-pointer">
+                                        Annuler
+                                    </button>
+                                    <button type="submit" :disabled="ticketCreating"
+                                            class="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 transition disabled:opacity-50 shadow-sm cursor-pointer">
+                                        <span x-text="ticketCreating ? 'Création…' : 'Créer le ticket et lancer l\'assistance'"></span>
+                                    </button>
+                                </div>
+                            </form>
                         </div>
                     </div>
 
@@ -3073,14 +3234,29 @@
                                         @endforeach
                                     </div>
 
-                                    <div class="flex items-center justify-between gap-3 border-t border-slate-100 pt-4">
+                                    <div class="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
                                         <p class="text-[10px] text-slate-400" x-show="ticketOuvert.handled_by">
                                             Dernier traitement : <span class="font-semibold text-slate-600" x-text="ticketOuvert.handled_by"></span>
                                         </p>
-                                        <button type="button" @click="justifierDepuisTicket(ticketOuvert)"
-                                                class="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-[11px] font-bold text-white transition hover:bg-indigo-700 cursor-pointer">
-                                            Ouvrir une intervention sur ce ticket
-                                        </button>
+                                        <div class="flex items-center gap-2">
+                                            <template x-if="ticketOuvert.assistance_url">
+                                                <a :href="ticketOuvert.assistance_url" target="_blank"
+                                                   class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-[11px] font-bold text-white transition hover:bg-emerald-700 shadow-sm cursor-pointer">
+                                                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
+                                                    Entrer en assistance
+                                                </a>
+                                            </template>
+                                            <template x-if="!ticketOuvert.assistance_url">
+                                                <button type="button" @click="ouvrirAssistance(ticketOuvert)" :disabled="assistPending === ticketOuvert.id"
+                                                        class="inline-flex items-center gap-1.5 rounded-lg border border-emerald-600 px-3.5 py-2 text-[11px] font-bold text-emerald-700 transition hover:bg-emerald-50 disabled:opacity-50 cursor-pointer">
+                                                    <span x-text="assistPending === ticketOuvert.id ? 'Ouverture…' : 'Ouvrir l\'assistance'"></span>
+                                                </button>
+                                            </template>
+                                            <button type="button" @click="justifierDepuisTicket(ticketOuvert)"
+                                                    class="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-2 text-[11px] font-bold text-white transition hover:bg-indigo-700 cursor-pointer">
+                                                Intervention
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>

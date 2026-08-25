@@ -22,6 +22,18 @@
     Recompile aussi les assets (npm run build, ~2 min). Necessaire uniquement
     apres avoir ajoute des classes Tailwind ou modifie du CSS/JS.
 
+.PARAMETER Deps
+    Reconstruit l'image et recree les volumes de dependances.
+
+    vendor/ et node_modules/ ne sont PAS lus depuis le bind mount Windows :
+    ils sont construits dans l'image et servis par un volume nomme, sur le
+    disque du conteneur. C'est ce qui ramene le demarrage a froid de 4-5 min
+    a quelques secondes (34 ms contre 0,04 ms par fichier, soit x775).
+
+    En contrepartie, un `composer require` ou `npm install` lance sur l'hote
+    ne met pas ces volumes a jour. L'entrypoint le detecte et le signale ;
+    cette option est la correction.
+
 .EXAMPLE
     .\dev-refresh.ps1
     Recharge le code PHP et les vues.
@@ -29,12 +41,42 @@
 .EXAMPLE
     .\dev-refresh.ps1 -Assets
     Recharge le code et recompile les assets.
+
+.EXAMPLE
+    .\dev-refresh.ps1 -Deps
+    Reconstruit l'image apres un changement de composer.lock / package-lock.json.
 #>
 
-param([switch]$Assets)
+param([switch]$Assets, [switch]$Deps)
 
 $container = 'wetchah_erp-app'
 $root      = $PSScriptRoot
+
+# ── Reconstruction des dependances ────────────────────────────────────────────
+# Chemin distinct : on recree les conteneurs, donc les verifications d'etat
+# ci-dessous (qui exigent un conteneur deja en marche) ne s'appliquent pas.
+if ($Deps) {
+    Write-Host 'Reconstruction de l''image (composer install + npm ci)...' -ForegroundColor Cyan
+    docker compose build app
+    if (-not $?) { Write-Host 'Echec du build de l''image.' -ForegroundColor Red; exit 1 }
+
+    Write-Host 'Arret des conteneurs...' -ForegroundColor Cyan
+    docker compose down | Out-Null
+
+    # Les volumes gardent les dependances du build precedent : les supprimer
+    # force leur reinitialisation depuis la nouvelle image.
+    Write-Host 'Suppression des volumes de dependances...' -ForegroundColor Cyan
+    docker volume rm pms_pms_vendor pms_pms_node_modules 2>$null | Out-Null
+
+    Write-Host 'Redemarrage...' -ForegroundColor Cyan
+    docker compose up -d
+    if (-not $?) { Write-Host 'Echec du demarrage.' -ForegroundColor Red; exit 1 }
+
+    Write-Host ''
+    Write-Host 'Termine. Le prechauffage tourne dans le conteneur ; suivre avec :' -ForegroundColor Green
+    Write-Host "  docker logs -f $container" -ForegroundColor Gray
+    exit 0
+}
 
 $running = docker ps --filter "name=$container" --format '{{.Names}}'
 if ($running -ne $container) {

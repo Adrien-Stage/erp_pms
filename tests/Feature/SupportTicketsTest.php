@@ -74,6 +74,23 @@ class TicketDatabaseDouble extends TenantDatabase
         return $etat;
     }
 
+    public function supportTicket(Tenant $tenant, int $ticketId): ?array
+    {
+        $etat = $this->parTenant[$tenant->slug] ?? ['tickets' => [], 'disponible' => true];
+
+        if ($etat === 'injoignable') {
+            throw new PDOException('base injoignable');
+        }
+
+        foreach ($etat['tickets'] ?? [] as $ligne) {
+            if ((int) $ligne['id'] === $ticketId) {
+                return $ligne;
+            }
+        }
+
+        return null;
+    }
+
     public function updateSupportTicket(
         Tenant $tenant,
         int $ticketId,
@@ -87,6 +104,24 @@ class TicketDatabaseDouble extends TenantDatabase
         ];
 
         return $this->applique;
+    }
+
+    public function createSupportTicket(
+        Tenant $tenant,
+        string $authorName,
+        ?string $authorRole,
+        string $type,
+        string $subject,
+        string $message,
+        ?string $contextUrl = null
+    ): ?int {
+        $id = count($this->ecritures) + 100;
+        $this->ecritures[] = [
+            'slug' => $tenant->slug, 'ticket' => $id, 'action' => 'create',
+            'subject' => $subject, 'type' => $type, 'author' => $authorName,
+        ];
+
+        return $id;
     }
 }
 
@@ -253,3 +288,183 @@ test('les tickets sont réservés à l\'administrateur technique', function () {
 
     expect($double->ecritures)->toBeEmpty();
 });
+
+// ── Mode assistance rattaché aux tickets ────────────────────────────────────
+//
+// Entrer en assistance connecte le support dans l'application de
+// l'établissement sous l'identité de son administrateur. C'est un accès qui se
+// demande et qui s'impute : afficher le kanban ne doit jamais en ouvrir un.
+
+test('afficher le kanban n\'ouvre aucune session d\'assistance', function () {
+    config(['assistance.secret' => 'test-secret-key-123456']);
+    $tenant = ticketTenant('Villa Boutanga', 'villa');
+    $tenant->update(['app_port' => 8081]);
+
+    doubleTickets([
+        'villa' => ['tickets' => [ligneTicket(77, 'Problème réservation', 'nouveau')], 'disponible' => true],
+    ]);
+
+    $reponse = $this->actingAs(ticketAdmin())->getJson(route('tech.support.tickets'));
+
+    $reponse->assertOk();
+    expect($reponse->json('tickets'))->toHaveCount(1)
+        ->and($reponse->json('tickets.0.assistance_url'))->toBeNull()
+        ->and(\App\Models\AssistanceSession::count())->toBe(0);
+});
+
+test('l\'assistance s\'ouvre à la demande sur un ticket et le kanban l\'expose ensuite', function () {
+    config(['assistance.secret' => 'test-secret-key-123456']);
+    $tenant = ticketTenant('Villa Boutanga', 'villa');
+    $tenant->update(['app_port' => 8081]);
+
+    doubleTickets([
+        'villa' => ['tickets' => [ligneTicket(77, 'Problème réservation', 'nouveau')], 'disponible' => true],
+    ]);
+
+    $admin = ticketAdmin();
+
+    $ouverture = $this->actingAs($admin)->postJson(route('tech.support.tickets.assist'), [
+        'tenant_id' => $tenant->id,
+        'ticket_id' => 77,
+    ]);
+
+    $ouverture->assertOk();
+    expect($ouverture->json('ok'))->toBeTrue()
+        ->and($ouverture->json('assistance_url'))->toContain('/assistance/enter?token=');
+
+    $session = \App\Models\AssistanceSession::where('tenant_id', $tenant->id)->first();
+
+    expect($session)->not->toBeNull()
+        ->and($session->ticket_id)->toBe(77)
+        ->and($session->user_id)->toBe($admin->id)
+        ->and($session->reason)->toContain('Problème réservation')
+        ->and($session->isLive())->toBeTrue();
+
+    // Une fois ouverte, la session est visible depuis le kanban.
+    $kanban = $this->actingAs($admin)->getJson(route('tech.support.tickets'));
+    expect($kanban->json('tickets.0.assistance_url'))->toContain('/assistance/enter?token=');
+});
+
+test('deux tickets dont l\'un préfixe l\'autre ne partagent pas la même session', function () {
+    config(['assistance.secret' => 'test-secret-key-123456']);
+    $tenant = ticketTenant('Villa Boutanga', 'villa');
+    $tenant->update(['app_port' => 8081]);
+
+    doubleTickets([
+        'villa' => ['tickets' => [
+            ligneTicket(77, 'Sujet du soixante-dix-sept', 'nouveau'),
+            ligneTicket(7, 'Sujet du sept', 'nouveau'),
+        ], 'disponible' => true],
+    ]);
+
+    $admin = ticketAdmin();
+
+    foreach ([77, 7] as $id) {
+        $this->actingAs($admin)->postJson(route('tech.support.tickets.assist'), [
+            'tenant_id' => $tenant->id,
+            'ticket_id' => $id,
+        ])->assertOk();
+    }
+
+    $sessions = \App\Models\AssistanceSession::where('tenant_id', $tenant->id)->get();
+
+    expect($sessions)->toHaveCount(2)
+        ->and($sessions->firstWhere('ticket_id', 7)->reason)->toContain('Sujet du sept')
+        ->and($sessions->firstWhere('ticket_id', 77)->reason)->toContain('Sujet du soixante-dix-sept');
+
+    // Chaque carte porte l'URL de sa propre session.
+    $kanban  = $this->actingAs($admin)->getJson(route('tech.support.tickets'))->json('tickets');
+    $urls    = array_column($kanban, 'assistance_url');
+
+    expect($urls[0])->not->toBe($urls[1]);
+});
+
+test('demander l\'assistance deux fois sur un ticket réutilise la session en cours', function () {
+    config(['assistance.secret' => 'test-secret-key-123456']);
+    $tenant = ticketTenant('Villa Boutanga', 'villa');
+    $tenant->update(['app_port' => 8081]);
+
+    doubleTickets([
+        'villa' => ['tickets' => [ligneTicket(77, 'Problème réservation', 'nouveau')], 'disponible' => true],
+    ]);
+
+    $admin = ticketAdmin();
+
+    foreach ([1, 2] as $ignore) {
+        $this->actingAs($admin)->postJson(route('tech.support.tickets.assist'), [
+            'tenant_id' => $tenant->id, 'ticket_id' => 77,
+        ])->assertOk();
+    }
+
+    expect(\App\Models\AssistanceSession::count())->toBe(1);
+});
+
+test('un ticket absent de la base n\'ouvre aucune session d\'assistance', function () {
+    config(['assistance.secret' => 'test-secret-key-123456']);
+    $tenant = ticketTenant('Villa Boutanga', 'villa');
+    $tenant->update(['app_port' => 8081]);
+
+    doubleTickets([
+        'villa' => ['tickets' => [ligneTicket(77, 'Problème réservation', 'nouveau')], 'disponible' => true],
+    ]);
+
+    $reponse = $this->actingAs(ticketAdmin())->postJson(route('tech.support.tickets.assist'), [
+        'tenant_id' => $tenant->id,
+        'ticket_id' => 999,
+    ]);
+
+    $reponse->assertNotFound();
+    expect(\App\Models\AssistanceSession::count())->toBe(0);
+});
+
+test('l\'ouverture d\'une assistance est réservée à l\'administrateur technique', function () {
+    config(['assistance.secret' => 'test-secret-key-123456']);
+    $tenant = ticketTenant('Villa Boutanga', 'villa');
+    $tenant->update(['app_port' => 8081]);
+
+    doubleTickets([
+        'villa' => ['tickets' => [ligneTicket(77, 'Problème réservation', 'nouveau')], 'disponible' => true],
+    ]);
+
+    $proprietaire = User::factory()->create(['role' => User::ROLE_OWNER, 'is_active' => true]);
+
+    $this->actingAs($proprietaire)
+        ->postJson(route('tech.support.tickets.assist'), ['tenant_id' => $tenant->id, 'ticket_id' => 77])
+        ->assertForbidden();
+
+    expect(\App\Models\AssistanceSession::count())->toBe(0);
+});
+
+test('la création manuelle d\'un ticket ouvre automatiquement une session d\'assistance et écrit dans la base', function () {
+    config(['assistance.secret' => 'test-secret-key-123456']);
+    $tenant = ticketTenant('Villa Boutanga', 'villa');
+    $tenant->update(['app_port' => 8081]);
+    $double = doubleTickets();
+    $admin = ticketAdmin();
+
+    $reponse = $this->actingAs($admin)->postJson(route('tech.support.tickets.create'), [
+        'tenant_id' => $tenant->id,
+        'type'      => 'probleme',
+        'subject'   => 'Erreur calcul TVA',
+        'message'   => 'Le montant de TVA semble incorrect lors du check-out.',
+    ]);
+
+    $reponse->assertCreated();
+    expect($reponse->json('ok'))->toBeTrue()
+        ->and($reponse->json('ticket_id'))->toBeGreaterThan(0)
+        ->and($reponse->json('assistance_url'))->toContain('/assistance/enter?token=');
+
+    expect($double->ecritures)->toHaveCount(1)
+        ->and($double->ecritures[0]['action'])->toBe('create')
+        ->and($double->ecritures[0]['subject'])->toBe('Erreur calcul TVA');
+
+    $session = \App\Models\AssistanceSession::where('tenant_id', $tenant->id)
+        ->where('status', 'active')
+        ->first();
+
+    expect($session)->not->toBeNull()
+        ->and($session->ticket_id)->toBe($reponse->json('ticket_id'))
+        ->and($session->reason)->toContain('Erreur calcul TVA')
+        ->and($session->isLive())->toBeTrue();
+});
+

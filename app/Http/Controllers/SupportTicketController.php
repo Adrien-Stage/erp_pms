@@ -2,12 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AssistanceSession;
 use App\Models\AuditLog;
 use App\Models\Tenant;
 use App\Services\TenantDatabase;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Tickets d'intervention remontés par le personnel des établissements depuis
@@ -42,6 +45,12 @@ class SupportTicketController extends Controller
         $injoignables = [];
         $aMettreAJour = [];
 
+        // Les sessions d'assistance déjà ouvertes sont chargées en une fois :
+        // afficher le kanban ne doit pas coûter une requête par ticket. Lire
+        // cette liste n'en ouvre aucune — l'assistance se demande (voir
+        // assist()), elle ne se déclenche pas en consultant une page.
+        $sessions = $this->sessionsVivantes($tenants->pluck('id')->all());
+
         foreach ($tenants as $tenant) {
             try {
                 $lecture = $this->bases->supportTickets($tenant);
@@ -58,7 +67,7 @@ class SupportTicketController extends Controller
             }
 
             foreach ($lecture['tickets'] as $ligne) {
-                $tickets[] = $this->presenter($tenant, $ligne);
+                $tickets[] = $this->presenter($tenant, $ligne, $sessions);
             }
         }
 
@@ -71,6 +80,132 @@ class SupportTicketController extends Controller
             'outdated'     => $aMettreAJour,
             'generated_at' => now()->format('H:i:s'),
         ]);
+    }
+
+    /**
+     * Création manuelle d'un ticket depuis l'ERP. L'assistance s'ouvre dans la
+     * foulée : contrairement à l'affichage du kanban, saisir un ticket est un
+     * acte délibéré du support sur un établissement qu'il a lui-même désigné.
+     */
+    public function store(Request $request): JsonResponse
+    {
+        $this->autoriser();
+
+        $valide = $request->validate([
+            'tenant_id'   => ['required', 'integer', 'exists:tenants,id'],
+            'type'        => ['required', 'in:probleme,suggestion'],
+            'subject'     => ['required', 'string', 'min:3', 'max:160'],
+            'message'     => ['required', 'string', 'min:5', 'max:2000'],
+            'context_url' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $tenant = Tenant::findOrFail($valide['tenant_id']);
+        $admin  = Auth::user();
+
+        try {
+            $ticketId = $this->bases->createSupportTicket(
+                $tenant,
+                $admin->name . ' (Support ERP)',
+                'tech_admin',
+                $valide['type'],
+                $valide['subject'],
+                $valide['message'],
+                $valide['context_url'] ?? null
+            );
+        } catch (\Exception $e) {
+            Log::error("Création de ticket impossible sur « {$tenant->slug} »", ['exception' => $e]);
+
+            return response()->json([
+                'ok'      => false,
+                'message' => "La base de « {$tenant->name} » est injoignable : le ticket n'a pas pu être créé.",
+            ], 503);
+        }
+
+        if (!$ticketId) {
+            return response()->json(['ok' => false, 'message' => 'Échec de la création du ticket.'], 500);
+        }
+
+        $session = AssistanceSession::openForTicket(
+            $tenant,
+            $ticketId,
+            $valide['subject'],
+            $admin->name,
+            $admin
+        );
+
+        AuditLog::record(
+            $admin->id,
+            'support_ticket_create',
+            "Création manuelle du ticket #{$ticketId} pour « {$tenant->name} » avec ouverture automatique d'assistance.",
+            'support',
+            [
+                'tenant_id' => $tenant->id,
+                'slug'      => $tenant->slug,
+                'ticket_id' => $ticketId,
+                'subject'   => $valide['subject'],
+            ]
+        );
+
+        return response()->json([
+            'ok'             => true,
+            'ticket_id'      => $ticketId,
+            'assistance_url' => $session?->entryUrl(),
+        ], 201);
+    }
+
+    /**
+     * Ouverture explicite d'une session d'assistance sur un ticket du kanban.
+     *
+     * Entrer en assistance connecte le support dans l'application de
+     * l'établissement sous l'identité de son administrateur : c'est un acte
+     * qui se demande, ticket par ticket, et que le journal d'audit doit
+     * pouvoir imputer. Le motif est reconstruit à partir du ticket relu dans
+     * la base de l'établissement, pas à partir de ce que le navigateur
+     * envoie — au passage, un ticket inexistant n'ouvre aucun accès.
+     */
+    public function assist(Request $request): JsonResponse
+    {
+        $this->autoriser();
+
+        $valide = $request->validate([
+            'tenant_id' => ['required', 'integer', 'exists:tenants,id'],
+            'ticket_id' => ['required', 'integer', 'min:1'],
+        ]);
+
+        $tenant = Tenant::findOrFail($valide['tenant_id']);
+        $admin  = Auth::user();
+
+        try {
+            $ligne = $this->bases->supportTicket($tenant, $valide['ticket_id']);
+        } catch (\Exception $e) {
+            Log::error("Assistance impossible sur « {$tenant->slug} »", ['exception' => $e]);
+
+            return response()->json([
+                'ok'      => false,
+                'message' => "La base de « {$tenant->name} » est injoignable : l'assistance n'a pas pu être ouverte.",
+            ], 503);
+        }
+
+        if (!$ligne) {
+            return response()->json(['ok' => false, 'message' => 'Ticket introuvable dans cet établissement.'], 404);
+        }
+
+        $session = AssistanceSession::openForTicket(
+            $tenant,
+            (int) $ligne['id'],
+            $ligne['subject'] ?? '',
+            $ligne['author_name'] ?? 'Établissement',
+            $admin
+        );
+
+        if (!$session) {
+            return response()->json([
+                'ok'      => false,
+                'message' => "Assistance indisponible sur « {$tenant->name} » : établissement non provisionné, ou secret d'assistance absent côté ERP.",
+            ], 422);
+        }
+
+        return response()->json(['ok' => true, 'assistance_url' => $session->entryUrl()]);
     }
 
     /**
@@ -101,6 +236,8 @@ class SupportTicketController extends Controller
                 $admin->name
             );
         } catch (\Exception $e) {
+            Log::error("Traitement de ticket impossible sur « {$tenant->slug} »", ['exception' => $e]);
+
             return response()->json([
                 'ok'      => false,
                 'message' => "La base de « {$tenant->name} » est injoignable : le ticket n'a pas été modifié.",
@@ -137,28 +274,54 @@ class SupportTicketController extends Controller
         }
     }
 
-    /** Mise en forme d'une ligne pour le kanban. */
-    private function presenter(Tenant $tenant, array $ligne): array
+    /**
+     * Sessions d'assistance encore vivantes rattachées à un ticket, indexées
+     * par « tenant:ticket » pour que le kanban les retrouve sans requête.
+     *
+     * @param  array<int, int> $tenantIds
+     * @return Collection<string, AssistanceSession>
+     */
+    private function sessionsVivantes(array $tenantIds): Collection
     {
-        $creeLe = \Carbon\Carbon::parse($ligne['created_at']);
+        return AssistanceSession::query()
+            ->with(['tenant', 'user'])
+            ->whereIn('tenant_id', $tenantIds)
+            ->whereNotNull('ticket_id')
+            ->where('status', 'active')
+            ->where('expires_at', '>', now())
+            ->get()
+            ->keyBy(fn (AssistanceSession $s) => $s->tenant_id . ':' . $s->ticket_id);
+    }
+
+    /**
+     * Mise en forme d'une ligne pour le kanban.
+     *
+     * @param Collection<string, AssistanceSession> $sessions
+     */
+    private function presenter(Tenant $tenant, array $ligne, Collection $sessions): array
+    {
+        $creeLe   = \Carbon\Carbon::parse($ligne['created_at']);
+        $ticketId = (int) $ligne['id'];
+        $session  = $sessions->get($tenant->id . ':' . $ticketId);
 
         return [
-            'id'          => (int) $ligne['id'],
-            'tenant_id'   => $tenant->id,
-            'tenant'      => $tenant->name,
-            'slug'        => $tenant->slug,
-            'author'      => $ligne['author_name'],
-            'role'        => $ligne['author_role'],
-            'type'        => $ligne['type'],
-            'subject'     => $ligne['subject'],
-            'message'     => $ligne['message'],
-            'context_url' => $ligne['context_url'],
-            'status'      => in_array($ligne['status'], self::STATUTS, true) ? $ligne['status'] : 'nouveau',
-            'reply'       => $ligne['reply'],
-            'handled_by'  => $ligne['handled_by'],
-            'at'          => $creeLe->format('d/m/Y H:i'),
-            'ago'         => $creeLe->diffForHumans(),
-            'ts'          => $creeLe->timestamp,
+            'id'             => $ticketId,
+            'tenant_id'      => $tenant->id,
+            'tenant'         => $tenant->name,
+            'slug'           => $tenant->slug,
+            'author'         => $ligne['author_name'],
+            'role'           => $ligne['author_role'],
+            'type'           => $ligne['type'],
+            'subject'        => $ligne['subject'],
+            'message'        => $ligne['message'],
+            'context_url'    => $ligne['context_url'],
+            'status'         => in_array($ligne['status'], self::STATUTS, true) ? $ligne['status'] : 'nouveau',
+            'reply'          => $ligne['reply'],
+            'handled_by'     => $ligne['handled_by'],
+            'at'             => $creeLe->format('d/m/Y H:i'),
+            'ago'            => $creeLe->diffForHumans(),
+            'ts'             => $creeLe->timestamp,
+            'assistance_url' => $session?->entryUrl(),
         ];
     }
 

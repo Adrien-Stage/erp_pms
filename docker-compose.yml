@@ -13,6 +13,15 @@ services:
       - "8080:80"
     volumes:
       - .:/var/www/html
+      # Le bind mount ci-dessus recouvrirait vendor/ et node_modules/ par leur
+      # version Windows, ~775× plus lente à lire (34 ms contre 0,04 ms par
+      # fichier). Ces deux volumes nommés les remplacent par la copie construite
+      # dans l'image, sur le disque du conteneur.
+      #
+      # Conséquence à connaître : ils ne se mettent PAS à jour tout seuls après
+      # un `composer require` ou un `npm install`. Utiliser dev-refresh.ps1 -Deps.
+      - pms_vendor:/var/www/html/vendor
+      - pms_node_modules:/var/www/html/node_modules
       - /var/run/docker.sock:/var/run/docker.sock
       - c:/Users/user/Herd:/c/Users/user/Herd
     depends_on:
@@ -43,6 +52,9 @@ services:
       - "5173:5173"
     volumes:
       - .:/var/www/html
+      # Même volume que le service app : c'est ce qui évite à Tailwind de
+      # rescanner node_modules à travers le mount à chaque invalidation.
+      - pms_node_modules:/var/www/html/node_modules
     depends_on:
       - app
     networks:
@@ -72,3 +84,7 @@ networks:
 
 volumes:
   pms_pgdata:
+  # Dépendances servies depuis le disque du conteneur plutôt que depuis le
+  # bind mount Windows — voir le commentaire du service app.
+  pms_vendor:
+  pms_node_modules:

@@ -43,5 +43,32 @@ echo "🔧 Ajustement des permissions storage/ et bootstrap/cache/..."
 mkdir -p /var/www/html/storage/app/private/backups
 chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache 2>/dev/null || true
 
+# ── Fraîcheur des volumes de dépendances ─────────────────────────────────────
+# vendor/ et node_modules/ viennent de l'image via un volume nommé, et non du
+# bind mount : c'est ce qui évite de lire 10 000 fichiers à ~34 ms pièce au
+# démarrage. Revers de la médaille, un `composer require` lancé sur l'hôte ne
+# les met pas à jour. On compare donc l'empreinte figée au build aux verrous
+# réellement montés, et on le dit franchement plutôt que de laisser tourner
+# l'application sur des dépendances qui ne sont plus les bonnes.
+verifier_deps() {
+    nom="$1"; verrou="$2"; repertoire="$3"
+
+    [ -f "$verrou" ] || return 0
+
+    if [ ! -f "$repertoire/.lock-stamp" ]; then
+        echo "⚠️  $nom : volume sans empreinte — reconstruire l'image."
+        return 0
+    fi
+
+    if [ "$(cat "$repertoire/.lock-stamp")" != "$(md5sum "$verrou" | cut -d' ' -f1)" ]; then
+        echo "⚠️  $nom : le volume ne correspond plus à $(basename "$verrou")."
+        echo "    Les dépendances servies datent d'un build précédent."
+        echo "    Corriger avec :  .\\dev-refresh.ps1 -Deps"
+    fi
+}
+
+verifier_deps "vendor"       /var/www/html/composer.lock     /var/www/html/vendor
+verifier_deps "node_modules" /var/www/html/package-lock.json /var/www/html/node_modules
+
 # Exécuter la commande passée (CMD du Dockerfile = supervisord)
 exec "$@"

@@ -1112,30 +1112,6 @@ class AdminAuditController extends Controller
     }
 
     /**
-     * Jeton signé + URL d'entrée dans l'application tenant pour une session.
-     * Payload signé HMAC-SHA256 avec le secret partagé : le tenant vérifie
-     * la signature et l'expiration avant d'ouvrir la session support.
-     */
-    private function assistanceEntryUrl(\App\Models\AssistanceSession $session): string
-    {
-        $tenant = $session->tenant;
-
-        $payload = [
-            'slug'    => $tenant->slug,
-            'session' => $session->token,
-            'admin'   => $session->user?->name ?? 'Support',
-            'exp'     => $session->expires_at->timestamp,
-        ];
-
-        $encoded   = rtrim(strtr(base64_encode(json_encode($payload)), '+/', '-_'), '=');
-        $signature = hash_hmac('sha256', $encoded, config('assistance.secret'));
-
-        $base = $tenant->app_port ? 'http://localhost:' . $tenant->app_port : '';
-
-        return $base . '/assistance/enter?token=' . $encoded . '.' . $signature;
-    }
-
-    /**
      * Support — liste des sessions d'assistance (onglet Mode assistance).
      * Passe paresseusement en 'expired' les sessions actives échues, et
      * expose l'URL d'entrée pour les sessions encore vivantes.
@@ -1166,7 +1142,7 @@ class AdminAuditController extends Controller
                     'expires_at' => $s->expires_at?->format('d/m/Y H:i'),
                     'expires_in' => $live ? $s->expires_at->diffForHumans() : null,
                     'opened_at'  => $s->created_at?->format('d/m/Y H:i'),
-                    'entry_url'  => $live ? $this->assistanceEntryUrl($s) : null,
+                    'entry_url'  => $s->entryUrl(),
                 ];
             });
 
