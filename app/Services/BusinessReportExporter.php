@@ -27,7 +27,7 @@ class BusinessReportExporter
     {
         $ss = new Spreadsheet();
         $ss->getProperties()
-            ->setCreator('MEKA ERP')
+            ->setCreator('WeTchah ERP')
             ->setTitle('Rapport financier')
             ->setSubject('Rapport financier consolidé');
 

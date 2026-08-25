@@ -111,6 +111,6 @@
         </table>
     @endif
 
-    <div class="foot">MEKA ERP — Rapport généré automatiquement. Les montants sont en {{ $cur }}.</div>
+    <div class="foot">WeTchah ERP — Rapport généré automatiquement. Les montants sont en {{ $cur }}.</div>
 </body>
 </html>

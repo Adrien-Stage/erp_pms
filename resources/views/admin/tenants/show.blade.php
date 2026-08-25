@@ -669,19 +669,37 @@
                             <tr>
                                 <th class="px-5 py-3 text-[10px] font-bold tracking-wider text-slate-400 uppercase">Nom</th>
                                 <th class="px-5 py-3 text-[10px] font-bold tracking-wider text-slate-400 uppercase">Email</th>
-                                <th class="px-5 py-3 text-[10px] font-bold tracking-wider text-slate-400 uppercase">Rôle</th>
+                                <th class="px-5 py-3 text-[10px] font-bold tracking-wider text-slate-400 uppercase">Accès</th>
                                 <th class="px-5 py-3 text-[10px] font-bold tracking-wider text-slate-400 uppercase">Statut</th>
+                                <th class="px-5 py-3"><span class="sr-only">Actions</span></th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100">
                             @forelse($tenantUsers as $user)
                                 <tr class="hover:bg-slate-50 transition">
-                                    <td class="px-5 py-3 font-semibold text-slate-800">{{ $user->name }}</td>
+                                    <td class="px-5 py-3">
+                                        <a href="{{ route('tech.establishments.users.show', ['tenant' => $tenant, 'user' => $user->id]) }}"
+                                           class="font-semibold text-slate-800 hover:text-indigo-600 hover:underline">
+                                            {{ $user->name }}
+                                        </a>
+                                    </td>
                                     <td class="px-5 py-3 text-slate-600 font-mono">{{ $user->email }}</td>
                                     <td class="px-5 py-3">
-                                        <span class="inline-flex items-center rounded-full bg-indigo-50 border border-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700">
-                                            {{ $user->role }}
-                                        </span>
+                                        <div class="flex flex-wrap gap-1">
+                                            <span class="inline-flex items-center rounded-full bg-indigo-50 border border-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700">
+                                                {{ $user->role }}
+                                            </span>
+                                            {{-- Rôles du pivot, avec leur niveau : c'est ce que
+                                                 wetchah_app applique réellement par module. --}}
+                                            @foreach($user->roles ?? [] as $r)
+                                                <span class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium
+                                                    {{ $r['level'] === 'read' ? 'border-slate-200 bg-slate-50 text-slate-600' : 'border-emerald-200 bg-emerald-50 text-emerald-700' }}"
+                                                    title="{{ $r['module'] }} — {{ $r['level'] === 'read' ? 'lecture seule' : 'lecture/écriture' }}">
+                                                    {{ $r['name'] }}
+                                                    <span class="opacity-60">{{ $r['level'] === 'read' ? 'L' : 'L/É' }}</span>
+                                                </span>
+                                            @endforeach
+                                        </div>
                                     </td>
                                     <td class="px-5 py-3">
                                         <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold {{ $user->is_active ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200' }}">
@@ -689,10 +707,13 @@
                                             {{ $user->is_active ? 'Actif' : 'Inactif' }}
                                         </span>
                                     </td>
+                                    <td class="px-5 py-3 text-right">
+                                        @include('admin.tenants.partials.user-menu', ['tenant' => $tenant, 'user' => $user])
+                                    </td>
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="4" class="px-5 py-8 text-center text-sm text-slate-400">
+                                    <td colspan="5" class="px-5 py-8 text-center text-sm text-slate-400">
                                         Aucun utilisateur rattaché à cet établissement.
                                     </td>
                                 </tr>
@@ -700,6 +721,8 @@
                         </tbody>
                     </table>
                 </div>
+
+                @include('admin.tenants.partials.user-edit-modal', ['tenant' => $tenant, 'tenantRoles' => $tenantRoles ?? collect()])
 
             {{-- ==================== THÈME ==================== --}}
             @elseif($section === 'theme')
@@ -815,6 +838,7 @@
                         'housekeeping' => ['label' => 'Housekeeping', 'desc' => 'Planification et suivi du nettoyage des chambres.', 'icon' => 'brush-cleaning'],
                         'discussions'  => ['label' => 'Discussions', 'desc' => 'Messagerie interne entre membres du personnel.', 'icon' => 'message-circle'],
                         'analytics'    => ['label' => 'Analytics', 'desc' => 'Tour de contrôle : statistiques et tableaux de bord.', 'icon' => 'chart-column'],
+                        'ledger'       => ['label' => 'Comptabilité avancée', 'desc' => 'Grand livre SYSCOHADA : plan de comptes, journaux, balance, clôture, comptes de tiers et lettrage, factures fournisseurs et retenues à la source, analytique. La comptabilité de caisse reste active sans ce module.', 'icon' => 'book-open'],
                         'api'          => ['label' => 'API d\'intégration', 'desc' => 'Expose des routes API sécurisées pour connecter des applications mobiles tierces ou des PMS externes.', 'icon' => 'plug'],
                         'website'      => ['label' => 'Site web', 'desc' => 'Site vitrine public (chambres, menu, contenu CMS) — provisionne un 3ᵉ container. Nécessite l\'API d\'intégration active.', 'icon' => 'globe'],
                     ];
@@ -848,9 +872,16 @@
                         @foreach($moduleDefs as $key => $def)
                             <label class="relative flex flex-col gap-3 rounded-xl border p-4 cursor-pointer select-none transition hover:bg-slate-50"
                                    :class="modules.{{ $key }} ? 'border-indigo-600 ring-2 ring-indigo-50 bg-indigo-50/10' : 'border-slate-200'">
-                                <input type="checkbox" name="modules[]" value="{{ $key }}" hidden
+                                {{-- Case à cocher d'UI uniquement (sans name : elle ne se soumet pas).
+                                     La soumission passe par le champ caché ci-dessous, présent
+                                     seulement quand le module est activé — évite l'ambiguïté d'une
+                                     case liée en x-model, qui empêchait la désactivation de prendre. --}}
+                                <input type="checkbox" hidden
                                        x-model="modules.{{ $key }}"
                                        @if(in_array($key, ['api', 'website'], true)) @change="toggleModuleDependency('{{ $key }}')" @endif>
+                                <template x-if="modules.{{ $key }}">
+                                    <input type="hidden" name="modules[]" value="{{ $key }}">
+                                </template>
                                 <div class="flex items-start justify-between gap-2">
                                     <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition"
                                          :class="modules.{{ $key }} ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'">
@@ -879,242 +910,12 @@
 
             {{-- ==================== CONTENU DU SITE (CMS) ==================== --}}
             @elseif($section === 'site-content')
-                @php
-                    $schemaPages = \App\Support\SiteContentSchema::pages();
-                    $pagesData   = \App\Support\SiteContentSchema::hydrate($tenant->site_content);
-                    $seo         = $tenant->site_content['seo'] ?? [];
-                @endphp
-                <div class="mb-6">
-                    <h2 class="text-xl font-extrabold text-slate-800 tracking-tight">Contenu du site</h2>
-                    <p class="text-xs text-slate-500 mt-1">Construis le contenu de chaque page du site vitrine de {{ $tenant->name }} — un onglet par page, des champs regroupés par section. Chaque section peut être affichée ou masquée sur le site via son interrupteur. Les chambres et le menu restaurant viennent directement de l'application.</p>
-                </div>
+                @include('admin.tenants.partials.site-editors', ['tenant' => $tenant])
 
-                <form action="{{ route('tech.establishments.site-content', $tenant) }}" method="POST" enctype="multipart/form-data" x-data="{ tab: 'identity' }">
-                    @csrf
-
-                    {{-- Barre d'onglets (identité + une entrée par page du site + SEO global) --}}
-                    <div class="bg-white rounded-t-xl border border-b-0 border-slate-200 px-3 pt-3 flex flex-wrap gap-1">
-                        <button type="button" @click="tab = 'identity'"
-                                class="px-4 py-2.5 rounded-t-lg text-xs font-bold transition border-b-2 cursor-pointer"
-                                :class="tab === 'identity' ? 'text-indigo-700 border-indigo-600 bg-indigo-50/60' : 'text-slate-500 border-transparent hover:text-slate-800 hover:bg-slate-50'">
-                            Identité du site
-                        </button>
-                        @foreach($schemaPages as $pageKey => $pageDef)
-                            <button type="button" @click="tab = '{{ $pageKey }}'"
-                                    class="px-4 py-2.5 rounded-t-lg text-xs font-bold transition border-b-2 cursor-pointer"
-                                    :class="tab === '{{ $pageKey }}' ? 'text-indigo-700 border-indigo-600 bg-indigo-50/60' : 'text-slate-500 border-transparent hover:text-slate-800 hover:bg-slate-50'">
-                                {{ $pageDef['label'] }}
-                            </button>
-                        @endforeach
-                        <button type="button" @click="tab = 'seo'"
-                                class="px-4 py-2.5 rounded-t-lg text-xs font-bold transition border-b-2 cursor-pointer"
-                                :class="tab === 'seo' ? 'text-indigo-700 border-indigo-600 bg-indigo-50/60' : 'text-slate-500 border-transparent hover:text-slate-800 hover:bg-slate-50'">
-                            SEO
-                        </button>
-                    </div>
-
-                    <div class="bg-slate-50/60 border border-slate-200 rounded-b-xl p-5">
-
-                        {{-- Onglet Identité : nom, logo et coordonnées affichés sur le site.
-                             Édite directement la fiche du tenant (mêmes champs que le
-                             formulaire de création / l'onglet Informations) — une seule
-                             source de vérité, pas de doublon dans site_content. --}}
-                        <div x-show="tab === 'identity'" class="space-y-5">
-                            <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                                <div class="px-6 py-4 border-b border-slate-100">
-                                    <h3 class="text-sm font-bold text-slate-800">Identité du site</h3>
-                                    <p class="text-[10px] text-slate-400 mt-0.5 leading-relaxed">Nom, logo et coordonnées affichés dans l'en-tête, le pied de page et la section contact du site. Ces informations sont celles de l'établissement (renseignées à sa création) — les modifier ici les met aussi à jour dans l'onglet Informations. Sans logo, le site affiche la première lettre du nom.</p>
-                                </div>
-                                <div class="p-6 space-y-5">
-                                    <div>
-                                        <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Nom de l'établissement</label>
-                                        <input type="text" value="{{ $tenant->name }}" disabled
-                                               class="block w-full rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-500 cursor-not-allowed">
-                                        <p class="text-[10px] text-slate-400 mt-1">Le nom se modifie depuis l'onglet Informations.</p>
-                                    </div>
-
-                                    <div>
-                                        <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Logo</label>
-                                        <div class="flex items-center gap-4">
-                                            @if(!empty($tenant->settings['logo']))
-                                                <div class="relative shrink-0">
-                                                    <img src="{{ asset('storage/' . $tenant->settings['logo']) }}" alt="Logo" class="h-16 w-24 object-contain rounded-lg border border-slate-200 bg-slate-950 p-1">
-                                                    <label class="absolute -top-2 -right-2 flex items-center gap-1 bg-white border border-slate-200 rounded-full px-1.5 py-0.5 shadow-sm cursor-pointer" title="Supprimer le logo à l'enregistrement">
-                                                        <input type="checkbox" name="identity_remove_logo" value="1" class="h-3 w-3 rounded text-red-600">
-                                                        <span class="text-[9px] font-bold text-red-500">Suppr.</span>
-                                                    </label>
-                                                </div>
-                                            @else
-                                                <div class="h-16 w-16 shrink-0 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-extrabold text-2xl">
-                                                    {{ strtoupper(mb_substr($tenant->name, 0, 1)) }}
-                                                </div>
-                                            @endif
-                                            <input type="file" name="identity_logo" accept="image/*"
-                                                   class="text-xs text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-indigo-700">
-                                        </div>
-                                        @if(empty($tenant->settings['logo']))
-                                            <p class="text-[10px] text-slate-400 mt-1.5">Aucun logo — le site affiche actuellement la première lettre du nom (aperçu ci-dessus).</p>
-                                        @endif
-                                    </div>
-
-                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                                        <div>
-                                            <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Téléphone</label>
-                                            <input type="text" name="identity_phone" value="{{ old('identity_phone', $tenant->phone) }}"
-                                                   class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">
-                                        </div>
-                                        <div>
-                                            <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Email</label>
-                                            <input type="email" name="identity_email" value="{{ old('identity_email', $tenant->email) }}"
-                                                   class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Adresse</label>
-                                        <input type="text" name="identity_address" value="{{ old('identity_address', $tenant->address) }}"
-                                               class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {{-- Onglets pages : sections générées depuis le schéma --}}
-                        @foreach($schemaPages as $pageKey => $pageDef)
-                            <div x-show="tab === '{{ $pageKey }}'" x-cloak class="space-y-5">
-                                @foreach($pageDef['sections'] as $sectionKey => $sectionDef)
-                                    @php $sd = $pagesData[$pageKey][$sectionKey]; @endphp
-                                    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden" x-data="{ on: {{ $sd['enabled'] ? 'true' : 'false' }} }">
-
-                                        {{-- En-tête de section : libellé + interrupteur d'affichage --}}
-                                        <div class="px-6 py-4 border-b border-slate-100 flex items-start justify-between gap-4">
-                                            <div>
-                                                <h3 class="text-sm font-bold transition" :class="on ? 'text-slate-800' : 'text-slate-400'">{{ $sectionDef['label'] }}</h3>
-                                                <p class="text-[10px] text-slate-400 mt-0.5 leading-relaxed">{{ $sectionDef['description'] }}</p>
-                                            </div>
-                                            <label class="shrink-0 flex items-center gap-2 mt-0.5 cursor-pointer select-none">
-                                                <span class="text-[10px] font-bold uppercase tracking-wider transition" :class="on ? 'text-indigo-600' : 'text-slate-400'" x-text="on ? 'Affichée' : 'Masquée'"></span>
-                                                <input type="checkbox" name="pages[{{ $pageKey }}][{{ $sectionKey }}][enabled]" value="1" x-model="on" hidden>
-                                                <div class="h-5 w-9 rounded-full transition-colors" :class="on ? 'bg-indigo-600' : 'bg-slate-200'">
-                                                    <div class="h-4 w-4 mt-0.5 rounded-full bg-white shadow transition-transform" :class="on ? 'translate-x-[18px]' : 'translate-x-0.5'"></div>
-                                                </div>
-                                            </label>
-                                        </div>
-
-                                        {{-- Champs de la section (repliés quand elle est masquée) --}}
-                                        <div class="p-6 space-y-4" x-show="on">
-                                            @foreach($sectionDef['fields'] as $fieldKey => $fieldDef)
-                                                @php
-                                                    $inputName = "pages[{$pageKey}][{$sectionKey}][{$fieldKey}]";
-                                                    $fileName  = "pages_files[{$pageKey}][{$sectionKey}][{$fieldKey}]";
-                                                    $value     = $sd[$fieldKey];
-                                                @endphp
-
-                                                @if($fieldDef['type'] === 'text')
-                                                    <div>
-                                                        <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">{{ $fieldDef['label'] }}</label>
-                                                        <input type="text" name="{{ $inputName }}" value="{{ old($inputName, $value) }}"
-                                                               class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">
-                                                    </div>
-
-                                                @elseif($fieldDef['type'] === 'textarea')
-                                                    <div>
-                                                        <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">{{ $fieldDef['label'] }}</label>
-                                                        <textarea name="{{ $inputName }}" rows="3"
-                                                                  class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">{{ old($inputName, $value) }}</textarea>
-                                                    </div>
-
-                                                @elseif($fieldDef['type'] === 'items')
-                                                    <div>
-                                                        <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">{{ $fieldDef['label'] }}</label>
-                                                        <textarea name="{{ $inputName }}" rows="4" placeholder="{{ $fieldDef['placeholder'] ?? '' }}"
-                                                                  class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 font-mono outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">{{ old($inputName, \App\Support\SiteContentSchema::itemsToRaw($value, $fieldDef['keys'])) }}</textarea>
-                                                        <p class="text-[10px] text-slate-400 mt-1">Un élément par ligne — colonnes séparées par « | » ({{ implode(' | ', array_map(fn ($k) => ucfirst($k), $fieldDef['keys'])) }}).</p>
-                                                    </div>
-
-                                                @elseif($fieldDef['type'] === 'image')
-                                                    <div>
-                                                        <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">{{ $fieldDef['label'] }}</label>
-                                                        <div class="flex items-center gap-4">
-                                                            @if($value)
-                                                                <div class="relative shrink-0">
-                                                                    <img src="{{ asset('storage/' . $value) }}" alt="" class="h-16 w-24 object-cover rounded-lg border border-slate-200">
-                                                                    <label class="absolute -top-2 -right-2 flex items-center gap-1 bg-white border border-slate-200 rounded-full px-1.5 py-0.5 shadow-sm cursor-pointer" title="Supprimer cette image à l'enregistrement">
-                                                                        <input type="checkbox" name="pages[{{ $pageKey }}][{{ $sectionKey }}][remove_{{ $fieldKey }}]" value="1" class="h-3 w-3 rounded text-red-600">
-                                                                        <span class="text-[9px] font-bold text-red-500">Suppr.</span>
-                                                                    </label>
-                                                                </div>
-                                                            @endif
-                                                            <input type="file" name="{{ $fileName }}" accept="image/*"
-                                                                   class="text-xs text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-indigo-700">
-                                                        </div>
-                                                    </div>
-
-                                                @elseif($fieldDef['type'] === 'images')
-                                                    <div>
-                                                        <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">{{ $fieldDef['label'] }}</label>
-                                                        @if(count($value))
-                                                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
-                                                                @foreach($value as $path)
-                                                                    <label class="relative block rounded-lg overflow-hidden border border-slate-200 cursor-pointer group">
-                                                                        <img src="{{ asset('storage/' . $path) }}" alt="" class="h-24 w-full object-cover">
-                                                                        <div class="absolute inset-0 bg-black/0 group-has-[:checked]:bg-red-900/60 transition flex items-center justify-center">
-                                                                            <span class="hidden group-has-[:checked]:block text-white text-[10px] font-bold">Supprimer</span>
-                                                                        </div>
-                                                                        <input type="checkbox" name="pages[{{ $pageKey }}][{{ $sectionKey }}][remove_{{ $fieldKey }}][]" value="{{ $path }}" class="absolute top-1.5 right-1.5 h-4 w-4 rounded">
-                                                                    </label>
-                                                                @endforeach
-                                                            </div>
-                                                            <p class="text-[10px] text-slate-400 mb-2">Coche une photo pour la supprimer lors de l'enregistrement.</p>
-                                                        @endif
-                                                        <input type="file" name="{{ $fileName }}[]" accept="image/*" multiple
-                                                               class="block w-full text-xs text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-indigo-700">
-                                                    </div>
-                                                @endif
-                                            @endforeach
-                                        </div>
-
-                                        {{-- Rappel discret quand la section est masquée --}}
-                                        <div class="px-6 py-3 text-[10px] text-slate-400 italic" x-show="!on" x-cloak>
-                                            Section masquée sur le site — son contenu est conservé et sera réaffiché si tu la réactives.
-                                        </div>
-                                    </div>
-                                @endforeach
-                            </div>
-                        @endforeach
-
-                        {{-- Onglet SEO global --}}
-                        <div x-show="tab === 'seo'" x-cloak class="space-y-5">
-                            <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                                <div class="px-6 py-4 border-b border-slate-100">
-                                    <h3 class="text-sm font-bold text-slate-800">Référencement (SEO)</h3>
-                                    <p class="text-[10px] text-slate-400 mt-0.5">Titre et description affichés dans les résultats de recherche.</p>
-                                </div>
-                                <div class="p-6 space-y-4">
-                                    <div>
-                                        <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Titre de la page</label>
-                                        <input type="text" name="seo_title" value="{{ old('seo_title', $seo['title'] ?? '') }}" placeholder="{{ $tenant->name }}"
-                                               class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">
-                                    </div>
-                                    <div>
-                                        <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Meta description</label>
-                                        <textarea name="seo_description" rows="2"
-                                                  class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">{{ old('seo_description', $seo['description'] ?? '') }}</textarea>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {{-- Enregistrement global (toutes pages confondues) --}}
-                        <div class="flex items-center justify-between gap-4 mt-6">
-                            <p class="text-[10px] text-slate-400">L'enregistrement sauvegarde toutes les pages et sections d'un coup, y compris celles des autres onglets.</p>
-                            <button type="submit" class="shrink-0 rounded-lg bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-sm">
-                                Enregistrer le contenu
-                            </button>
-                        </div>
-
-                    </div>
-                </form>
+                @include('admin.tenants.partials.site-content-form', [
+                    'tenant'    => $tenant,
+                    'actionUrl' => route('tech.establishments.site-content', $tenant),
+                ])
 
 
             {{-- ==================== PARAMÈTRES (SETTINGS) ==================== --}}
@@ -1126,7 +927,8 @@
 
                 <div class="space-y-6" x-data="{
                     showDeleteModal: false, confirmSlug: '',
-                    showUpdateModal: false, availableTags: [], selectedTag: '', loadingTags: false, updating: false
+                    showUpdateModal: false, availableTags: [], selectedTag: '', loadingTags: false, updating: false,
+                    showWebModal: false, webUpdating: false
                 }">
                     <!-- Technical details card (read-only) -->
                     <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -1206,13 +1008,11 @@
                                         {{ $tenant->web_image_tag ? \Illuminate\Support\Str::limit($tenant->web_image_tag, 22, '…') : 'Non résolu' }}
                                     </span>
                                 </div>
-                                <form action="{{ route('tech.establishments.update-website', $tenant) }}" method="POST"
-                                      onsubmit="const b = this.querySelector('button'); b.disabled = true; b.textContent = 'Mise à jour en cours…';">
-                                    @csrf
-                                    <button type="submit" class="shrink-0 rounded-lg bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-sm cursor-pointer disabled:opacity-60 disabled:cursor-wait">
-                                        Mettre à jour le site
-                                    </button>
-                                </form>
+                                <button type="button"
+                                        @click="showWebModal = true"
+                                        class="shrink-0 rounded-lg bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-sm cursor-pointer">
+                                    Mettre à jour le site
+                                </button>
                             </div>
                         </div>
                     @endif
@@ -1381,6 +1181,69 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Update Website Modal -->
+                    <div x-show="showWebModal"
+                         class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+                         x-transition:enter="transition ease-out duration-300"
+                         x-transition:enter-start="opacity-0"
+                         x-transition:enter-end="opacity-100"
+                         x-transition:leave="transition ease-in duration-200"
+                         x-transition:leave-start="opacity-100"
+                         x-transition:leave-end="opacity-0"
+                         x-cloak>
+
+                        <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden max-w-lg w-full"
+                             @click.away="if (!webUpdating) { showWebModal = false }"
+                             x-transition:enter="transition ease-out duration-300 transform scale-95"
+                             x-transition:enter-start="opacity-0 scale-95"
+                             x-transition:enter-end="opacity-100 scale-100"
+                             x-transition:leave="transition ease-in duration-200 transform scale-100"
+                             x-transition:leave-start="opacity-100 scale-100"
+                             x-transition:leave-end="opacity-0 scale-95">
+
+                            <!-- Header -->
+                            <div class="bg-slate-950 px-6 py-5 flex items-center gap-3">
+                                <div class="rounded-lg bg-indigo-500/20 p-2">
+                                    <svg class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418" />
+                                    </svg>
+                                </div>
+                                <h3 class="text-sm font-bold text-white tracking-wide">Mettre à jour le site vitrine</h3>
+                            </div>
+
+                            <!-- Confirmation (avant lancement) -->
+                            <div class="p-6 space-y-4" x-show="!webUpdating">
+                                <p class="text-xs text-slate-600 leading-relaxed">
+                                    Le container du site public sera recréé avec la dernière image publiée sur le registre (tag « latest »). Le contenu marketing et la configuration de l'établissement ne sont pas affectés. Si le site est déjà à jour, aucune action n'est effectuée.
+                                </p>
+                            </div>
+
+                            <!-- Logs en direct (pendant la mise à jour) -->
+                            <div x-show="webUpdating" class="p-6">
+                                <div id="web-update-log-output" class="font-mono text-xs text-slate-300 space-y-1.5 bg-slate-950/70 rounded-lg p-5 border border-slate-850 overflow-y-auto h-64" style="word-break: break-word; overflow-wrap: break-word;"></div>
+                                <div class="mt-3 flex justify-end">
+                                    <button type="button" onclick="copyLogText('web-update-log-output', this)"
+                                            class="rounded border border-slate-700 bg-slate-800 px-2.5 py-1 text-[10px] font-bold text-slate-300 hover:bg-slate-700 hover:text-white transition cursor-pointer">
+                                        Copier les logs
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Footer Actions -->
+                            <div class="bg-slate-50 px-6 py-4 border-t border-slate-100 flex items-center justify-end gap-3">
+                                <button @click="showWebModal = false" type="button" x-show="!webUpdating"
+                                        class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer">
+                                    Annuler
+                                </button>
+                                <button type="button" x-show="!webUpdating"
+                                        @click="webUpdating = true; startWebsiteUpdateStream()"
+                                        class="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 transition cursor-pointer shadow-sm">
+                                    Lancer la mise à jour
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <script>
@@ -1423,6 +1286,53 @@
                             }
                         } catch (e) {
                             console.error('Error parsing update stream payload:', e);
+                        }
+                    };
+
+                    evtSource.onerror = function () {
+                        evtSource.close();
+                    };
+                }
+
+                function startWebsiteUpdateStream() {
+                    const logOutput = document.getElementById('web-update-log-output');
+                    logOutput.innerHTML = '';
+                    const streamUrl = '{{ route("tech.establishments.update-website.stream", $tenant) }}';
+                    const evtSource = new EventSource(streamUrl);
+
+                    evtSource.onmessage = function (event) {
+                        try {
+                            const data = JSON.parse(event.data);
+                            const line = document.createElement('div');
+                            line.className = 'flex gap-2.5 items-start py-0.5 border-b border-slate-900/10';
+
+                            const timeSpan = document.createElement('span');
+                            timeSpan.className = 'text-slate-500 shrink-0 font-semibold select-none';
+                            timeSpan.textContent = `[${data.time}]`;
+
+                            const msgSpan = document.createElement('span');
+                            msgSpan.className = {
+                                'success': 'text-emerald-400 font-semibold',
+                                'error':   'text-red-400 font-semibold',
+                                'warning': 'text-amber-400',
+                                'info':    'text-slate-300',
+                            }[data.level] || 'text-slate-300';
+                            msgSpan.textContent = data.message;
+
+                            line.appendChild(timeSpan);
+                            line.appendChild(msgSpan);
+                            logOutput.appendChild(line);
+                            logOutput.scrollTop = logOutput.scrollHeight;
+
+                            if (data.step === 'done' || data.step === 'finished') {
+                                evtSource.close();
+                                setTimeout(() => location.reload(), 1500);
+                            }
+                            if (data.level === 'error' || data.step === 'error') {
+                                evtSource.close();
+                            }
+                        } catch (e) {
+                            console.error('Error parsing website update stream payload:', e);
                         }
                     };
 

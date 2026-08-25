@@ -1,4 +1,4 @@
-# Plan — CMS marketing (pms) + APIs opérationnelles (meka_template) + site vitrine (template_site)
+# Plan — CMS marketing (pms) + APIs opérationnelles (wetchah_app) + site vitrine (wetchah_site)
 
 > Complète `PLAN_REALISATION_ARCHITECTURE.md` (Phase 3 — Module site web) avec le
 > détail de la répartition CMS / données opérationnelles / consommation côté site.
@@ -9,11 +9,11 @@
 
 Les chambres et le menu restaurant sont des **données opérationnelles** qui vivent
 déjà dans la base de chaque établissement (modèles `Room`, `RoomType`,
-`RestaurantMenuItem`...) côté `meka_template` — pas de duplication dans `pms`.
+`RestaurantMenuItem`...) côté `wetchah_app` — pas de duplication dans `pms`.
 
-Le site vitrine (`template_site`) consomme donc **deux APIs distinctes** :
+Le site vitrine (`wetchah_site`) consomme donc **deux APIs distinctes** :
 - contenu marketing → depuis `pms`
-- chambres / menu → depuis `meka_template` (l'instance de l'établissement lui-même)
+- chambres / menu → depuis `wetchah_app` (l'instance de l'établissement lui-même)
 
 ---
 
@@ -45,7 +45,7 @@ galerie résolues en **URLs absolues** vers le storage de `pms`
 
 ---
 
-## Partie 2 — `meka_template` : API publique opérationnelle (chambres + menu)
+## Partie 2 — `wetchah_app` : API publique opérationnelle (chambres + menu)
 
 Nouveau groupe de routes, **hors du middleware `auth`**, lecture seule :
 
@@ -64,7 +64,7 @@ pas de lien inter-conteneurs).
 
 ---
 
-## Partie 3 — `template_site` : consommation des deux APIs
+## Partie 3 — `wetchah_site` : consommation des deux APIs
 
 **Variables d'env injectées au provisioning** (même mécanisme que
 `TENANT_SLUG`/`TENANT_MODULES`) :
@@ -96,15 +96,15 @@ fuiter côté navigateur.
 - Injection des env vars `TENANT_SLUG`, `CMS_API_URL`, `TENANT_API_URL` dans ce
   service
 - L'image du service `web` est **pull depuis un registre** (voir
-  `PLAN_DOCKERISATION.md` dans `template_site` + décision CI/CD), pas buildée
-  localement — même architecture que `meka_template` (Phase 2bis)
+  `PLAN_DOCKERISATION.md` dans `wetchah_site` + décision CI/CD), pas buildée
+  localement — même architecture que `wetchah_app` (Phase 2bis)
 
 ---
 
 ## Ordre d'implémentation proposé
 
-1. API `meka_template` (rooms + menu)
+1. API `wetchah_app` (rooms + menu)
 2. CMS `pms` (stockage + UI + API publique)
-3. Intégration `template_site` (fetch des deux APIs)
+3. Intégration `wetchah_site` (fetch des deux APIs)
 4. Provisioning : 3ᵉ container `web`, pull d'image CI (voir décision Docker
    ci-dessous)

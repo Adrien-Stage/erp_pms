@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Schema;
  * un accès temporaire et audité à l'application d'un établissement pour
  * diagnostiquer un problème. Chaque session exige une justification (motif),
  * porte un jeton signé consommé par le endpoint /assistance/enter côté
- * meka_template, et expire automatiquement.
+ * wetchah_app, et expire automatiquement.
  */
 return new class extends Migration
 {

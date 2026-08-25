@@ -65,7 +65,11 @@ return [
     |
     */
 
-    'timezone' => 'UTC',
+    // GMT+1 pour toute la plateforme. « Africa/Douala » plutôt qu'un décalage
+    // fixe : c'est le fuseau des établissements (WAT), il vaut UTC+1 toute
+    // l'année — aucun changement d'heure saisonnier à craindre — et il se
+    // relit sans avoir à décoder l'inversion de signe des identifiants Etc/GMT.
+    'timezone' => env('APP_TIMEZONE', 'Africa/Douala'),
 
     /*
     |--------------------------------------------------------------------------

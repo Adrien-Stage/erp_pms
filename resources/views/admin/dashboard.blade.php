@@ -16,11 +16,11 @@
                 'description' => 'Creation, configuration, activation, suspension et diagnostic des tenants.',
                 'items' => ['Creation tenant', 'Configuration generale', 'Modules actifs', 'Etat onboarding'],
             ],
-            'managers' => [
-                'label' => 'Managers',
-                'title' => 'Gestion des managers',
-                'description' => 'Creation, activation, reinitialisation et rattachement des managers aux etablissements.',
-                'items' => ['Compte manager', 'Reinitialisation mot de passe', 'Activation compte', 'Rattachement tenant'],
+            // Page à part entière, pas un onglet du tableau de bord : « url »
+            // détourne le lien de navigation vers sa propre route.
+            'owners' => [
+                'label' => 'Proprietaires',
+                'url'   => route('tech.owners.index'),
             ],
             'roles' => [
                 'label' => 'Roles',
@@ -85,6 +85,12 @@
                 'description' => 'Rapports détaillés de performance et croissance.',
                 'items' => ['Volume réservations', 'Fidélité client', 'Fréquentation'],
             ],
+            'clients' => [
+                'label' => 'Clients',
+                'title' => 'Analyse de la clientèle',
+                'description' => 'Meilleurs clients, rentabilité et provenance géographique de votre clientèle.',
+                'items' => ['Meilleurs clients', 'Rentabilité', 'Marchés émetteurs', 'Segmentation RFM'],
+            ],
             'employees' => [
                 'label' => 'Employés',
                 'title' => 'Gestion des employés',
@@ -101,7 +107,9 @@
     }
 
     $activeTab = $activeTab ?? request('tab', 'dashboard');
-    if (!array_key_exists($activeTab, $tabs)) {
+    // Une entrée porteuse d'« url » est un lien vers une page à part, pas un
+    // onglet de ce tableau de bord : elle n'a ni titre ni contenu à rendre ici.
+    if (!array_key_exists($activeTab, $tabs) || isset($tabs[$activeTab]['url'])) {
         $activeTab = 'dashboard';
     }
     $active = $tabs[$activeTab];
@@ -127,7 +135,7 @@
             <div class="flex items-center gap-8">
                 <div class="flex items-center gap-2">
                     <div class="text-sm font-extrabold uppercase tracking-wider text-white">
-                        MEKA ERP
+                        WeTchah ERP
                     </div>
                     @if($isTech)
                         <span class="inline-flex items-center rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-400 border border-emerald-500/30">
@@ -142,7 +150,7 @@
                 <nav class="hidden md:flex items-center gap-1.5" aria-label="Navigation administration">
                     @foreach($tabs as $key => $tab)
                         <a
-                            href="{{ route($isTech ? 'tech.dashboard' : 'business.dashboard', ['tab' => $key]) }}"
+                            href="{{ $tab['url'] ?? route($isTech ? 'tech.dashboard' : 'business.dashboard', ['tab' => $key]) }}"
                             class="rounded-md px-3 py-1.5 text-xs font-semibold tracking-wide transition {{ $activeTab === $key ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-300 hover:bg-slate-800 hover:text-white' }}"
                         >
                             {{ $tab['label'] }}
@@ -151,19 +159,121 @@
                 </nav>
             </div>
             
-            <form method="POST" action="{{ route('logout') }}">
-                @csrf
-                <button type="submit" class="rounded-md border border-slate-700 bg-slate-800 px-3.5 py-1.5 text-xs font-bold text-slate-200 transition hover:bg-slate-700 hover:text-white">
-                    Déconnexion
-                </button>
-            </form>
+            <div class="flex items-center gap-3">
+                @if($isTech)
+                    {{-- Cloche : tickets encore non pris en charge, remontés par les
+                         établissements. Relue toutes les deux minutes — chaque relève
+                         interroge la base de chaque établissement, inutile d'y aller
+                         plus souvent. --}}
+                    <div class="relative"
+                         x-data="{
+                            open: false,
+                            nouveaux: 0,
+                            derniers: [],
+                            indisponible: false,
+                            marquerCommeLu() {
+                                const maxTs = Math.max(0, ...this.derniers.map(t => t.ts || 0), Math.floor(Date.now() / 1000));
+                                localStorage.setItem('wetchah_support_tickets_last_seen', maxTs);
+                                this.nouveaux = 0;
+                            },
+                            async releve() {
+                                try {
+                                    const r = await fetch('{{ route('tech.support.tickets') }}', { headers: { 'Accept': 'application/json' } });
+                                    const d = await r.json();
+                                    const tickets = d.tickets ?? [];
+                                    const lastSeen = parseInt(localStorage.getItem('wetchah_support_tickets_last_seen') || '0', 10);
+                                    const params = new URLSearchParams(window.location.search);
+                                    const surPageTickets = (params.get('tab') === 'support' && (params.get('sub') === 'justification' || !params.get('sub')));
+                                    
+                                    if (surPageTickets) {
+                                        const maxTs = Math.max(0, ...tickets.map(t => t.ts || 0), Math.floor(Date.now() / 1000));
+                                        localStorage.setItem('wetchah_support_tickets_last_seen', maxTs);
+                                        this.nouveaux = 0;
+                                    } else {
+                                        const unread = tickets.filter(t => t.status === 'nouveau' && (!lastSeen || (t.ts && t.ts > lastSeen)));
+                                        this.nouveaux = unread.length;
+                                    }
+                                    this.derniers = tickets.filter(t => t.status === 'nouveau').slice(0, 6);
+                                    this.indisponible = false;
+                                } catch (e) { this.indisponible = true; }
+                            }
+                         }"
+                         x-init="releve(); setInterval(() => releve(), 120000); window.addEventListener('tickets-vus', (e) => {
+                             const maxTs = e.detail?.maxTs || Math.floor(Date.now() / 1000);
+                             localStorage.setItem('wetchah_support_tickets_last_seen', maxTs);
+                             nouveaux = 0;
+                         })">
+
+                        <button type="button" @click="open = !open" @click.outside="open = false"
+                                class="relative rounded-md border border-slate-700 bg-slate-800 p-2 text-slate-300 transition hover:bg-slate-700 hover:text-white"
+                                :aria-expanded="open" aria-label="Tickets remontés par les établissements">
+                            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+                            </svg>
+                            <span x-show="nouveaux > 0" x-cloak
+                                  class="absolute -top-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full border border-slate-900 bg-red-500 px-1 text-[9px] font-bold text-white"
+                                  x-text="nouveaux > 99 ? '99+' : nouveaux"></span>
+                        </button>
+
+                        <div x-show="open" x-cloak x-transition.opacity.duration.100ms
+                             class="absolute right-0 z-40 mt-2 w-80 overflow-hidden rounded-lg border border-slate-200 bg-white text-slate-800 shadow-xl">
+                            <div class="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-2.5">
+                                <span class="text-xs font-bold text-slate-800">Tickets à traiter</span>
+                                <div class="flex items-center gap-2">
+                                    <button x-show="nouveaux > 0" x-cloak type="button" @click="marquerCommeLu()"
+                                            class="text-[10px] font-semibold text-indigo-600 hover:text-indigo-800 transition cursor-pointer">
+                                        Tout marquer comme lu
+                                    </button>
+                                    <span class="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600" x-text="nouveaux"></span>
+                                </div>
+                            </div>
+
+                            <div class="max-h-72 overflow-y-auto">
+                                <p x-show="indisponible" x-cloak class="px-4 py-6 text-center text-[11px] text-red-600">
+                                    Les tickets n'ont pas pu être relevés.
+                                </p>
+                                <p x-show="!indisponible && derniers.length === 0" x-cloak class="px-4 py-6 text-center text-[11px] text-slate-400">
+                                    Aucun ticket en attente.
+                                </p>
+                                <template x-for="t in derniers" :key="t.slug + '-' + t.id">
+                                    <a href="{{ route('tech.dashboard', ['tab' => 'support', 'sub' => 'justification']) }}"
+                                       @click="marquerCommeLu()"
+                                       class="flex flex-col gap-0.5 border-b border-slate-50 px-4 py-2.5 transition hover:bg-slate-50">
+                                        <span class="flex items-center justify-between gap-2">
+                                            <span class="truncate text-[11px] font-bold text-slate-800" x-text="t.subject"></span>
+                                            <span class="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase"
+                                                  :class="t.type === 'probleme' ? 'bg-red-50 text-red-600' : 'bg-violet-50 text-violet-600'"
+                                                  x-text="t.type === 'probleme' ? 'Problème' : 'Idée'"></span>
+                                        </span>
+                                        <span class="truncate text-[10px] text-slate-500" x-text="t.author + ' · ' + t.tenant"></span>
+                                        <span class="text-[9px] text-slate-400" x-text="t.ago"></span>
+                                    </a>
+                                </template>
+                            </div>
+
+                            <a href="{{ route('tech.dashboard', ['tab' => 'support', 'sub' => 'justification']) }}"
+                               @click="marquerCommeLu()"
+                               class="block bg-slate-50 px-4 py-2.5 text-center text-[11px] font-bold text-indigo-600 transition hover:bg-slate-100">
+                                Ouvrir le kanban des tickets
+                            </a>
+                        </div>
+                    </div>
+                @endif
+
+                <form method="POST" action="{{ route('logout') }}">
+                    @csrf
+                    <button type="submit" class="rounded-md border border-slate-700 bg-slate-800 px-3.5 py-1.5 text-xs font-bold text-slate-200 transition hover:bg-slate-700 hover:text-white">
+                        Déconnexion
+                    </button>
+                </form>
+            </div>
         </div>
         <!-- Mobile Navigation -->
         <div class="md:hidden border-t border-slate-800 px-5 py-2 overflow-x-auto">
             <div class="flex gap-1.5 min-w-max">
                 @foreach($tabs as $key => $tab)
                     <a
-                        href="{{ route($isTech ? 'tech.dashboard' : 'business.dashboard', ['tab' => $key]) }}"
+                        href="{{ $tab['url'] ?? route($isTech ? 'tech.dashboard' : 'business.dashboard', ['tab' => $key]) }}"
                         class="rounded-md px-2.5 py-1 text-xs font-semibold transition {{ $activeTab === $key ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white' }}"
                     >
                         {{ $tab['label'] }}
@@ -1463,6 +1573,347 @@
                 <div x-show="!loading && !data" x-cloak class="rounded-lg border border-red-200 bg-red-50 p-5 text-xs font-bold text-red-700">Impossible de charger les statistiques. Réessayez.</div>
             </div>
 
+        @elseif($activeTab === 'clients' && $isOwner)
+            {{-- ================= CLIENTS (VALEUR, RENTABILITÉ, PROVENANCE) ================= --}}
+            {{-- Fond de carte et projection chargés seulement sur cet onglet. --}}
+            <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+            <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
+
+            <div class="mt-2"
+                 x-data="{
+                    period: 'month', loading: true, data: null,
+                    periods: { today:'Aujourd\'hui', week:'Semaine', month:'Mois', year:'Année' },
+                    rfmMeta: {
+                        champions:    { label:'Champions',    color:'#4f46e5', hint:'Récents, fréquents, gros paniers' },
+                        fideles:      { label:'Fidèles',      color:'#16a34a', hint:'Reviennent régulièrement' },
+                        prometteurs:  { label:'Prometteurs',  color:'#0ea5e9', hint:'Deuxième séjour récent' },
+                        nouveaux:     { label:'Nouveaux',     color:'#f59e0b', hint:'Première visite récente' },
+                        a_risque:     { label:'À risque',     color:'#f97316', hint:'Habitués qui s\'espacent' },
+                        endormis:     { label:'Endormis',     color:'#94a3b8', hint:'Plus d\'un an sans séjour' },
+                        occasionnels: { label:'Occasionnels', color:'#cbd5e1', hint:'Passage unique et ancien' },
+                    },
+                    contColor: { 'Afrique':'#4f46e5','Europe':'#0ea5e9','Amériques':'#16a34a','Asie':'#f59e0b','Océanie':'#ec4899','Inconnu':'#94a3b8' },
+                    fmt(c) { return new Intl.NumberFormat('fr-FR').format(Math.round((c||0)/100)); },
+                    fmtShort(c) {
+                        const v = (c||0)/100;
+                        if (v >= 1000000) return (v/1000000).toFixed(2).replace('.',',') + ' M';
+                        if (v >= 1000) return Math.round(v/1000) + ' k';
+                        return Math.round(v);
+                    },
+                    initials(name) {
+                        return (name||'?').split(' ').filter(Boolean).map(w => w[0]).join('').slice(0,2).toUpperCase();
+                    },
+                    async load() {
+                        this.loading = true;
+                        try {
+                            const url = new URL('{{ route('business.clients.data') }}', window.location.origin);
+                            url.searchParams.set('period', this.period);
+                            const r = await fetch(url, { headers: { 'Accept':'application/json' } });
+                            this.data = await r.json();
+                        } catch(e) { this.data = null; }
+                        this.loading = false;
+                        this.$nextTick(() => { if (this.data) renderClientsMap(this.data.geo); });
+                    },
+                    get maxCountry() {
+                        if (!this.data || !this.data.geo.length) return 1;
+                        return Math.max(...this.data.geo.map(g => g.customers), 1);
+                    },
+                    get totalGeo() {
+                        if (!this.data) return 0;
+                        return this.data.geo.reduce((s,g) => s + g.customers, 0);
+                    },
+                    get continentRows() {
+                        if (!this.data) return [];
+                        const total = this.totalGeo || 1;
+                        return Object.entries(this.data.continents || {})
+                            .map(([name, n]) => ({ name, n, pct: Math.round(n/total*100) }));
+                    },
+                    get rfmRows() {
+                        if (!this.data) return [];
+                        return Object.entries(this.data.rfm || {})
+                            .filter(([k]) => this.rfmMeta[k])
+                            .map(([k,v]) => ({ key:k, count:v, ...this.rfmMeta[k] }));
+                    }
+                 }" x-init="load()">
+
+                {{-- En-tête --}}
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+                    <div>
+                        <h1 class="text-2xl font-extrabold tracking-tight text-slate-800 font-heading">Clients</h1>
+                        <p class="text-xs text-slate-500 mt-1">Qui sont vos meilleurs clients, lesquels rapportent le plus, et d'où viennent-ils.</p>
+                    </div>
+                    <div class="inline-flex rounded-lg border border-slate-200 bg-white p-0.5">
+                        <template x-for="(label,key) in periods" :key="key">
+                            <button type="button" @click="period=key; load()" class="px-3 py-1.5 text-xs font-semibold rounded-md transition" :class="period===key ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'" x-text="label"></button>
+                        </template>
+                    </div>
+                </div>
+
+                <div x-show="loading && !data" class="grid grid-cols-1 sm:grid-cols-5 gap-4 mb-6"><template x-for="i in 5" :key="i"><div class="h-24 rounded-xl bg-slate-100 animate-pulse"></div></template></div>
+
+                <template x-if="data && data.count === 0">
+                    <div class="rounded-xl border border-slate-200 bg-white p-10 text-center">
+                        <p class="text-sm text-slate-500 font-semibold">Aucune donnée client disponible.</p>
+                        <p class="text-xs text-slate-400 mt-2 max-w-md mx-auto leading-relaxed">
+                            Vérifiez que vos établissements sont démarrés et qu'ils tournent sur une version de l'application prenant en charge l'analyse de la clientèle — sinon, mettez-les à jour depuis l'espace technique.
+                        </p>
+                        <template x-if="data.unreachable && data.unreachable.length">
+                            <p class="text-xs text-amber-600 mt-3">Sans réponse : <span x-text="data.unreachable.join(', ')"></span></p>
+                        </template>
+                    </div>
+                </template>
+
+                <template x-if="data && data.count > 0">
+                    <div>
+                        {{-- Qualité de la donnée géographique : sans pays renseigné, la carte ment par omission. --}}
+                        <template x-if="data.totals.country_completeness < 90">
+                            <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 mb-5 flex items-start gap-3">
+                                <svg class="h-4 w-4 text-amber-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"/></svg>
+                                <p class="text-[11px] text-amber-900 leading-relaxed">
+                                    Seuls <strong x-text="data.totals.country_completeness + '%'"></strong> de vos clients ont un pays renseigné.
+                                    La carte et les marchés émetteurs ne reflètent que cette part — le pays est désormais obligatoire à la création d'un client, la couverture va se compléter au fil des nouvelles réservations.
+                                </p>
+                            </div>
+                        </template>
+
+                        {{-- KPI --}}
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+                            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Base clients</p>
+                                <p class="text-2xl font-extrabold text-slate-800 mt-2 leading-none" x-text="new Intl.NumberFormat('fr-FR').format(data.totals.customers)"></p>
+                                <p class="text-[11px] text-emerald-600 mt-2 font-semibold">+<span x-text="data.totals.new"></span> nouveaux</p>
+                            </div>
+                            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Taux de retour</p>
+                                <p class="text-2xl font-extrabold text-slate-800 mt-2 leading-none"><span x-text="data.totals.repeat_rate"></span>%</p>
+                                <p class="text-[11px] text-slate-400 mt-2">clients revenus au moins 2 fois</p>
+                            </div>
+                            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Valeur vie moyenne</p>
+                                <p class="text-2xl font-extrabold text-slate-800 mt-2 leading-none"><span x-text="fmtShort(data.totals.avg_ltv)"></span> <span class="text-xs text-slate-400" x-text="data.currency"></span></p>
+                                <p class="text-[11px] text-slate-400 mt-2">cumul par client</p>
+                            </div>
+                            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Panier moyen</p>
+                                <p class="text-2xl font-extrabold text-slate-800 mt-2 leading-none"><span x-text="fmtShort(data.totals.avg_basket)"></span> <span class="text-xs text-slate-400" x-text="data.currency"></span></p>
+                                <p class="text-[11px] text-slate-400 mt-2">par séjour</p>
+                            </div>
+                            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Clients internationaux</p>
+                                <p class="text-2xl font-extrabold text-slate-800 mt-2 leading-none"><span x-text="data.totals.international_share"></span>%</p>
+                                <p class="text-[11px] text-slate-400 mt-2"><span x-text="data.totals.countries"></span> pays représentés</p>
+                            </div>
+                        </div>
+
+                        {{-- Carte du monde + marchés émetteurs --}}
+                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+                            <div class="lg:col-span-2 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <div class="flex items-baseline justify-between mb-1">
+                                    <h3 class="text-sm font-bold text-slate-800">D'où viennent vos clients</h3>
+                                    <span class="text-[10px] text-slate-400">intensité = nombre de clients</span>
+                                </div>
+                                <div id="clients-map" class="w-full min-h-[280px] flex items-center justify-center">
+                                    <span class="text-xs text-slate-400">Chargement de la carte…</span>
+                                </div>
+                                <div class="flex items-center gap-2 mt-2">
+                                    <span class="text-[10px] text-slate-400">Moins</span>
+                                    <div class="flex-1 h-2 rounded-full" style="background:linear-gradient(90deg,#e0e7ff,#818cf8,#312e81)"></div>
+                                    <span class="text-[10px] text-slate-400">Plus</span>
+                                </div>
+                            </div>
+
+                            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col gap-5">
+                                <div>
+                                    <h3 class="text-sm font-bold text-slate-800 mb-3">Top pays émetteurs</h3>
+                                    <template x-if="!data.geo.length">
+                                        <p class="text-xs text-slate-400">Aucun pays renseigné pour l'instant.</p>
+                                    </template>
+                                    <div class="space-y-2.5">
+                                        <template x-for="g in data.geo.slice(0,8)" :key="g.country">
+                                            <div>
+                                                <div class="flex items-center gap-2">
+                                                    <span class="font-mono text-[10px] w-7 text-center py-0.5 rounded bg-slate-50 border border-slate-200 text-slate-600" x-text="g.country"></span>
+                                                    <span class="text-xs text-slate-700 flex-1 truncate" x-text="g.name"></span>
+                                                    <span class="text-[11px] text-slate-400 font-semibold tabular-nums" x-text="g.customers"></span>
+                                                </div>
+                                                <div class="h-1.5 rounded-full bg-slate-100 mt-1 overflow-hidden">
+                                                    <div class="h-full rounded-full" :style="`width:${Math.max(3, g.customers/maxCountry*100)}%; background:${contColor[g.continent] || '#94a3b8'}`"></div>
+                                                </div>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+
+                                <div class="border-t border-slate-100 pt-4">
+                                    <h3 class="text-sm font-bold text-slate-800 mb-3">Par continent</h3>
+                                    <div class="space-y-2">
+                                        <template x-for="c in continentRows" :key="c.name">
+                                            <div class="flex items-center gap-2">
+                                                <span class="h-2 w-2 rounded-full" :style="`background:${contColor[c.name] || '#94a3b8'}`"></span>
+                                                <span class="text-xs text-slate-700 flex-1" x-text="c.name"></span>
+                                                <span class="text-[11px] text-slate-400 font-semibold tabular-nums" x-text="c.pct + '%'"></span>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {{-- Classements --}}
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+                            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <div class="flex items-baseline justify-between mb-3">
+                                    <h3 class="text-sm font-bold text-slate-800">Meilleurs clients</h3>
+                                    <span class="text-[10px] text-slate-400">chiffre d'affaires de la période</span>
+                                </div>
+                                <template x-if="!data.top_revenue.length"><p class="text-xs text-slate-400">Aucun client actif sur la période.</p></template>
+                                <div>
+                                    <template x-for="(c,i) in data.top_revenue" :key="i">
+                                        <div class="flex items-center gap-3 py-2 border-b border-slate-100 last:border-0">
+                                            <span class="text-[11px] text-slate-400 w-4 tabular-nums" x-text="i+1"></span>
+                                            <span class="h-7 w-7 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[9px] font-bold text-indigo-700" x-text="initials(c.name)"></span>
+                                            <div class="flex-1 min-w-0">
+                                                <p class="text-xs font-semibold text-slate-800 truncate">
+                                                    <span x-text="c.name"></span>
+                                                    <template x-if="c.is_vip"><span class="ml-1 text-[9px] px-1 py-0.5 rounded bg-amber-100 text-amber-700 font-bold">VIP</span></template>
+                                                </p>
+                                                <p class="text-[10px] text-slate-400 truncate">
+                                                    <span x-text="c.country || '—'"></span> ·
+                                                    <span x-text="c.bookings"></span> séjour<span x-show="c.bookings > 1">s</span> ·
+                                                    <span x-text="c.nights"></span> nuitées
+                                                    <template x-if="c.establishments && c.establishments.length > 1">
+                                                        <span class="ml-1 text-indigo-500 font-semibold" x-text="'· ' + c.establishments.length + ' établissements'"></span>
+                                                    </template>
+                                                </p>
+                                            </div>
+                                            <span class="text-xs font-bold text-slate-800 tabular-nums shrink-0"><span x-text="fmtShort(c.revenue)"></span> <span class="text-[9px] text-slate-400 font-semibold" x-text="data.currency"></span></span>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+
+                            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <div class="flex items-baseline justify-between mb-3">
+                                    <h3 class="text-sm font-bold text-slate-800">Clients les plus rentables</h3>
+                                    <span class="text-[10px] text-slate-400">revenu par nuitée</span>
+                                </div>
+                                <template x-if="!data.top_profitable.length"><p class="text-xs text-slate-400">Aucune nuitée vendue sur la période.</p></template>
+                                <div>
+                                    <template x-for="(c,i) in data.top_profitable" :key="i">
+                                        <div class="flex items-center gap-3 py-2 border-b border-slate-100 last:border-0">
+                                            <span class="text-[11px] text-slate-400 w-4 tabular-nums" x-text="i+1"></span>
+                                            <span class="h-7 w-7 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center text-[9px] font-bold text-emerald-700" x-text="initials(c.name)"></span>
+                                            <div class="flex-1 min-w-0">
+                                                <p class="text-xs font-semibold text-slate-800 truncate" x-text="c.name"></p>
+                                                <p class="text-[10px] text-slate-400 truncate">
+                                                    <span x-text="c.country || '—'"></span> ·
+                                                    <span x-text="c.nights"></span> nuitées ·
+                                                    total <span x-text="fmtShort(c.revenue)"></span>
+                                                </p>
+                                            </div>
+                                            <span class="text-xs font-bold text-slate-800 tabular-nums shrink-0"><span x-text="fmtShort(c.revenue_per_night)"></span> <span class="text-[9px] text-slate-400 font-semibold">/nuit</span></span>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
+
+                        {{-- Segmentation RFM --}}
+                        <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                            <div class="flex items-baseline justify-between mb-4">
+                                <h3 class="text-sm font-bold text-slate-800">Segmentation RFM</h3>
+                                <span class="text-[10px] text-slate-400">Récence · Fréquence · Montant</span>
+                            </div>
+                            <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+                                <template x-for="s in rfmRows" :key="s.key">
+                                    <div class="rounded-lg border border-slate-200 p-3" :style="`border-left:3px solid ${s.color}`">
+                                        <p class="text-[10px] text-slate-500 font-semibold" x-text="s.label"></p>
+                                        <p class="text-lg font-extrabold text-slate-800 leading-tight tabular-nums" x-text="s.count"></p>
+                                        <p class="text-[9px] text-slate-400 leading-snug mt-0.5" x-text="s.hint"></p>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+
+                        <p class="text-[10px] text-slate-400 mt-4 text-right">
+                            Dernière actualisation : <span x-text="data.generated_at"></span>
+                            <template x-if="data.unreachable && data.unreachable.length">
+                                <span class="text-amber-600"> · hors ligne : <span x-text="data.unreachable.join(', ')"></span></span>
+                            </template>
+                        </p>
+                    </div>
+                </template>
+
+                <div x-show="!loading && !data" x-cloak class="rounded-lg border border-red-200 bg-red-50 p-5 text-xs font-bold text-red-700">Impossible de charger l'analyse clients. Réessayez.</div>
+            </div>
+
+            <script>
+            // Fond de carte mis en cache : changer de période ne doit pas le retélécharger.
+            let __worldAtlas = null;
+
+            async function renderClientsMap(geo) {
+                const el = document.getElementById('clients-map');
+                if (!el) return;
+
+                if (typeof d3 === 'undefined' || typeof topojson === 'undefined') {
+                    el.innerHTML = '<p class="text-xs text-slate-400">Carte indisponible — la classement par pays ci-contre reste exploitable.</p>';
+                    return;
+                }
+
+                const byNum = {};
+                let max = 0;
+                (geo || []).forEach(g => {
+                    if (!g.numeric) return;
+                    byNum[+g.numeric] = g.customers;
+                    if (g.customers > max) max = g.customers;
+                });
+
+                try {
+                    if (!__worldAtlas) {
+                        __worldAtlas = await d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json');
+                    }
+
+                    el.innerHTML = '';
+                    const width = el.clientWidth || 620;
+                    const height = 300;
+
+                    // L'Antarctique n'apporte rien et écrase la projection.
+                    const features = topojson.feature(__worldAtlas, __worldAtlas.objects.countries)
+                        .features.filter(f => String(f.id) !== '010');
+
+                    const projection = d3.geoNaturalEarth1();
+                    const path = d3.geoPath(projection);
+                    projection.fitSize([width, height], { type: 'FeatureCollection', features });
+
+                    // Racine carrée : sans elle, un marché domestique très dominant
+                    // écrase toute la nuance des marchés secondaires.
+                    const color = d3.scaleSequentialSqrt()
+                        .domain([0, Math.max(max, 1)])
+                        .interpolator(d3.interpolateRgb('#e0e7ff', '#312e81'));
+
+                    const svg = d3.select(el).append('svg')
+                        .attr('viewBox', `0 0 ${width} ${height}`)
+                        .attr('width', '100%')
+                        .style('height', 'auto')
+                        .style('display', 'block');
+
+                    svg.append('g').selectAll('path').data(features).enter().append('path')
+                        .attr('d', path)
+                        .attr('fill', d => byNum[+d.id] ? color(byNum[+d.id]) : '#f1f5f9')
+                        .attr('stroke', '#ffffff')
+                        .attr('stroke-width', 0.4)
+                        .append('title')
+                        .text(d => {
+                            const n = byNum[+d.id];
+                            const name = (d.properties && d.properties.name) ? d.properties.name : '';
+                            return n ? `${name} — ${n} client${n > 1 ? 's' : ''}` : name;
+                        });
+                } catch (e) {
+                    el.innerHTML = '<p class="text-xs text-slate-400">Carte indisponible (fond de carte inaccessible) — le classement par pays ci-contre reste exploitable.</p>';
+                }
+            }
+            </script>
+
         @elseif($activeTab === 'employees' && $isOwner)
             {{-- ================= EMPLOYÉS (CONSOLIDÉ) ================= --}}
             <div class="mt-2"
@@ -1960,9 +2411,21 @@
             </div>
         @elseif($activeTab === 'support' && $isTech)
             {{-- ================= SUPPORT OPÉRATIONNEL ================= --}}
+            @php
+                // Sous-onglet ouvrable par lien direct : la cloche de la barre
+                // supérieure pointe sur ?tab=support&sub=justification.
+                $supportSubs = [
+                    'read' => 'Mode lecture',
+                    'logs' => 'Logs applicatifs',
+                    'assist' => 'Mode assistance',
+                    'justification' => 'Justification',
+                    'history' => 'Historique interventions',
+                ];
+                $supportSub = array_key_exists(request('sub'), $supportSubs) ? request('sub') : 'read';
+            @endphp
             <div class="mt-6"
                  x-data="{
-                    sub: 'read',
+                    sub: '{{ $supportSub }}',
                     selected: '',
                     diag: null,
                     diagLoading: false,
@@ -1973,6 +2436,170 @@
                     appLogsLoading: false,
                     appLogsFilter: '',
                     appLogsUnreachable: [],
+                    appLogsPage: 1,
+                    appLogsPerPage: 20,
+                    get appLogsTotal() { return this.appLogs ? this.appLogs.length : 0; },
+                    get appLogsPages() { return Math.max(1, Math.ceil(this.appLogsTotal / this.appLogsPerPage)); },
+                    get appLogsVisible() {
+                        if (!this.appLogs) return [];
+                        const debut = (this.appLogsPage - 1) * this.appLogsPerPage;
+                        return this.appLogs.slice(debut, debut + this.appLogsPerPage);
+                    },
+                    get appLogsFrom() { return this.appLogsTotal === 0 ? 0 : (this.appLogsPage - 1) * this.appLogsPerPage + 1; },
+                    get appLogsTo() { return Math.min(this.appLogsPage * this.appLogsPerPage, this.appLogsTotal); },
+                    appLogsGoTo(p) { this.appLogsPage = Math.min(Math.max(1, p), this.appLogsPages); },
+
+                    /* ---- Tickets remontés par les établissements (kanban) ---- */
+                    tickets: null,
+                    ticketsLoading: false,
+                    ticketsUnreachable: [],
+                    ticketsOutdated: [],
+                    ticketsFilter: '',
+                    ticketOuvert: null,
+                    ticketReply: '',
+                    ticketSaving: false,
+                    ticketError: '',
+                    dragId: null,
+                    modalNouveauTicket: false,
+                    nouveauTicket: { tenant_id: '', type: 'probleme', subject: '', message: '', context_url: '' },
+                    ticketCreating: false,
+                    ticketCreateError: '',
+                    assistPending: null,
+                    assistError: '',
+                    // Entrer en assistance connecte le support dans l'application de
+                    // l'établissement : cela se demande ticket par ticket, et se trace.
+                    async ouvrirAssistance(t) {
+                        this.assistPending = t.id;
+                        this.assistError = '';
+                        try {
+                            const r = await fetch('{{ route('tech.support.tickets.assist') }}', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Accept': 'application/json',
+                                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                                },
+                                body: JSON.stringify({ tenant_id: t.tenant_id, ticket_id: t.id }),
+                            });
+                            const d = await r.json().catch(() => ({}));
+                            if (!r.ok || !d.ok) {
+                                this.assistError = d.message || 'Impossible d\'ouvrir la session d\'assistance.';
+                            } else {
+                                // Le lien est posé sur la carte avant l'ouverture : si le
+                                // navigateur bloque la fenêtre, « Entrer » reste cliquable.
+                                t.assistance_url = d.assistance_url;
+                                if (this.ticketOuvert && this.ticketOuvert.id === t.id) {
+                                    this.ticketOuvert.assistance_url = d.assistance_url;
+                                }
+                                window.open(d.assistance_url, '_blank');
+                            }
+                        } catch (e) {
+                            this.assistError = 'Impossible de contacter le serveur.';
+                        }
+                        this.assistPending = null;
+                    },
+                    async creerTicketManuel() {
+                        this.ticketCreating = true;
+                        this.ticketCreateError = '';
+                        try {
+                            const r = await fetch('{{ route('tech.support.tickets.create') }}', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Accept': 'application/json',
+                                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                                },
+                                body: JSON.stringify(this.nouveauTicket),
+                            });
+                            const d = await r.json().catch(() => ({}));
+                            if (!r.ok || !d.ok) {
+                                this.ticketCreateError = d.message || 'Erreur lors de la création du ticket.';
+                            } else {
+                                this.modalNouveauTicket = false;
+                                this.nouveauTicket = { tenant_id: '', type: 'probleme', subject: '', message: '', context_url: '' };
+                                await this.loadTickets();
+                                if (d.assistance_url) {
+                                    window.open(d.assistance_url, '_blank');
+                                }
+                            }
+                        } catch (e) {
+                            this.ticketCreateError = 'Impossible de contacter le serveur.';
+                        }
+                        this.ticketCreating = false;
+                    },
+                    async loadTickets() {
+                        this.ticketsLoading = true;
+                        this.ticketError = '';
+                        try {
+                            const url = new URL('{{ route('tech.support.tickets') }}', window.location.origin);
+                            if (this.ticketsFilter) url.searchParams.set('slug', this.ticketsFilter);
+                            const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+                            const d = await r.json();
+                            this.tickets = d.tickets ?? [];
+                            this.ticketsUnreachable = d.unreachable ?? [];
+                            this.ticketsOutdated = d.outdated ?? [];
+
+                            // Marquer les tickets comme vus lorsqu'on consulte la liste
+                            const maxTs = Math.max(0, ...(this.tickets ?? []).map(t => t.ts || 0), Math.floor(Date.now() / 1000));
+                            window.dispatchEvent(new CustomEvent('tickets-vus', { detail: { maxTs } }));
+                        } catch (e) { this.tickets = null; }
+                        this.ticketsLoading = false;
+                    },
+                    ticketsParStatut(statut) {
+                        return (this.tickets ?? []).filter(t => t.status === statut);
+                    },
+                    ouvrirTicket(t) {
+                        this.ticketOuvert = t;
+                        this.ticketReply = t.reply ?? '';
+                        this.ticketError = '';
+                        window.dispatchEvent(new CustomEvent('tickets-vus', { detail: { maxTs: Math.floor(Date.now() / 1000) } }));
+                    },
+                    /* Déplacement optimiste : la carte suit le geste, et revient
+                       à sa place si l'écriture dans la base du tenant échoue. */
+                    async deplacerTicket(ticket, statut, reponse) {
+                        if (!ticket || (ticket.status === statut && !reponse)) return;
+                        const precedent = ticket.status;
+                        ticket.status = statut;
+                        this.ticketSaving = true;
+                        this.ticketError = '';
+                        try {
+                            const r = await fetch('{{ route('tech.support.tickets.update') }}', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Accept': 'application/json',
+                                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                                },
+                                body: JSON.stringify({
+                                    tenant_id: ticket.tenant_id,
+                                    ticket_id: ticket.id,
+                                    status: statut,
+                                    reply: reponse ?? null,
+                                }),
+                            });
+                            const d = await r.json().catch(() => ({}));
+                            if (!r.ok || !d.ok) {
+                                ticket.status = precedent;
+                                this.ticketError = d.message || 'Le ticket n\'a pas pu être mis à jour.';
+                            } else {
+                                if (reponse) { ticket.reply = reponse; }
+                                ticket.handled_by = '{{ auth()->user()->name }}';
+                            }
+                        } catch (e) {
+                            ticket.status = precedent;
+                            this.ticketError = 'Écriture impossible : vérifiez que le conteneur de l\'établissement répond.';
+                        }
+                        this.ticketSaving = false;
+                    },
+                    /* Reprend un ticket dans le formulaire d'intervention ci-dessous. */
+                    justifierDepuisTicket(t) {
+                        const cible = document.getElementById('justif-tenant');
+                        const motif = document.getElementById('justif-reason');
+                        if (cible) cible.value = t.tenant_id;
+                        if (motif) motif.value = `Ticket #${t.id} — ${t.subject} (signalé par ${t.author}, ${t.tenant})`;
+                        this.ticketOuvert = null;
+                        document.getElementById('justif-form')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    },
                     async loadDiag() {
                         if (!this.selected) { this.diag = null; return; }
                         this.diagLoading = true;
@@ -1984,6 +2611,9 @@
                     },
                     async loadAppLogs() {
                         this.appLogsLoading = true;
+                        // Rechargement ou changement d'établissement : on repart
+                        // de la première page, sinon on retombe sur une page vide.
+                        this.appLogsPage = 1;
                         try {
                             const url = new URL('{{ route('tech.support.app-logs') }}', window.location.origin);
                             if (this.appLogsFilter) url.searchParams.set('slug', this.appLogsFilter);
@@ -2013,7 +2643,15 @@
                  x-init="$watch('sub', v => {
                     if (v === 'history' && interventions === null) loadInterventions();
                     if (v === 'logs' && appLogs === null) loadAppLogs();
-                 })">
+                    if (v === 'justification') {
+                        if (tickets === null) loadTickets();
+                        else {
+                            const maxTs = Math.max(0, ...(tickets ?? []).map(t => t.ts || 0), Math.floor(Date.now() / 1000));
+                            window.dispatchEvent(new CustomEvent('tickets-vus', { detail: { maxTs } }));
+                        }
+                    }
+                 });
+                 if (sub === 'justification') loadTickets();">
 
                 <div class="mb-5">
                     <h2 class="text-xl font-bold text-slate-800 tracking-tight">Support opérationnel</h2>
@@ -2022,15 +2660,6 @@
 
                 {{-- Sous-onglets internes --}}
                 <div class="flex flex-wrap gap-1 border-b border-slate-200 mb-6">
-                    @php
-                        $supportSubs = [
-                            'read' => 'Mode lecture',
-                            'logs' => 'Logs applicatifs',
-                            'assist' => 'Mode assistance',
-                            'justification' => 'Justification',
-                            'history' => 'Historique interventions',
-                        ];
-                    @endphp
                     @foreach($supportSubs as $subKey => $subLabel)
                         <button type="button" @click="sub = '{{ $subKey }}'"
                                 class="px-4 py-2.5 text-xs font-bold transition border-b-2 -mb-px cursor-pointer"
@@ -2200,7 +2829,7 @@
                                         </tr>
                                     </thead>
                                     <tbody class="divide-y divide-slate-50">
-                                        <template x-for="log in appLogs" :key="log.slug + '-' + log.event_type + '-' + log.ts + '-' + log.action">
+                                        <template x-for="log in appLogsVisible" :key="log.slug + '-' + log.event_type + '-' + log.ts + '-' + log.action">
                                             <tr class="hover:bg-slate-50/60 transition align-top">
                                                 <td class="px-5 py-2.5 whitespace-nowrap">
                                                     <p class="font-semibold text-slate-700" x-text="log.at"></p>
@@ -2231,6 +2860,37 @@
                                 </table>
                             </div>
                         </template>
+
+                        {{-- Pagination : la liste est déjà entièrement chargée côté
+                             navigateur, le découpage en pages de 20 est donc immédiat
+                             et sans nouvel appel au serveur. --}}
+                        <div x-show="appLogs && !appLogsLoading && appLogsTotal > 0" x-cloak
+                             class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/60 px-5 py-3">
+                            <p class="text-[10px] text-slate-400">
+                                Lignes <span class="font-semibold text-slate-600" x-text="appLogsFrom"></span>–<span class="font-semibold text-slate-600" x-text="appLogsTo"></span>
+                                sur <span class="font-semibold text-slate-600" x-text="appLogsTotal"></span>
+                                · page <span class="font-semibold text-slate-600" x-text="appLogsPage"></span>/<span x-text="appLogsPages"></span>
+                            </p>
+
+                            <div class="flex items-center gap-1" x-show="appLogsPages > 1">
+                                <button type="button" @click="appLogsGoTo(appLogsPage - 1)" :disabled="appLogsPage === 1"
+                                        class="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer">
+                                    Précédent
+                                </button>
+
+                                <template x-for="p in appLogsPages" :key="p">
+                                    <button type="button" @click="appLogsGoTo(p)"
+                                            class="min-w-[28px] rounded-md px-2 py-1.5 text-[11px] font-bold transition cursor-pointer"
+                                            :class="p === appLogsPage ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'"
+                                            x-text="p"></button>
+                                </template>
+
+                                <button type="button" @click="appLogsGoTo(appLogsPage + 1)" :disabled="appLogsPage === appLogsPages"
+                                        class="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer">
+                                    Suivant
+                                </button>
+                            </div>
+                        </div>
 
                         <div x-show="!appLogsLoading && !appLogs" x-cloak class="p-5 text-xs font-bold text-red-700 bg-red-50">
                             Impossible de charger les logs applicatifs.
@@ -2321,14 +2981,297 @@
 
                 {{-- ---- Justification : ouvre une session d'assistance ---- --}}
                 <div x-show="sub === 'justification'" x-cloak>
-                    <form method="POST" action="{{ route('tech.support.assistance.open') }}" class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm max-w-2xl">
+
+                    {{-- ---- Tickets remontés depuis les applications ---- --}}
+                    @php
+                        // Colonnes du kanban : miroir des statuts acceptés par
+                        // SupportTicketController, dans l'ordre du traitement.
+                        $ticketColonnes = [
+                            'nouveau'  => ['label' => 'Reçus',      'accent' => 'border-t-sky-500',     'puce' => 'bg-sky-100 text-sky-700'],
+                            'en_cours' => ['label' => 'En cours',   'accent' => 'border-t-amber-500',   'puce' => 'bg-amber-100 text-amber-700'],
+                            'resolu'   => ['label' => 'Résolus',    'accent' => 'border-t-emerald-500', 'puce' => 'bg-emerald-100 text-emerald-700'],
+                            'rejete'   => ['label' => 'Écartés',    'accent' => 'border-t-slate-400',   'puce' => 'bg-slate-100 text-slate-600'],
+                        ];
+                    @endphp
+
+                    <div class="mb-8">
+                        <div class="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-800">Tickets reçus des établissements</h3>
+                                <p class="text-[10px] text-slate-400 mt-0.5">
+                                    Problèmes et suggestions remontés par le personnel depuis le bouton « Suggestion » de leur application.
+                                    Faites glisser une carte pour la changer de colonne — le statut est écrit dans la base de l'établissement, son auteur le voit.
+                                </p>
+                            </div>
+                            <div class="flex items-center gap-2 shrink-0">
+                                <button type="button" @click="modalNouveauTicket = true; ticketCreateError = ''"
+                                        class="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700 transition shadow-sm cursor-pointer">
+                                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+                                    Nouveau ticket
+                                </button>
+                                <select x-model="ticketsFilter" @change="loadTickets()"
+                                        class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 outline-none focus:border-indigo-500">
+                                    <option value="">Tous les établissements</option>
+                                    @foreach($tenants as $t)
+                                        <option value="{{ $t->slug }}">{{ $t->name }}</option>
+                                    @endforeach
+                                </select>
+                                <button type="button" @click="loadTickets()" :disabled="ticketsLoading"
+                                        class="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition disabled:opacity-50 cursor-pointer">
+                                    <svg class="h-3.5 w-3.5" :class="ticketsLoading ? 'animate-spin' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+                                    Actualiser
+                                </button>
+                            </div>
+                        </div>
+
+                        <template x-if="ticketsUnreachable.length > 0">
+                            <div class="mb-3 rounded-md bg-red-50 border border-red-200 px-4 py-2 text-[10px] text-red-700">
+                                Bases injoignables : <span class="font-semibold" x-text="ticketsUnreachable.join(', ')"></span>
+                            </div>
+                        </template>
+
+                        <template x-if="ticketsOutdated.length > 0">
+                            <div class="mb-3 rounded-md bg-amber-50 border border-amber-200 px-4 py-2 text-[10px] text-amber-700">
+                                Applications antérieures au bouton « Suggestion » (rien à remonter tant que leur image n'est pas mise à jour) :
+                                <span class="font-semibold" x-text="ticketsOutdated.join(', ')"></span>
+                            </div>
+                        </template>
+
+                        <p x-show="ticketError" x-cloak class="mb-3 rounded-md bg-red-50 border border-red-200 px-4 py-2 text-[10px] font-semibold text-red-700" x-text="ticketError"></p>
+                        <p x-show="assistError" x-cloak class="mb-3 rounded-md bg-red-50 border border-red-200 px-4 py-2 text-[10px] font-semibold text-red-700" x-text="assistError"></p>
+
+                        <div x-show="ticketsLoading" class="rounded-lg border border-slate-200 bg-white p-10 text-center text-xs text-slate-400">
+                            Lecture des tickets…
+                        </div>
+
+                        <div x-show="!ticketsLoading && tickets" x-cloak class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                            @foreach($ticketColonnes as $statut => $colonne)
+                                <div class="rounded-lg border border-slate-200 border-t-4 {{ $colonne['accent'] }} bg-slate-50/70 min-h-[160px]"
+                                     @dragover.prevent
+                                     @drop.prevent="deplacerTicket((tickets ?? []).find(t => t.id + '-' + t.slug === dragId), '{{ $statut }}'); dragId = null">
+
+                                    <div class="flex items-center justify-between gap-2 px-3 py-2.5 border-b border-slate-200/70">
+                                        <span class="text-[11px] font-bold text-slate-700 uppercase tracking-wider">{{ $colonne['label'] }}</span>
+                                        <span class="rounded-full px-2 py-0.5 text-[10px] font-bold {{ $colonne['puce'] }}"
+                                              x-text="ticketsParStatut('{{ $statut }}').length"></span>
+                                    </div>
+
+                                    <div class="space-y-2 p-2.5">
+                                        <template x-for="t in ticketsParStatut('{{ $statut }}')" :key="t.slug + '-' + t.id">
+                                            <div draggable="true"
+                                                 @dragstart="dragId = t.id + '-' + t.slug"
+                                                 @dragend="dragId = null"
+                                                 @click="ouvrirTicket(t)"
+                                                 class="cursor-pointer rounded-lg border border-slate-200 bg-white p-3 shadow-sm transition hover:border-indigo-300 hover:shadow">
+                                                <div class="flex items-start justify-between gap-2">
+                                                    <span class="rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider border"
+                                                          :class="t.type === 'probleme' ? 'bg-red-50 text-red-600 border-red-200' : 'bg-violet-50 text-violet-600 border-violet-200'"
+                                                          x-text="t.type === 'probleme' ? 'Problème' : 'Suggestion'"></span>
+                                                    <span class="font-mono text-[9px] text-slate-300" x-text="'#' + t.id"></span>
+                                                </div>
+                                                <p class="mt-1.5 text-xs font-bold text-slate-800 leading-snug" x-text="t.subject"></p>
+                                                <p class="mt-1 text-[10px] text-slate-500 line-clamp-2" x-text="t.message"></p>
+                                                <div class="mt-2 flex items-center justify-between gap-2 border-t border-slate-100 pt-2">
+                                                    <span class="min-w-0">
+                                                        <span class="block truncate text-[10px] font-semibold text-slate-600" x-text="t.author"></span>
+                                                        <span class="block truncate text-[9px] text-slate-400" x-text="t.tenant"></span>
+                                                    </span>
+                                                    <span class="shrink-0 text-[9px] text-slate-400" x-text="t.ago"></span>
+                                                </div>
+                                                <div class="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between">
+                                                    <template x-if="t.assistance_url">
+                                                        <span class="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-600">
+                                                            <span class="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                                            Assistance active
+                                                        </span>
+                                                    </template>
+                                                    <template x-if="!t.assistance_url">
+                                                        <span class="text-[9px] text-slate-400">Assistance fermée</span>
+                                                    </template>
+                                                    <template x-if="t.assistance_url">
+                                                        <a :href="t.assistance_url" target="_blank" @click.stop
+                                                           class="inline-flex items-center gap-1 rounded bg-emerald-50 px-2 py-0.5 text-[9px] font-bold text-emerald-700 hover:bg-emerald-100 transition">
+                                                            Entrer
+                                                            <svg class="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
+                                                        </a>
+                                                    </template>
+                                                    <template x-if="!t.assistance_url">
+                                                        <button type="button" @click.stop="ouvrirAssistance(t)" :disabled="assistPending === t.id"
+                                                                class="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 text-[9px] font-bold text-slate-600 hover:bg-slate-200 transition disabled:opacity-50 cursor-pointer">
+                                                            <span x-text="assistPending === t.id ? 'Ouverture…' : 'Ouvrir l\'assistance'"></span>
+                                                        </button>
+                                                    </template>
+                                                </div>
+                                            </div>
+                                        </template>
+
+                                        <p x-show="ticketsParStatut('{{ $statut }}').length === 0" class="px-1 py-6 text-center text-[10px] text-slate-400">
+                                            Aucun ticket
+                                        </p>
+                                    </div>
+                                </div>
+                            @endforeach
+                        </div>
+
+                        <div x-show="!ticketsLoading && !tickets" x-cloak class="rounded-lg border border-red-200 bg-red-50 p-5 text-xs font-bold text-red-700">
+                            Impossible de charger les tickets des établissements.
+                        </div>
+                    </div>
+
+                    {{-- Modale de création manuelle d'un ticket --}}
+                    <div x-show="modalNouveauTicket" x-cloak
+                         class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/50 p-4 sm:p-8"
+                         @click.self="modalNouveauTicket = false" @keydown.escape.window="modalNouveauTicket = false">
+                        <div class="w-full max-w-lg overflow-hidden rounded-xl bg-white shadow-2xl">
+                            <div class="flex items-center justify-between bg-slate-900 px-5 py-3.5">
+                                <h3 class="text-sm font-bold text-white">Nouveau ticket de support</h3>
+                                <button type="button" @click="modalNouveauTicket = false" class="text-slate-400 hover:text-white transition">
+                                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                                </button>
+                            </div>
+                            <form @submit.prevent="creerTicketManuel()" class="space-y-4 p-5">
+                                <p x-show="ticketCreateError" x-cloak class="rounded-md bg-red-50 border border-red-200 px-3.5 py-2 text-xs font-semibold text-red-700" x-text="ticketCreateError"></p>
+
+                                <div>
+                                    <label class="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-500">Établissement</label>
+                                    <select x-model="nouveauTicket.tenant_id" required
+                                            class="block w-full rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-700 outline-none focus:border-indigo-500">
+                                        <option value="">— Sélectionner un établissement —</option>
+                                        @foreach($tenants as $t)
+                                            <option value="{{ $t->id }}">{{ $t->name }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label class="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-500">Type de ticket</label>
+                                    <select x-model="nouveauTicket.type" required
+                                            class="block w-full rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-700 outline-none focus:border-indigo-500">
+                                        <option value="probleme">Problème / Incident</option>
+                                        <option value="suggestion">Suggestion / Demande</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label class="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-500">Sujet</label>
+                                    <input type="text" x-model="nouveauTicket.subject" required minlength="3" maxlength="160" placeholder="Ex : Blocage lors de la clôture de caisse…"
+                                           class="block w-full rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-700 outline-none focus:border-indigo-500">
+                                </div>
+
+                                <div>
+                                    <label class="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-500">Description</label>
+                                    <textarea x-model="nouveauTicket.message" rows="4" required minlength="5" maxlength="2000" placeholder="Détails du problème ou de l'intervention…"
+                                              class="block w-full rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-700 outline-none focus:border-indigo-500"></textarea>
+                                </div>
+
+                                <div class="rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-[11px] text-emerald-800 flex items-center gap-2">
+                                    <svg class="h-4 w-4 shrink-0 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                    <span>La création du ticket ouvre automatiquement une <strong>session d'assistance active</strong> pour cet établissement.</span>
+                                </div>
+
+                                <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                                    <button type="button" @click="modalNouveauTicket = false" class="rounded-lg border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition cursor-pointer">
+                                        Annuler
+                                    </button>
+                                    <button type="submit" :disabled="ticketCreating"
+                                            class="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 transition disabled:opacity-50 shadow-sm cursor-pointer">
+                                        <span x-text="ticketCreating ? 'Création…' : 'Créer le ticket et lancer l\'assistance'"></span>
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    {{-- Fiche d'un ticket : message complet, réponse et traitement --}}
+                    <div x-show="ticketOuvert" x-cloak
+                         class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/50 p-4 sm:p-8"
+                         @click.self="ticketOuvert = null" @keydown.escape.window="ticketOuvert = null">
+                        <template x-if="ticketOuvert">
+                            <div class="w-full max-w-xl overflow-hidden rounded-xl bg-white shadow-2xl">
+                                <div class="flex items-start justify-between gap-3 bg-slate-900 px-5 py-3.5">
+                                    <div class="min-w-0">
+                                        <h3 class="truncate text-sm font-bold text-white" x-text="ticketOuvert.subject"></h3>
+                                        <p class="text-[10px] text-slate-400">
+                                            <span x-text="ticketOuvert.tenant"></span> ·
+                                            <span x-text="ticketOuvert.author"></span>
+                                            <span x-show="ticketOuvert.role" x-text="' (' + ticketOuvert.role + ')'"></span> ·
+                                            <span x-text="ticketOuvert.at"></span>
+                                        </p>
+                                    </div>
+                                    <button type="button" @click="ticketOuvert = null" class="shrink-0 text-slate-400 hover:text-white transition">
+                                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                                    </button>
+                                </div>
+
+                                <div class="space-y-4 p-5">
+                                    <p class="whitespace-pre-line rounded-lg bg-slate-50 p-3.5 text-xs leading-relaxed text-slate-700" x-text="ticketOuvert.message"></p>
+
+                                    <template x-if="ticketOuvert.context_url">
+                                        <p class="text-[10px] text-slate-400">
+                                            Écran concerné : <span class="font-mono text-slate-600" x-text="ticketOuvert.context_url"></span>
+                                        </p>
+                                    </template>
+
+                                    <div>
+                                        <label class="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                            Réponse à l'auteur <span class="font-normal normal-case text-slate-400">(visible dans son application)</span>
+                                        </label>
+                                        <textarea x-model="ticketReply" rows="3" maxlength="2000"
+                                                  placeholder="Ce qui a été fait, ou ce qu'on attend de lui."
+                                                  class="block w-full rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"></textarea>
+                                    </div>
+
+                                    <p x-show="ticketError" x-cloak class="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-[10px] font-semibold text-red-700" x-text="ticketError"></p>
+
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        @foreach($ticketColonnes as $statut => $colonne)
+                                            <button type="button" :disabled="ticketSaving"
+                                                    @click="deplacerTicket(ticketOuvert, '{{ $statut }}', ticketReply)"
+                                                    class="rounded-lg border px-3 py-2 text-[11px] font-bold transition disabled:opacity-50 cursor-pointer"
+                                                    :class="ticketOuvert.status === '{{ $statut }}' ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-50'">
+                                                {{ $colonne['label'] }}
+                                            </button>
+                                        @endforeach
+                                    </div>
+
+                                    <div class="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+                                        <p class="text-[10px] text-slate-400" x-show="ticketOuvert.handled_by">
+                                            Dernier traitement : <span class="font-semibold text-slate-600" x-text="ticketOuvert.handled_by"></span>
+                                        </p>
+                                        <div class="flex items-center gap-2">
+                                            <template x-if="ticketOuvert.assistance_url">
+                                                <a :href="ticketOuvert.assistance_url" target="_blank"
+                                                   class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-[11px] font-bold text-white transition hover:bg-emerald-700 shadow-sm cursor-pointer">
+                                                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
+                                                    Entrer en assistance
+                                                </a>
+                                            </template>
+                                            <template x-if="!ticketOuvert.assistance_url">
+                                                <button type="button" @click="ouvrirAssistance(ticketOuvert)" :disabled="assistPending === ticketOuvert.id"
+                                                        class="inline-flex items-center gap-1.5 rounded-lg border border-emerald-600 px-3.5 py-2 text-[11px] font-bold text-emerald-700 transition hover:bg-emerald-50 disabled:opacity-50 cursor-pointer">
+                                                    <span x-text="assistPending === ticketOuvert.id ? 'Ouverture…' : 'Ouvrir l\'assistance'"></span>
+                                                </button>
+                                            </template>
+                                            <button type="button" @click="justifierDepuisTicket(ticketOuvert)"
+                                                    class="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-2 text-[11px] font-bold text-white transition hover:bg-indigo-700 cursor-pointer">
+                                                Intervention
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+
+                    {{-- ---- Enregistrement manuel d'une intervention ---- --}}
+                    <form id="justif-form" method="POST" action="{{ route('tech.support.assistance.open') }}" class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm max-w-2xl">
                         @csrf
                         <h3 class="text-sm font-bold text-slate-800">Justifier et ouvrir une intervention</h3>
                         <p class="text-xs text-slate-500 mt-1 leading-relaxed">Documente le motif avant d'accéder à un établissement. La justification est obligatoire, jointe à l'audit, et ouvre une <strong>session d'assistance</strong> à durée limitée (visible dans l'onglet Mode assistance).</p>
                         <div class="mt-5 space-y-4">
                             <div>
                                 <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Établissement concerné</label>
-                                <select name="tenant_id" required
+                                <select id="justif-tenant" name="tenant_id" required
                                         class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">
                                     <option value="">— Choisir —</option>
                                     @foreach($tenants as $t)
@@ -2338,7 +3281,7 @@
                             </div>
                             <div>
                                 <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Motif de l'intervention <span class="text-slate-400 normal-case font-normal">(10 caractères min.)</span></label>
-                                <textarea name="reason" rows="4" required minlength="10" maxlength="1000" placeholder="Ex : reproduction d'un bug signalé sur la création de réservation…"
+                                <textarea id="justif-reason" name="reason" rows="4" required minlength="10" maxlength="1000" placeholder="Ex : reproduction d'un bug signalé sur la création de réservation…"
                                           class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">{{ old('reason') }}</textarea>
                             </div>
                             <div class="flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
@@ -2404,6 +3347,91 @@
                     </div>
                 </div>
             </div>
+        @elseif($activeTab === 'modules' && $isTech)
+            {{-- ================= RÉPERTOIRE DES MODULES ================= --}}
+            @php
+                $catalog      = \App\Support\ModuleCatalog::all();
+                $adoption     = \App\Support\ModuleCatalog::adoption($tenants);
+                $totalTenants = $tenants->count();
+                $coreTotal    = count(array_filter($catalog, fn ($m) => $m['type'] === 'core'));
+                $optionalTotal = count($catalog) - $coreTotal;
+            @endphp
+
+            <p class="text-[10px] font-bold tracking-widest text-indigo-600 uppercase">MODULES</p>
+
+            <div class="mt-2 flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-2 border-b border-slate-200 pb-4">
+                <div>
+                    <h1 class="text-2xl font-extrabold tracking-tight text-slate-800 font-heading">Répertoire des modules</h1>
+                    <p class="text-xs text-slate-500 mt-1">
+                        Tous les modules développés dans l'application établissement : à quoi ils servent, qui les utilise
+                        et comment on s'en sert. Ouvrez une fiche pour son guide d'utilisation.
+                    </p>
+                </div>
+                <a href="{{ route('tech.dashboard', ['tab' => 'tenants']) }}"
+                   class="shrink-0 inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50">
+                    <i data-lucide="building-2" class="h-3.5 w-3.5"></i>
+                    Activer sur un établissement
+                </a>
+            </div>
+
+            <div class="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+                @foreach([
+                    ['Modules répertoriés', count($catalog), 'text-slate-800'],
+                    ['Modules cœur', $coreTotal, 'text-indigo-600'],
+                    ['Activables par établissement', $optionalTotal, 'text-amber-600'],
+                    ['Établissements', $totalTenants, 'text-slate-800'],
+                ] as [$label, $value, $color])
+                    <div class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                        <p class="text-[9px] font-bold uppercase tracking-wider text-slate-400">{{ $label }}</p>
+                        <p class="mt-2 text-3xl font-extrabold {{ $color }}">{{ $value }}</p>
+                    </div>
+                @endforeach
+            </div>
+
+            <div class="mt-6" x-data="{ q: '', type: 'all' }">
+
+                {{-- Filtres : le tri se fait dans le navigateur, sur les cartes déjà rendues --}}
+                <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
+                    <div class="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
+                        @foreach(['all' => 'Tous', 'core' => 'Cœur', 'optionnel' => 'Optionnels'] as $value => $label)
+                            <button type="button" @click="type = '{{ $value }}'"
+                                    class="rounded-md px-3 py-1.5 text-xs font-bold transition"
+                                    :class="type === '{{ $value }}' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'">
+                                {{ $label }}
+                            </button>
+                        @endforeach
+                    </div>
+                    <div class="relative w-full sm:w-72">
+                        <i data-lucide="search" class="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400"></i>
+                        <input type="search" x-model="q" placeholder="Rechercher un module…"
+                               class="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    @foreach($catalog as $slug => $module)
+                        <div data-type="{{ $module['type'] }}"
+                             data-search="{{ \Illuminate\Support\Str::lower($module['label'] . ' ' . $module['tagline'] . ' ' . $slug . ' ' . ($module['key'] ?? '')) }}"
+                             x-show="(type === 'all'
+                                        || (type === 'core' && $el.dataset.type === 'core')
+                                        || (type === 'optionnel' && $el.dataset.type !== 'core'))
+                                     && (q.trim() === '' || $el.dataset.search.includes(q.trim().toLowerCase()))">
+                            @include('admin.modules.partials.card', [
+                                'module' => array_merge(['slug' => $slug], $module),
+                                'count'  => $module['key'] ? ($adoption[$module['key']] ?? 0) : $totalTenants,
+                                'total'  => $totalTenants,
+                            ])
+                        </div>
+                    @endforeach
+                </div>
+
+                <p x-show="q.trim() !== '' && [...$root.querySelectorAll('[data-search]')].every(el => !el.dataset.search.includes(q.trim().toLowerCase()))"
+                   x-cloak
+                   class="mt-6 rounded-lg border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-xs text-slate-500">
+                    Aucun module ne correspond à cette recherche.
+                </p>
+            </div>
+
         @elseif($activeTab !== 'audit')
             <!-- Placeholder Layout for other tabs -->
             <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] mt-6">

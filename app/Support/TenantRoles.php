@@ -4,7 +4,7 @@ namespace App\Support;
 
 /**
  * Catalogue des rôles opérationnels de l'application établissement
- * (meka_template) — miroir consultatif des constantes ROLE_* et des
+ * (wetchah_app) — miroir consultatif des constantes ROLE_* et des
  * middlewares "role:" du template. Sert l'onglet Rôles du dashboard TECH :
  * pms ne crée pas ces rôles, il les documente et compte leur répartition
  * dans la base de chaque établissement.
@@ -60,12 +60,17 @@ class TenantRoles
             ],
             'restaurant_chief' => [
                 'label' => 'Chef restaurant',
-                'description' => 'Carte, commandes, facturation et garde-manger du restaurant.',
+                'description' => 'Carte, fiches techniques, garde-manger, cuisine et facturation du restaurant.',
                 'module' => 'restaurant',
             ],
             'restaurant_staff' => [
-                'label' => 'Personnel restaurant',
-                'description' => 'Prise et suivi des commandes en salle.',
+                'label' => 'Serveur (salle)',
+                'description' => 'Service en salle : prise de commande, navette avec la cuisine et service des plats.',
+                'module' => 'restaurant',
+            ],
+            'restaurant_cook' => [
+                'label' => 'Cuisinier (cuisine)',
+                'description' => 'Cuisine : réception des bons de commande et signalement des plats prêts.',
                 'module' => 'restaurant',
             ],
             'shop_manager' => [
@@ -83,7 +88,7 @@ class TenantRoles
 
     /**
      * Matrice consultative rôle -> modules accessibles, déduite des
-     * middlewares "role:" de meka_template. Colonnes affichées dans
+     * middlewares "role:" de wetchah_app. Colonnes affichées dans
      * l'onglet Rôles ('core' = Hôtel & réception, toujours actif).
      */
     public static function moduleColumns(): array
@@ -111,6 +116,7 @@ class TenantRoles
             'housekeeping'        => ['housekeeping'],
             'restaurant_chief'    => ['restaurant'],
             'restaurant_staff'    => ['restaurant'],
+            'restaurant_cook'     => ['restaurant'],
             'shop_manager'        => ['shop'],
             'shop_cashier'        => ['shop'],
         ];

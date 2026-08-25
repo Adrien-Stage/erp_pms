@@ -239,17 +239,16 @@ class AdminAuditController extends Controller
 
         $section = request('section', 'overview');
         $tenantUsers = collect();
+        // Rôles proposés à l'affectation, lus dans la base de l'établissement :
+        // chaque établissement a son propre référentiel de rôles.
+        $tenantRoles = collect();
 
         if ($section === 'users') {
             try {
-                $pdo = $this->connectToTenantDatabase($tenant);
+                $tenantDb = app(\App\Services\TenantDatabase::class);
 
-                $stmt = $pdo->query("SELECT id, name, email, phone, role, is_active FROM users ORDER BY name");
-                $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-
-                $tenantUsers = collect($rows)->map(function ($row) {
-                    return (object) $row;
-                });
+                $tenantUsers = collect($tenantDb->users($tenant));
+                $tenantRoles = collect($tenantDb->assignableRoles($tenant));
 
                 // users_count est un compteur dénormalisé (incrémenté à la création
                 // d'un manager) — il peut dériver si un utilisateur est supprimé
@@ -264,7 +263,7 @@ class AdminAuditController extends Controller
             }
         }
 
-        return view('admin.tenants.show', compact('tenant', 'tenantUsers', 'section'));
+        return view('admin.tenants.show', compact('tenant', 'tenantUsers', 'tenantRoles', 'section'));
     }
 
     /**
@@ -288,11 +287,20 @@ class AdminAuditController extends Controller
             \PDO::ATTR_TIMEOUT => 3,
         ];
 
+        // Connexion PDO directe, hors connecteur Laravel : le fuseau de
+        // config/database.php ne s'y applique pas, on le pose à la main pour
+        // que NOW() et CURRENT_DATE répondent dans le fuseau de la plateforme.
+        $fuseau = str_replace("'", "''", (string) config('app.timezone'));
+
         try {
-            return new \PDO("pgsql:host={$dbContainer};port=5432;dbname={$safeDbName}", $dbUser, $dbPass, $options);
+            $pdo = new \PDO("pgsql:host={$dbContainer};port=5432;dbname={$safeDbName}", $dbUser, $dbPass, $options);
         } catch (\PDOException $e) {
-            return new \PDO("pgsql:host=127.0.0.1;port={$tenant->db_port};dbname={$safeDbName}", $dbUser, $dbPass, $options);
+            $pdo = new \PDO("pgsql:host=127.0.0.1;port={$tenant->db_port};dbname={$safeDbName}", $dbUser, $dbPass, $options);
         }
+
+        $pdo->exec("SET TIME ZONE '{$fuseau}'");
+
+        return $pdo;
     }
 
     public function updateTenant(Request $request, Tenant $tenant)
@@ -322,12 +330,16 @@ class AdminAuditController extends Controller
         $user = Auth::user();
         if (!$user || !$user->isTechAdmin()) { abort(403); }
 
-        $validated = $request->validate([
-            'modules' => ['nullable', 'array'],
-            'modules.*' => ['string', Rule::in(['restaurant', 'shop', 'housekeeping', 'discussions', 'analytics', 'api', 'website'])],
-        ]);
+        $request->validate(['modules' => ['nullable', 'array']]);
 
-        $modules = $this->applyModuleDependencies($validated['modules'] ?? []);
+        // On ne garde que les modules valides réellement soumis. Une case décochée
+        // n'envoie rien → le module disparaît de la liste (désactivation). On filtre
+        // par intersection plutôt qu'avec Rule::in : une entrée vide/parasite ne doit
+        // pas faire échouer toute la requête et laisser la désactivation sans effet.
+        $allowed = ['restaurant', 'shop', 'housekeeping', 'discussions', 'analytics', 'ledger', 'api', 'website'];
+        $modules = array_values(array_intersect($allowed, (array) $request->input('modules', [])));
+
+        $modules = $this->applyModuleDependencies($modules);
         $tenant->update(['modules' => $modules]);
 
         if (empty($tenant->docker_image_tag)) {
@@ -393,6 +405,82 @@ class AdminAuditController extends Controller
     }
 
     /**
+     * SSE endpoint : met à jour le site vitrine vers la dernière image publiée
+     * (tag « latest »), en temps réel — même visualisation que la mise à jour
+     * applicative. updateWeb() renvoie false quand le site est déjà à jour.
+     */
+    public function updateTenantWebsiteStream(Tenant $tenant, Request $request, \App\Services\TenantProvisioningService $provisioner)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isTechAdmin()) { abort(403); }
+
+        set_time_limit(600);
+        ini_set('max_execution_time', '600');
+
+        return response()->stream(function () use ($tenant, $provisioner) {
+            if (ob_get_level()) {
+                ob_end_clean();
+            }
+            ob_implicit_flush(true);
+
+            $send = function (string $step, string $message, string $level = 'info') {
+                // Chaque ligne streamée (dont les battements de cœur du pull)
+                // repousse la limite d'exécution : une mise à jour longue sur une
+                // connexion lente ne doit pas être coupée par le timer PHP tant
+                // qu'elle progresse.
+                set_time_limit(300);
+
+                if (mb_strlen($message) > 3000) {
+                    $message = mb_substr($message, 0, 3000) . '…';
+                }
+                $payload = json_encode([
+                    'step'    => $step,
+                    'message' => $message,
+                    'level'   => $level,
+                    'time'    => now()->format('H:i:s'),
+                ]);
+                echo "data: {$payload}\n\n";
+                if (ob_get_level()) {
+                    ob_flush();
+                }
+                flush();
+            };
+
+            try {
+                $updated = $provisioner->updateWeb($tenant, $send);
+
+                if (!$updated) {
+                    $send('finished', 'Le site est déjà à la dernière version.', 'success');
+                    return;
+                }
+
+                AuditLog::record(
+                    Auth::id(),
+                    'update_tenant_website',
+                    "Site vitrine mis à jour pour l'établissement {$tenant->name}",
+                    'tech_admin'
+                );
+
+                $send('finished', 'Site vitrine mis à jour avec succès.', 'success');
+
+            } catch (\Throwable $e) {
+                $send('error', $e->getMessage(), 'error');
+
+                AuditLog::record(
+                    Auth::id(),
+                    'update_tenant_website_error',
+                    "Échec de la mise à jour du site de {$tenant->name} : " . $e->getMessage(),
+                    'tech_admin'
+                );
+            }
+        }, 200, [
+            'Content-Type'      => 'text/event-stream',
+            'Cache-Control'     => 'no-cache',
+            'X-Accel-Buffering' => 'no',
+        ]);
+    }
+
+    /**
      * Règle métier (PLAN_REALISATION_ARCHITECTURE.md, Phase 3) : le site
      * vitrine consomme l'API applicative de l'établissement, donc l'activer
      * force "api" — mais l'inverse n'est pas vrai, activer l'API seule ne
@@ -417,7 +505,17 @@ class AdminAuditController extends Controller
     public function updateSiteContent(Request $request, Tenant $tenant)
     {
         $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) { abort(403); }
+        if (!$user) { abort(401); }
+
+        // Trois profils peuvent éditer ce contenu : l'administrateur technique,
+        // le propriétaire de l'établissement, et l'éditeur qui y est rattaché.
+        // Ce dernier est borné à SON établissement — la comparaison sur
+        // tenant_id est ce qui l'empêche d'atteindre le site d'un autre.
+        $autorise = $user->isTechAdmin()
+            || $tenant->owner_id === $user->id
+            || ($user->isSiteEditor() && $user->tenant_id === $tenant->id);
+
+        if (!$autorise) { abort(403, "Vous n'avez pas l'autorisation de modifier le contenu de ce site."); }
 
         // Règles de validation dérivées du schéma (une entrée par champ)
         $rules = [
@@ -568,7 +666,7 @@ class AdminAuditController extends Controller
 
     /**
      * API publique (lecture seule, pas d'auth) : contenu marketing d'un
-     * établissement, consommée par template_site. Résout les images en URLs
+     * établissement, consommée par wetchah_site. Résout les images en URLs
      * absolues — le storage vit dans pms, pas dans le container du site.
      */
     public function publicSiteContent(Tenant $tenant)
@@ -773,6 +871,12 @@ class AdminAuditController extends Controller
             ob_implicit_flush(true);
 
             $send = function (string $step, string $message, string $level = 'info') {
+                // Chaque ligne streamée (dont les battements de cœur du pull, ~12s)
+                // repousse la limite d'exécution : une mise à jour longue sur une
+                // connexion lente ne doit pas être coupée par le timer PHP, tant
+                // qu'elle progresse.
+                set_time_limit(300);
+
                 if (mb_strlen($message) > 3000) {
                     $message = mb_substr($message, 0, 3000) . '…';
                 }
@@ -1008,30 +1112,6 @@ class AdminAuditController extends Controller
     }
 
     /**
-     * Jeton signé + URL d'entrée dans l'application tenant pour une session.
-     * Payload signé HMAC-SHA256 avec le secret partagé : le tenant vérifie
-     * la signature et l'expiration avant d'ouvrir la session support.
-     */
-    private function assistanceEntryUrl(\App\Models\AssistanceSession $session): string
-    {
-        $tenant = $session->tenant;
-
-        $payload = [
-            'slug'    => $tenant->slug,
-            'session' => $session->token,
-            'admin'   => $session->user?->name ?? 'Support',
-            'exp'     => $session->expires_at->timestamp,
-        ];
-
-        $encoded   = rtrim(strtr(base64_encode(json_encode($payload)), '+/', '-_'), '=');
-        $signature = hash_hmac('sha256', $encoded, config('assistance.secret'));
-
-        $base = $tenant->app_port ? 'http://localhost:' . $tenant->app_port : '';
-
-        return $base . '/assistance/enter?token=' . $encoded . '.' . $signature;
-    }
-
-    /**
      * Support — liste des sessions d'assistance (onglet Mode assistance).
      * Passe paresseusement en 'expired' les sessions actives échues, et
      * expose l'URL d'entrée pour les sessions encore vivantes.
@@ -1062,7 +1142,7 @@ class AdminAuditController extends Controller
                     'expires_at' => $s->expires_at?->format('d/m/Y H:i'),
                     'expires_in' => $live ? $s->expires_at->diffForHumans() : null,
                     'opened_at'  => $s->created_at?->format('d/m/Y H:i'),
-                    'entry_url'  => $live ? $this->assistanceEntryUrl($s) : null,
+                    'entry_url'  => $s->entryUrl(),
                 ];
             });
 
@@ -1094,7 +1174,7 @@ class AdminAuditController extends Controller
 
     /**
      * Support — Logs applicatifs : journal d'activité lu dans la table
-     * audit_logs de l'application de chaque établissement (meka_template) —
+     * audit_logs de l'application de chaque établissement (wetchah_app) —
      * connexions et actions internes, avec l'utilisateur concerné. Sans
      * filtre d'établissement, agrège tous les tenants joignables. Lecture
      * seule, timeout court par base, une base injoignable est signalée.
@@ -1708,7 +1788,7 @@ class AdminAuditController extends Controller
         $segment = $request->segment(2); // business/{segment}
         $activeTab = $request->input('tab', $segment ?: 'dashboard');
 
-        if (!in_array($activeTab, ['dashboard', 'establishments', 'analytics', 'employees', 'revenue'])) {
+        if (!in_array($activeTab, ['dashboard', 'establishments', 'analytics', 'clients', 'employees', 'revenue'])) {
             $activeTab = 'dashboard';
         }
 
@@ -1938,6 +2018,23 @@ class AdminAuditController extends Controller
         $tenants = $user->tenants()->whereNotNull('provisioned_at')->orderBy('name')->get();
 
         return response()->json($client->statistics($tenants, $period));
+    }
+
+    /**
+     * Analytique de la clientèle consolidée (page « Clients ») : meilleurs
+     * clients, rentabilité, segmentation RFM et marchés émetteurs.
+     */
+    public function businessClientsData(Request $request, \App\Services\BusinessReportingClient $client)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isOwner()) { abort(403); }
+
+        $period = in_array($request->query('period'), ['today', 'week', 'month', 'year'], true)
+            ? $request->query('period') : 'month';
+
+        $tenants = $user->tenants()->whereNotNull('provisioned_at')->orderBy('name')->get();
+
+        return response()->json($client->customers($tenants, $period));
     }
 
     /**

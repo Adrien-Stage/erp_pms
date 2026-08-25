@@ -3,7 +3,7 @@
 namespace App\Support;
 
 /**
- * Schéma du contenu marketing du site vitrine (template_site), organisé en
+ * Schéma du contenu marketing du site vitrine (wetchah_site), organisé en
  * pages -> sections -> champs. Source de vérité unique partagée entre le
  * formulaire admin (onglet "Contenu du site"), la persistance
  * (AdminAuditController::updateSiteContent) et l'API publique

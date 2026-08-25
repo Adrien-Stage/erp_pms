@@ -45,7 +45,7 @@ return [
     | container "web" de chaque établissement, qui doit consommer l'API de
     | contenu marketing depuis le réseau Docker interne.
     */
-    'cms_container' => env('CMS_CONTAINER_NAME', 'MEKA_ERP-app'),
+    'cms_container' => env('CMS_CONTAINER_NAME', 'wetchah_erp-app'),
 
     /*
     |--------------------------------------------------------------------------
@@ -93,5 +93,18 @@ return [
         'app_start' => (int) env('PORT_RANGE_APP_START', 8081),
         'db_start'  => (int) env('PORT_RANGE_DB_START',  5434),
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Téléchargement des images Docker (résilience réseau)
+    |--------------------------------------------------------------------------
+    | pull_stall_timeout : nombre de secondes sans la moindre progression au-delà
+    |   duquel un `docker pull` est considéré bloqué (connexion instable), tué,
+    |   puis relancé — Docker reprend les couches déjà téléchargées.
+    | pull_max_seconds : durée maximale d'une seule tentative de pull, garde-fou
+    |   au cas où le transfert « avancerait » sans jamais aboutir.
+    */
+    'pull_stall_timeout' => (int) env('PULL_STALL_TIMEOUT', 120),
+    'pull_max_seconds'   => (int) env('PULL_MAX_SECONDS', 900),
 
 ];

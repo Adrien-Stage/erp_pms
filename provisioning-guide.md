@@ -1,10 +1,10 @@
-# 🏨 MEKA ERP — Guide de Résolution du Provisioning
+# 🏨 WeTchah ERP — Guide de Résolution du Provisioning
 
 > **Objectif** : Résoudre définitivement le blocage lors de la création d'établissements depuis le panel admin `erp_pms`, en s'appuyant uniquement sur le dépôt GitHub `https://github.com/Adrien-Stage/villa_b.git` comme source unique du code applicatif.
 
 ---
 
-## 1. Architecture MEKA ERP
+## 1. Architecture WeTchah ERP
 
 ```mermaid
 graph TB
@@ -14,7 +14,7 @@ graph TB
     end
 
     subgraph "Réseau Docker 'pms'"
-        subgraph "Admin Panel (MEKA ERP)"
+        subgraph "Admin Panel (WeTchah ERP)"
             ADMIN["MEKA_ERP-app<br/>:8080 → :80<br/>(PHP 8.4 + Docker CLI)"]
             ADMIN_DB["pms-db<br/>PostgreSQL 16<br/>:5433 → :5432"]
         end
@@ -34,7 +34,7 @@ graph TB
 ```
 
 ### Naming & Préfixes
-Conformément à la charte de MEKA ERP, les préfixes ont été uniformisés :
+Conformément à la charte de WeTchah ERP, les préfixes ont été uniformisés :
 - Image Docker : `meka-erp-template`
 - Containers : `meka-erp-{slug}-app` et `meka-erp-{slug}-db`
 - Volumes DB : `meka_erp_{slug}_pgdata`
@@ -125,7 +125,7 @@ ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 #!/bin/bash
 set -e
 
-echo "🏨 MEKA ERP — Démarrage du container établissement"
+echo "🏨 WeTchah ERP — Démarrage du container établissement"
 echo "    Tenant : ${TENANT_SLUG:-inconnu}"
 echo "    DB     : ${DB_DATABASE} @ ${DB_HOST}:${DB_PORT}"
 

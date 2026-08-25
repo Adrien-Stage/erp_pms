@@ -5,11 +5,11 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Container "web" (site vitrine template_site) : 3e service optionnel du
+ * Container "web" (site vitrine wetchah_site) : 3e service optionnel du
  * docker-compose généré par tenant, provisionné uniquement si le module
  * "website" est actif. web_image_tag suit le même principe de pin par
  * digest que docker_image_tag, mais sur le registre distinct de l'image
- * template_site (voir TenantProvisioningService, PLAN_CMS_SITE_VITRINE.md).
+ * wetchah_site (voir TenantProvisioningService, PLAN_CMS_SITE_VITRINE.md).
  */
 return new class extends Migration
 {

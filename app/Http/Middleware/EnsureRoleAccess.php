@@ -98,7 +98,14 @@ class EnsureRoleAccess
             $currentUrl = $request->fullUrl();
 
             if (empty($fallbackUrl) || $fallbackUrl === $currentUrl) {
-                $fallbackUrl = route('dashboard');
+                // Cet ERP n'a pas de route « dashboard » unique : chaque profil
+                // a la sienne. La nommer en dur produisait une erreur 500 à la
+                // place du refus, dès qu'un accès était bloqué sans référent.
+                $fallbackUrl = match (true) {
+                    $user->isTechAdmin() => route('tech.dashboard'),
+                    $user->isOwner()     => route('business.dashboard'),
+                    default              => route('login'),
+                };
             }
 
             return redirect($fallbackUrl)->with([

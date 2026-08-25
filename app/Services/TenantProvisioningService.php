@@ -27,6 +27,56 @@ class TenantProvisioningService
         return (string) shell_exec($cmd);
     }
 
+    /**
+     * Les containers déjà en place appartiennent-ils bien au projet Docker que
+     * le compose courant déclare ?
+     *
+     * Les établissements provisionnés avant l'ajout du « name: » dans le
+     * compose portent le projet « compose », hérité du dossier .compose. Un
+     * « up » sous le nouveau nom de projet ne les reconnaît pas : il tente de
+     * les créer et bute sur un conflit de nom Docker illisible.
+     *
+     * Surtout, les volumes nommés sont eux aussi préfixés par le projet : une
+     * recréation à l'aveugle démarrerait Postgres sur un volume vide, et
+     * l'établissement paraîtrait vidé alors que ses données dorment dans
+     * l'ancien volume. D'où l'arrêt net plutôt qu'un rattrapage automatique :
+     * la reprise des volumes doit être décidée, pas subie.
+     */
+    private function assertComposeProjectMatches(Tenant $tenant, callable $log): void
+    {
+        $projet = 'meka-erp-' . $tenant->slug;
+
+        foreach (['app', 'db', 'web'] as $role) {
+            $container = 'meka-erp-' . $tenant->slug . '-' . $role;
+
+            $projetActuel = trim($this->exec(
+                'docker inspect ' . escapeshellarg($container)
+                . ' --format "{{index .Config.Labels \"com.docker.compose.project\"}}" 2>' . $this->nullDevice()
+            ));
+
+            if ($projetActuel === '' || $projetActuel === $projet) {
+                continue;
+            }
+
+            $log('docker', "⛔ Containers rattachés au projet Docker « {$projetActuel} », attendu « {$projet} ».", 'error');
+
+            throw new RuntimeException(
+                "Cet établissement a été provisionné avant l'isolation des projets Docker : ses containers "
+                . "appartiennent au projet « {$projetActuel} » et ses données sont dans les volumes "
+                . "« {$projetActuel}_meka_erp_{$tenant->slug}_pgdata » et « …_storage ».\n\n"
+                . "Recréer les containers maintenant les ferait démarrer sur des volumes vides. "
+                . "Reprenez d'abord les volumes vers le projet « {$projet} », supprimez les anciens "
+                . "containers, puis relancez cette mise à jour."
+            );
+        }
+    }
+
+    /** Poubelle de sortie du shell hôte — l'ERP tourne aussi bien sous Windows. */
+    private function nullDevice(): string
+    {
+        return DIRECTORY_SEPARATOR === '\\' ? 'NUL' : '/dev/null';
+    }
+
     private function execOrFail(string $cmd, string $errorMessage): string
     {
         Log::debug("[Provisioning] execOrFail: {$cmd}");
@@ -127,33 +177,171 @@ class TenantProvisioningService
 
     /**
      * GHCR redirige le téléchargement des blobs vers une URL Azure signée à
-     * durée de vie courte. Sur un réseau lent/instable, cette URL peut
-     * expirer avant la fin du transfert ("httpReadSeeker: failed open"),
-     * sans que Docker ne retente automatiquement. On retente donc nous-mêmes
-     * avant d'abandonner.
+     * durée de vie courte. Sur un réseau lent/instable, ce transfert peut se
+     * *figer* sans jamais rendre la main : `docker pull` reste ouvert mais ne
+     * progresse plus, et un simple `exec()` bloquant attendrait alors
+     * indéfiniment (c'est le symptôme « figé sur Récupération de l'image »).
+     *
+     * On surveille donc le pull : tant qu'il progresse, on le laisse faire (une
+     * connexion lente n'est pas un échec) ; s'il ne produit plus rien pendant
+     * un certain temps, on le considère bloqué, on le tue et on retente. Docker
+     * reprend alors les couches déjà téléchargées, donc chaque tentative fait
+     * avancer le transfert.
      */
-    private function dockerPullWithRetry(string $imageRef, callable $log, int $maxAttempts = 3): void
+    private function dockerPullWithRetry(string $imageRef, callable $log, int $maxAttempts = 4): void
     {
-        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
-            $lines = [];
-            $returnCode = 0;
-            exec('docker pull ' . escapeshellarg($imageRef) . ' 2>&1', $lines, $returnCode);
-            $output = implode("\n", $lines);
+        $stallSeconds = max(30, (int) config('provisioning.pull_stall_timeout', 120));
+        $hardCap      = max($stallSeconds, (int) config('provisioning.pull_max_seconds', 900));
 
-            if ($returnCode === 0) {
+        $lastOutput = '';
+
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            [$ok, $lastOutput, $reason] = $this->runMonitoredPull($imageRef, $stallSeconds, $hardCap, $log);
+
+            if ($ok) {
                 return;
             }
 
             if ($attempt < $maxAttempts) {
                 $delay = $attempt * 5;
-                $log('image', "⚠️ Échec du pull (tentative {$attempt}/{$maxAttempts}), nouvel essai dans {$delay}s…", 'warning');
+                $log('image', "⚠️ Téléchargement interrompu ({$reason}) — tentative {$attempt}/{$maxAttempts}. "
+                    . "Les couches déjà reçues sont conservées ; reprise dans {$delay}s…", 'warning');
                 sleep($delay);
-            } else {
-                throw new RuntimeException(
-                    "Échec du docker pull de l'image après {$maxAttempts} tentatives.\nSortie: {$output}"
-                );
             }
         }
+
+        throw new RuntimeException(
+            "Échec du téléchargement de l'image après {$maxAttempts} tentatives. "
+            . "Vérifiez la connexion internet puis relancez la mise à jour "
+            . "(la reprise repart des couches déjà téléchargées).\n\nDernière sortie :\n{$lastOutput}"
+        );
+    }
+
+    /**
+     * Lance un `docker pull` surveillé. Rend [succès, sortie, raison d'échec].
+     *
+     * Émet un battement de cœur régulier vers le flux SSE : l'interface ne
+     * paraît jamais figée, et la connexion reste active (utile derrière un
+     * proxy qui couperait un flux inactif).
+     *
+     * @return array{0: bool, 1: string, 2: string}
+     */
+    private function runMonitoredPull(string $imageRef, int $stallSeconds, int $hardCap, callable $log): array
+    {
+        // Le préfixe `exec` fait de `docker` le processus fils *direct* (au lieu
+        // d'un shell parent qui laisserait docker orphelin) : on peut ainsi
+        // réellement le tuer s'il se fige. La redirection 2>&1 est appliquée
+        // avant que exec ne remplace le shell.
+        $cmd = 'exec docker pull ' . escapeshellarg($imageRef) . ' 2>&1';
+
+        $pipes = [];
+        $process = @proc_open($cmd, [1 => ['pipe', 'w']], $pipes);
+
+        if (!is_resource($process)) {
+            return [false, "Impossible de lancer « docker pull ».", 'lancement impossible'];
+        }
+
+        stream_set_blocking($pipes[1], false);
+
+        $buffer       = '';
+        $tail         = '';
+        $start        = time();
+        $lastActivity = time();
+        $lastBeat     = time();
+
+        while (true) {
+            $read = [$pipes[1]];
+            $write = $except = [];
+            // Rend la main dès qu'il y a des données, ou au bout d'1 seconde.
+            $ready = @stream_select($read, $write, $except, 1);
+
+            if ($ready === false) {
+                // Interruption par un signal : on refait un tour.
+                continue;
+            }
+
+            if ($ready > 0) {
+                $chunk = fread($pipes[1], 65536);
+                if ($chunk !== '' && $chunk !== false) {
+                    $buffer      .= $chunk;
+                    $lastActivity = time();
+
+                    $chunkLines = preg_split('/[\r\n]+/', trim($chunk));
+                    $lastLine   = is_array($chunkLines) ? end($chunkLines) : '';
+                    if (is_string($lastLine) && $lastLine !== '') {
+                        $tail = mb_substr($lastLine, 0, 120);
+                    }
+                }
+            }
+
+            $status = proc_get_status($process);
+
+            if (!$status['running']) {
+                $rest = stream_get_contents($pipes[1]);
+                if (is_string($rest) && $rest !== '') {
+                    $buffer .= $rest;
+                }
+                @fclose($pipes[1]);
+                @proc_close($process);
+
+                if ($status['exitcode'] === 0) {
+                    return [true, $buffer, ''];
+                }
+
+                return [false, $buffer, "code de sortie {$status['exitcode']}"];
+            }
+
+            $now = time();
+
+            // Bloqué : plus aucune progression depuis trop longtemps.
+            if ($now - $lastActivity >= $stallSeconds) {
+                $this->terminateProcess($process, $pipes);
+                return [false, $buffer, "aucune progression depuis {$stallSeconds}s"];
+            }
+
+            // Garde-fou : une seule tentative ne doit pas durer sans fin.
+            if ($now - $start >= $hardCap) {
+                $this->terminateProcess($process, $pipes);
+                return [false, $buffer, "durée maximale atteinte ({$hardCap}s)"];
+            }
+
+            // Battement de cœur toutes les ~12 s.
+            if ($now - $lastBeat >= 12) {
+                $elapsed = $now - $start;
+                $suffix  = $tail !== '' ? " · {$tail}" : '';
+                $log('image', "⏳ Téléchargement en cours… ({$elapsed}s){$suffix}", 'info');
+                $lastBeat = $now;
+            }
+        }
+
+        // Inatteignable : chaque sortie de boucle retourne explicitement.
+    }
+
+    /**
+     * Tue proprement le processus de pull : SIGTERM, puis SIGKILL s'il ne rend
+     * pas la main rapidement.
+     */
+    private function terminateProcess($process, array $pipes): void
+    {
+        @proc_terminate($process, 15);
+
+        for ($i = 0; $i < 10; $i++) {
+            $status = proc_get_status($process);
+            if (!$status['running']) {
+                break;
+            }
+            usleep(300000);
+        }
+
+        $status = proc_get_status($process);
+        if ($status['running']) {
+            @proc_terminate($process, 9);
+        }
+
+        if (isset($pipes[1]) && is_resource($pipes[1])) {
+            @fclose($pipes[1]);
+        }
+        @proc_close($process);
     }
 
     /**
@@ -181,7 +369,7 @@ class TenantProvisioningService
 
     /**
      * Équivalent de pullDockerImage()/pinToTag() pour l'image du site vitrine
-     * (template_site), sur un registre distinct de l'image applicative — le
+     * (wetchah_site), sur un registre distinct de l'image applicative — le
      * digest est figé séparément (Tenant::web_image_tag) pour ne pas coupler
      * les mises à jour des deux images.
      */
@@ -265,7 +453,6 @@ class TenantProvisioningService
         $dbUser       = $tenant->db_username  ?? 'pms';
         $dbPass       = $tenant->db_password  ?? 'secret';
         $appPort      = $tenant->app_port;
-        $dbPort       = $tenant->db_port ?? 5432;
         $appKey       = $this->resolveAppKey($composePath);
         // URL navigable depuis le navigateur (port mappé sur l'hôte) : sert
         // de base à asset()/config('app.url') pour que les images (chambres,
@@ -297,6 +484,11 @@ class TenantProvisioningService
         // Secret de service pour que la console business de pms consomme
         // l'API de reporting (données financières) de cet établissement.
         $reportingSecret = (string) env('REPORTING_SECRET', '');
+        // Fuseau de la plateforme, propagé au conteneur : l'application, son
+        // horloge système et sa base doivent afficher la même heure, sinon une
+        // clôture de caisse et son écriture comptable tombent des jours
+        // différents autour de minuit.
+        $fuseau = (string) config('app.timezone');
 
         $appService = <<<YAML
   {$appContainer}:
@@ -329,6 +521,8 @@ class TenantProvisioningService
       SESSION_DRIVER: database
       CACHE_STORE: database
       QUEUE_CONNECTION: database
+      APP_TIMEZONE: "{$fuseau}"
+      TZ: "{$fuseau}"
     volumes:
       - meka_erp_{$tenant->slug}_storage:/var/www/html/storage/app/public
     depends_on:
@@ -339,17 +533,22 @@ class TenantProvisioningService
 
 YAML;
 
+        // La base n'est JAMAIS exposée sur l'hôte : l'app la joint via le
+        // réseau Docker interne (DB_HOST), pms via le nom du container, les
+        // sauvegardes via `docker exec`. L'exposer créait des conflits de
+        // port sur l'hôte (ex: 5432 déjà pris par le PostgreSQL local) sans
+        // aucun bénéfice.
         $dbService = <<<YAML
   {$dbContainer}:
     image: postgres:16
     container_name: {$dbContainer}
     restart: unless-stopped
-    ports:
-      - "{$dbPort}:5432"
     environment:
       POSTGRES_DB: {$dbName}
       POSTGRES_USER: {$dbUser}
       POSTGRES_PASSWORD: {$dbPass}
+      TZ: "{$fuseau}"
+      PGTZ: "{$fuseau}"
     volumes:
       - meka_erp_{$tenant->slug}_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -392,7 +591,13 @@ YAML;
 YAML;
         }
 
-        $yaml = "services:\n\n" . implode("\n", $services)
+        // Nom de projet Docker propre à chaque établissement : sans lui, tous
+        // les composes du dossier .compose partagent le même projet et se
+        // voient mutuellement comme « orphelins » — un down/up sur l'un
+        // pouvait alors impacter les autres. Isole chaque établissement.
+        $projectName = 'meka-erp-' . $tenant->slug;
+
+        $yaml = "name: {$projectName}\n\nservices:\n\n" . implode("\n", $services)
             . "\nnetworks:\n  {$network}:\n    external: true\n\nvolumes:\n  meka_erp_{$tenant->slug}_pgdata:\n  meka_erp_{$tenant->slug}_storage:\n";
 
         if (file_put_contents($composePath, $yaml) === false) {
@@ -424,10 +629,29 @@ YAML;
         $this->exec('docker rm -f ' . escapeshellarg($dbContainer)  . ' 2>/dev/null');
         $this->exec('docker rm -f ' . escapeshellarg($webContainer) . ' 2>/dev/null');
 
-        $output = $this->execOrFail(
-            'docker compose -f ' . escapeshellarg($composePath) . ' up -d 2>&1',
-            "Échec du docker compose up"
-        );
+        // Contrôle préventif : le port applicatif (et web) exposé sur l'hôte
+        // doit être libre. On échoue tôt avec un message clair plutôt que sur
+        // une erreur Docker obscure en plein milieu du provisioning.
+        $this->assertHostPortFree((int) $tenant->app_port, 'applicatif', $log);
+        if ($this->hasWebsiteModule($tenant)) {
+            $this->assertHostPortFree((int) ($tenant->web_port ?? ($tenant->app_port + 1000)), 'du site vitrine', $log);
+        }
+
+        try {
+            $output = $this->execOrFail(
+                'docker compose -f ' . escapeshellarg($composePath) . ' up -d 2>&1',
+                "Échec du docker compose up"
+            );
+        } catch (RuntimeException $e) {
+            // Traduit une erreur de bind de port en message actionnable.
+            if (preg_match('/Ports are not available|bind:|address already in use|port is already allocated/i', $e->getMessage())) {
+                throw new RuntimeException(
+                    "Un port choisi pour cet établissement est déjà utilisé sur la machine. "
+                    . "Modifiez le port applicatif (et, si activé, le port du site) dans le formulaire, puis relancez le provisioning."
+                );
+            }
+            throw $e;
+        }
 
         foreach (array_filter(explode("\n", $output)) as $line) {
             if (!empty(trim($line))) {
@@ -436,6 +660,32 @@ YAML;
         }
 
         $log('docker', "✅ Containers démarrés.", 'success');
+    }
+
+    /**
+     * Vérifie qu'aucun container ne publie déjà ce port sur l'hôte. Détecte
+     * les conflits avec d'autres établissements/services avant de lancer le
+     * compose (message clair plutôt qu'échec Docker opaque).
+     */
+    private function assertHostPortFree(int $port, string $label, callable $log): void
+    {
+        if ($port <= 0) {
+            return;
+        }
+
+        // Liste les ports publiés par les containers en cours, cherche ":{port}->".
+        $ports = $this->exec('docker ps --format "{{.Names}} {{.Ports}}" 2>/dev/null');
+        foreach (array_filter(explode("\n", $ports)) as $line) {
+            if (preg_match('/(?::|\b)' . $port . '->/', $line)) {
+                $name = trim(strtok($line, ' '));
+                throw new RuntimeException(
+                    "Le port {$label} {$port} est déjà utilisé par le container « {$name} ». "
+                    . "Choisissez un autre port dans le formulaire de l'établissement."
+                );
+            }
+        }
+
+        $log('docker', "✅ Port {$label} {$port} disponible.", 'info');
     }
 
     // ── Étape 5 : Attendre la DB ──────────────────────────────────────────────
@@ -552,6 +802,7 @@ YAML;
             : null;
 
         $composePath = $this->generateDockerCompose($tenant, $imageRef, $webImageRef, $log);
+        $this->assertComposeProjectMatches($tenant, $log);
 
         $log('docker', "🔄 Recréation du container applicatif…", 'info');
         $this->execOrFail(
@@ -607,6 +858,7 @@ YAML;
         $webImageRef = $this->pullPinnedWebImage($tenant, $log);
         $appImageRef = config('provisioning.registry_image') . '@' . $tenant->docker_image_tag;
         $composePath = $this->generateDockerCompose($tenant, $appImageRef, $webImageRef, $log);
+        $this->assertComposeProjectMatches($tenant, $log);
 
         $log('docker', "🔄 Recréation du container du site…", 'info');
         $this->execOrFail(
@@ -647,6 +899,11 @@ YAML;
 
         $registryImage = config('provisioning.registry_image');
         $imageRef      = $registryImage . '@' . $tenant->docker_image_tag;
+
+        // Contrôlé avant toute suppression de container : sur un établissement
+        // au projet Docker hérité, retirer le « web » puis échouer sur le « up »
+        // laisserait l'établissement dans un état intermédiaire.
+        $this->assertComposeProjectMatches($tenant, $log);
 
         $wantsWebsite = $this->hasWebsiteModule($tenant);
         $webContainer = 'meka-erp-' . $tenant->slug . '-web';

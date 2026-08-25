@@ -1,13 +1,27 @@
+# Nom de projet FIXE : ne dépend plus du nom du dossier (qui a changé en
+# wetchah_erp). On garde « pms » pour continuer à utiliser les volumes et le
+# réseau déjà créés — invisible au quotidien, ça évite de repartir à vide.
+name: pms
+
 services:
   app:
     build:
       context: .
       dockerfile: docker/app/Dockerfile
-    container_name: MEKA_ERP-app
+    container_name: wetchah_erp-app
     ports:
       - "8080:80"
     volumes:
       - .:/var/www/html
+      # Le bind mount ci-dessus recouvrirait vendor/ et node_modules/ par leur
+      # version Windows, ~775× plus lente à lire (34 ms contre 0,04 ms par
+      # fichier). Ces deux volumes nommés les remplacent par la copie construite
+      # dans l'image, sur le disque du conteneur.
+      #
+      # Conséquence à connaître : ils ne se mettent PAS à jour tout seuls après
+      # un `composer require` ou un `npm install`. Utiliser dev-refresh.ps1 -Deps.
+      - pms_vendor:/var/www/html/vendor
+      - pms_node_modules:/var/www/html/node_modules
       - /var/run/docker.sock:/var/run/docker.sock
       - c:/Users/user/Herd:/c/Users/user/Herd
     depends_on:
@@ -16,8 +30,16 @@ services:
       APP_URL: http://localhost:8080
       APP_ENV: local
       DB_CONNECTION: sqlite
+      # GMT+1 : APP_TIMEZONE pour Laravel, TZ pour l'horloge du conteneur
+      # (journaux, supervisord) — les deux doivent dire la même heure.
+      APP_TIMEZONE: Africa/Douala
+      TZ: Africa/Douala
     networks:
-      - pms
+      pms:
+        # Le conteneur répond aussi à l'ancien nom : les sites d'établissements
+        # déjà déployés joignent le CMS via http://MEKA_ERP-app sans rien changer.
+        aliases:
+          - MEKA_ERP-app
 
   vite:
     profiles:
@@ -30,6 +52,9 @@ services:
       - "5173:5173"
     volumes:
       - .:/var/www/html
+      # Même volume que le service app : c'est ce qui évite à Tailwind de
+      # rescanner node_modules à travers le mount à chaque invalidation.
+      - pms_node_modules:/var/www/html/node_modules
     depends_on:
       - app
     networks:
@@ -44,6 +69,8 @@ services:
       POSTGRES_DB: pms
       POSTGRES_USER: pms
       POSTGRES_PASSWORD: secret
+      TZ: Africa/Douala
+      PGTZ: Africa/Douala
     volumes:
       - pms_pgdata:/var/lib/postgresql/data
     networks:
@@ -57,3 +84,7 @@ networks:
 
 volumes:
   pms_pgdata:
+  # Dépendances servies depuis le disque du conteneur plutôt que depuis le
+  # bind mount Windows — voir le commentaire du service app.
+  pms_vendor:
+  pms_node_modules:

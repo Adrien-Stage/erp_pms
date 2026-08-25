@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * Client de la console business : interroge l'API de reporting de chaque
- * établissement d'un propriétaire (meka_template) et consolide les données
+ * établissement d'un propriétaire (wetchah_app) et consolide les données
  * pour la vue 360°. Chaque établissement calcule SES propres chiffres
  * (source unique de vérité) ; ce service agrège entre établissements,
  * classe, et remonte les alertes avec attribution.
@@ -245,6 +245,174 @@ class BusinessReportingClient
             'rankings'       => $rankings,
             'unreachable'    => $unreachable,
             'count'          => $count,
+            'generated_at'   => now()->format('H:i:s'),
+        ];
+    }
+
+    /**
+     * Analytique de la clientèle consolidée (page « Clients ») : valeur,
+     * classements, segmentation RFM et marchés émetteurs.
+     *
+     * Un même client peut séjourner dans plusieurs établissements du
+     * propriétaire, or chaque établissement possède sa propre base. La
+     * réconciliation se fait sur l'email (obligatoire à la création d'un
+     * client) : c'est ce qui permet une valeur vie réellement « groupe »
+     * plutôt qu'une somme de valeurs locales.
+     */
+    public function customers(Collection $tenants, string $period): array
+    {
+        $unreachable = [];
+        $merged      = [];   // clé de client => cumul inter-établissements
+        $geo         = [];   // ISO pays => cumul
+        $rfm         = [];
+        $keys        = [];   // union des condensés d'email = base dédoublonnée
+        $home        = 'CM';
+
+        $totals = [
+            'raw_customers' => 0, 'new' => 0, 'without_email' => 0,
+            'with_country'  => 0, 'domestic' => 0, 'stayed' => 0,
+            'repeat'        => 0, 'revenue' => 0, 'stays' => 0, 'ltv_sum' => 0,
+        ];
+
+        foreach ($tenants as $tenant) {
+            $data = $this->fetch($tenant, 'customers', ['period' => $period]);
+            if ($data === null) {
+                $unreachable[] = $tenant->name;
+                continue;
+            }
+
+            $home = $data['home_country'] ?? $home;
+
+            foreach ($totals as $k => $_) {
+                $key = $k === 'raw_customers' ? 'customers' : $k;
+                $totals[$k] += (int) ($data['totals'][$key] ?? 0);
+            }
+
+            foreach (($data['customer_keys'] ?? []) as $k) {
+                $keys[$k] = true;
+            }
+
+            foreach (($data['rfm'] ?? []) as $segment => $count) {
+                $rfm[$segment] = ($rfm[$segment] ?? 0) + (int) $count;
+            }
+
+            foreach (($data['geo'] ?? []) as $g) {
+                $iso = $g['country'] ?? null;
+                if (!$iso) { continue; }
+                $geo[$iso] ??= [
+                    'country'   => $iso,
+                    'name'      => $g['name'] ?? $iso,
+                    'continent' => $g['continent'] ?? null,
+                    'numeric'   => $g['numeric'] ?? null,
+                    'customers' => 0,
+                    'revenue'   => 0,
+                ];
+                $geo[$iso]['customers'] += (int) ($g['customers'] ?? 0);
+                $geo[$iso]['revenue']   += (int) ($g['revenue'] ?? 0);
+            }
+
+            // Les deux classements locaux sont versés dans le même pot : un
+            // client peut être dominant en CA ici et en rentabilité ailleurs.
+            $rows = array_merge($data['top_revenue'] ?? [], $data['top_profitable'] ?? []);
+            $seen = [];
+            foreach ($rows as $r) {
+                $key = (string) ($r['key'] ?? '');
+                if ($key === '') { continue; }
+
+                // Un client sans email n'est identifié que par son id local :
+                // il faut le cloisonner par établissement, deux bases pouvant
+                // parfaitement réutiliser le même identifiant.
+                if (str_starts_with($key, 'id:')) {
+                    $key = $tenant->slug . ':' . $key;
+                }
+
+                // Le même client apparaît dans les deux classements locaux ;
+                // il ne doit être cumulé qu'une fois par établissement.
+                if (isset($seen[$key])) { continue; }
+                $seen[$key] = true;
+
+                $merged[$key] ??= [
+                    'name'      => $r['name'] ?? '—',
+                    'email'     => $r['email'] ?? null,
+                    'country'   => $r['country'] ?? null,
+                    'continent' => $r['continent'] ?? null,
+                    'revenue'   => 0,
+                    'nights'    => 0,
+                    'bookings'  => 0,
+                    'ltv'       => 0,
+                    'is_vip'    => false,
+                    'establishments' => [],
+                ];
+
+                $merged[$key]['revenue']  += (int) ($r['revenue'] ?? 0);
+                $merged[$key]['nights']   += (int) ($r['nights'] ?? 0);
+                $merged[$key]['bookings'] += (int) ($r['bookings'] ?? 0);
+                $merged[$key]['ltv']      += (int) ($r['ltv'] ?? 0);
+                $merged[$key]['is_vip']   = $merged[$key]['is_vip'] || (bool) ($r['is_vip'] ?? false);
+                $merged[$key]['establishments'][] = $tenant->name;
+
+                // Le pays peut manquer dans un établissement et être renseigné
+                // dans un autre : on garde la première valeur connue.
+                if (!$merged[$key]['country'] && !empty($r['country'])) {
+                    $merged[$key]['country']   = $r['country'];
+                    $merged[$key]['continent'] = $r['continent'] ?? null;
+                }
+            }
+        }
+
+        foreach ($merged as &$row) {
+            $row['establishments'] = array_values(array_unique($row['establishments']));
+            $row['revenue_per_night'] = $row['nights'] > 0 ? intdiv($row['revenue'], $row['nights']) : 0;
+        }
+        unset($row);
+
+        // Base dédoublonnée : les clients identifiés par email fusionnent, ceux
+        // sans email restent comptés une fois par établissement faute de clé.
+        $customerBase = count($keys) + $totals['without_email'];
+
+        $ranked = collect($merged)->values();
+        $topRevenue = $ranked->sortByDesc('revenue')->take(10)->values()->all();
+        $topProfit  = $ranked->filter(fn ($r) => $r['nights'] > 0)
+            ->sortByDesc('revenue_per_night')->take(10)->values()->all();
+
+        $geoRows = collect($geo)->sortByDesc('customers')->values()->all();
+
+        $continents = [];
+        foreach ($geoRows as $g) {
+            $c = $g['continent'] ?: 'Inconnu';
+            $continents[$c] = ($continents[$c] ?? 0) + $g['customers'];
+        }
+        arsort($continents);
+
+        $international = max(0, $totals['with_country'] - $totals['domestic']);
+
+        return [
+            'period'   => $period,
+            'currency' => 'XAF',
+            'home_country' => $home,
+            'totals'   => [
+                'customers'      => $customerBase,
+                'new'            => $totals['new'],
+                'revenue'        => $totals['revenue'],
+                'repeat_rate'    => $totals['stayed'] > 0
+                                        ? round($totals['repeat'] / $totals['stayed'] * 100, 1) : 0.0,
+                'avg_ltv'        => $customerBase > 0 ? intdiv($totals['ltv_sum'], $customerBase) : 0,
+                'avg_basket'     => $totals['stays'] > 0 ? intdiv($totals['revenue'], $totals['stays']) : 0,
+                'international_share' => $totals['with_country'] > 0
+                                        ? round($international / $totals['with_country'] * 100, 1) : 0.0,
+                'countries'      => count($geoRows),
+                // Complétude de la donnée géographique : sans elle, la carte
+                // ment par omission — on affiche donc le taux de renseignement.
+                'country_completeness' => $totals['raw_customers'] > 0
+                                        ? round($totals['with_country'] / $totals['raw_customers'] * 100, 1) : 0.0,
+            ],
+            'top_revenue'    => $topRevenue,
+            'top_profitable' => $topProfit,
+            'rfm'            => $rfm,
+            'geo'            => $geoRows,
+            'continents'     => $continents,
+            'unreachable'    => $unreachable,
+            'count'          => $tenants->count() - count($unreachable),
             'generated_at'   => now()->format('H:i:s'),
         ];
     }

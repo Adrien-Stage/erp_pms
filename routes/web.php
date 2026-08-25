@@ -3,6 +3,32 @@
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Auth;
 use App\Http\Controllers\AdminAuditController;
+use App\Http\Controllers\ModuleCatalogController;
+use App\Http\Controllers\OwnerController;
+use App\Http\Controllers\SiteEditorController;
+use App\Http\Controllers\SupportTicketController;
+use App\Http\Controllers\TenantUserController;
+
+// ==========================================
+// ESPACE ÉDITEUR DE CONTENU
+// Adresse et page de connexion distinctes, sans marquage ERP : l'éditeur ne
+// gère que le site de son établissement et n'a pas à connaître l'existence de
+// la console d'administration. La séparation d'URL limite la découverte ; la
+// protection réelle tient au refus de connexion des autres rôles et au
+// cloisonnement par tenant_id.
+// ==========================================
+Route::prefix('espace-editeur')->name('site-editor.')->group(function () {
+    Route::get('/connexion', [SiteEditorController::class, 'showLogin'])->name('login');
+    Route::post('/connexion', [SiteEditorController::class, 'login'])
+        ->middleware('throttle:5,1')
+        ->name('login.store');
+
+    Route::middleware(['auth', 'role:site_editor'])->group(function () {
+        Route::post('/deconnexion', [SiteEditorController::class, 'logout'])->name('logout');
+        Route::get('/', [SiteEditorController::class, 'content'])->name('content');
+        Route::post('/', [SiteEditorController::class, 'update'])->name('content.update');
+    });
+});
 
 // Page d'accueil -> redirige vers login ou le tableau de bord
 Route::get('/', function () {
@@ -18,7 +44,7 @@ Route::get('/login', [AuthenticatedSessionController::class, 'create'])->name('l
 Route::post('/login', [AuthenticatedSessionController::class, 'store']);
 Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
 
-// === API PUBLIQUE (consommée par template_site — pas d'authentification) ===
+// === API PUBLIQUE (consommée par wetchah_site — pas d'authentification) ===
 Route::get('/api/public/establishments/{tenant:slug}/content', [AdminAuditController::class, 'publicSiteContent'])->name('api.public.establishments.content');
 
 // === ESPACE TECH (Supervision Technique) ===
@@ -34,6 +60,26 @@ Route::middleware(['auth', 'role:tech_admin'])->prefix('tech')->name('tech.')->g
     Route::post('/support/assistance/{session}/revoke', [AdminAuditController::class, 'assistanceRevoke'])->name('support.assistance.revoke');
     Route::get('/support/{tenant}/diagnostic', [AdminAuditController::class, 'supportDiagnostic'])->name('support.diagnostic');
 
+    // Tickets remontés par le personnel des établissements depuis wetchah_app :
+    // lecture agrégée pour le kanban, création manuelle et traitement écrit dans la base du tenant.
+    Route::get('/support/tickets', [SupportTicketController::class, 'index'])->name('support.tickets');
+    Route::post('/support/tickets', [SupportTicketController::class, 'update'])->name('support.tickets.update');
+    Route::post('/support/tickets/create', [SupportTicketController::class, 'store'])->name('support.tickets.create');
+    // Entrer en assistance se demande ticket par ticket : jamais un effet de bord de la lecture ci-dessus.
+    Route::post('/support/tickets/assist', [SupportTicketController::class, 'assist'])->name('support.tickets.assist');
+
+    // Répertoire des modules de l'application établissement : fiche et guide
+    // d'utilisation de chaque module, ouverts depuis l'onglet « Modules ».
+    Route::get('/modules/{module}', [ModuleCatalogController::class, 'show'])->name('modules.show');
+
+    // Registre des propriétaires — une entrée par personne, d'où l'on ouvre
+    // directement la fiche de l'un de ses établissements.
+    Route::get('/owners', [OwnerController::class, 'index'])->name('owners.index');
+    Route::get('/owners/{owner}', [OwnerController::class, 'show'])->name('owners.show');
+    Route::post('/owners/{owner}', [OwnerController::class, 'update'])->name('owners.update');
+    Route::post('/owners/{owner}/toggle-active', [OwnerController::class, 'toggleActive'])->name('owners.toggle-active');
+    Route::delete('/owners/{owner}', [OwnerController::class, 'destroy'])->name('owners.destroy');
+
     // Gestion des Établissements (Tenants)
     Route::get('/establishments', [AdminAuditController::class, 'indexTenants'])->name('establishments.index');
     Route::get('/establishments/create', [AdminAuditController::class, 'createTenant'])->name('establishments.create');
@@ -42,6 +88,20 @@ Route::middleware(['auth', 'role:tech_admin'])->prefix('tech')->name('tech.')->g
     Route::post('/establishments/{tenant}', [AdminAuditController::class, 'updateTenant'])->name('establishments.update');
     Route::delete('/establishments/{tenant}', [AdminAuditController::class, 'destroyTenant'])->name('establishments.destroy');
     Route::post('/establishments/{tenant}/create-manager', [AdminAuditController::class, 'createTenantManager'])->name('establishments.create-manager');
+
+    // Employés de l'établissement : ils vivent dans la base du tenant, donc
+    // toute modification faite ici est immédiatement effective dans wetchah_app.
+    Route::get('/establishments/{tenant}/users/{user}', [TenantUserController::class, 'show'])->whereNumber('user')->name('establishments.users.show');
+    Route::post('/establishments/{tenant}/users/{user}', [TenantUserController::class, 'update'])->name('establishments.users.update');
+    Route::post('/establishments/{tenant}/users/{user}/toggle-active', [TenantUserController::class, 'toggleActive'])->name('establishments.users.toggle-active');
+    Route::delete('/establishments/{tenant}/users/{user}', [TenantUserController::class, 'destroy'])->name('establishments.users.destroy');
+
+    // Comptes éditeurs du site de l'établissement. Ils vivent dans la base de
+    // l'ERP (contrairement aux employés), mais restent bornés à ce site.
+    Route::post('/establishments/{tenant}/editors', [SiteEditorController::class, 'storeEditor'])->name('establishments.editors.store');
+    Route::post('/establishments/{tenant}/editors/{editor}/toggle', [SiteEditorController::class, 'toggleEditor'])->name('establishments.editors.toggle');
+    Route::delete('/establishments/{tenant}/editors/{editor}', [SiteEditorController::class, 'destroyEditor'])->name('establishments.editors.destroy');
+
     Route::post('/establishments/{tenant}/modules', [AdminAuditController::class, 'updateModules'])->name('establishments.modules');
     Route::post('/establishments/{tenant}/site-content', [AdminAuditController::class, 'updateSiteContent'])->name('establishments.site-content');
 
@@ -55,6 +115,7 @@ Route::middleware(['auth', 'role:tech_admin'])->prefix('tech')->name('tech.')->g
     Route::get('/establishments/{tenant}/versions', [AdminAuditController::class, 'availableVersions'])->name('establishments.versions');
     Route::get('/establishments/{tenant}/update-version/stream', [AdminAuditController::class, 'updateTenantVersionStream'])->name('establishments.update-version.stream');
     Route::post('/establishments/{tenant}/update-website', [AdminAuditController::class, 'updateTenantWebsite'])->name('establishments.update-website');
+    Route::get('/establishments/{tenant}/update-website/stream', [AdminAuditController::class, 'updateTenantWebsiteStream'])->name('establishments.update-website.stream');
 
     // Gestion des Utilisateurs ( TECH et BUSINESS )
     Route::post('/users/{user}/toggle-active', [AdminAuditController::class, 'toggleUserActive'])->name('users.toggle-active');
@@ -81,6 +142,7 @@ Route::middleware(['auth', 'role:owner'])->prefix('business')->name('business.')
     Route::get('/establishments/{tenant}/finance-data', [AdminAuditController::class, 'businessEstablishmentFinance'])->name('establishments.finance-data');
     Route::post('/establishments/{tenant}/create-manager', [AdminAuditController::class, 'createTenantManager'])->name('establishments.create-manager');
     Route::get('/analytics', [AdminAuditController::class, 'businessDashboard'])->name('analytics');
+    Route::get('/clients', [AdminAuditController::class, 'businessDashboard'])->name('clients');
     Route::get('/employees', [AdminAuditController::class, 'businessDashboard'])->name('employees');
     Route::get('/revenue', [AdminAuditController::class, 'businessDashboard'])->name('revenue');
 
@@ -88,6 +150,7 @@ Route::middleware(['auth', 'role:owner'])->prefix('business')->name('business.')
     Route::get('/overview/data', [AdminAuditController::class, 'businessOverviewData'])->name('overview.data');
     Route::get('/revenue/data', [AdminAuditController::class, 'businessRevenueData'])->name('revenue.data');
     Route::get('/stats/data', [AdminAuditController::class, 'businessStatsData'])->name('stats.data');
+    Route::get('/clients/data', [AdminAuditController::class, 'businessClientsData'])->name('clients.data');
     Route::get('/employees/data', [AdminAuditController::class, 'businessEmployeesData'])->name('employees.data');
     Route::get('/report/data', [AdminAuditController::class, 'businessReportData'])->name('report.data');
     Route::get('/report/export/excel', [AdminAuditController::class, 'businessReportExcel'])->name('report.excel');

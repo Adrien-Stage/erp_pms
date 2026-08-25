@@ -1,0 +1,40 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Contexte de build envoyé au démon Docker.
+#
+# Sans ce fichier, `docker compose build` transférait tout le dossier à travers
+# le pont Windows↔Linux : node_modules/, vendor/ et 218 Mo de storage/logs/,
+# soit plusieurs minutes avant même que la première instruction ne s'exécute.
+#
+# vendor/ et node_modules/ sont volontairement exclus : l'image les reconstruit
+# elle-même (composer install / npm ci), sur son propre disque.
+# ─────────────────────────────────────────────────────────────────────────────
+
+.git
+.gitignore
+.github
+
+# Dépendances : réinstallées dans l'image, jamais copiées depuis l'hôte.
+node_modules
+vendor
+
+# Journaux et caches d'exécution : propres à une instance, pas au code.
+storage/logs/*
+storage/framework/cache/data/*
+storage/framework/sessions/*
+storage/framework/views/*
+storage/app/private/backups/*
+!storage/**/.gitignore
+
+# Sorties de développement.
+public/hot
+tmp
+output
+.phpunit.result.cache
+
+# Documents et archives qui n'ont rien à faire dans une image.
+*.zip
+*.docx
+~$*
+
+# Environnement local : injecté par docker-compose, pas figé dans l'image.
+.env

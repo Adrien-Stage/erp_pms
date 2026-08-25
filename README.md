@@ -1,59 +1,121 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# WeTchah ERP — Console d'administration
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Console d'administration d'une plateforme de gestion hôtelière multi-établissements,
+déployée *on-premise* chez le client.
 
-## About Laravel
+**Ce projet n'est pas un logiciel hôtelier.** C'est l'outil qui *fabrique* et
+*supervise* les logiciels hôteliers : chaque établissement client reçoit sa propre
+application et sa propre base de données, dans ses propres conteneurs Docker,
+créés et pilotés depuis cette console.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+> **1 établissement = 1 application = 1 base de données.**
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+---
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## Les trois dépôts de la plateforme
 
-## Learning Laravel
+WeTchah ERP ne fonctionne pas seul. Il orchestre deux autres dépôts :
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+| Dépôt | Rôle | Stack |
+|---|---|---|
+| **`wetchah_erp`** *(ce dépôt)* | La console qui fabrique et supervise les établissements | Laravel 12 + Blade, SQLite |
+| [`wetchah_app`](https://github.com/Adrien-Stage/villa_b) | Le PMS livré à chaque établissement (chambres, restaurant, caisse…) | Laravel 12 + Blade, PostgreSQL |
+| [`wetchah_site`](https://github.com/clyde237/site_villab) | Le site vitrine public, optionnel, d'un établissement | SvelteKit 2 / Svelte 5 |
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+Les deux derniers ne sont **jamais clonés** : ils sont publiés en images Docker sur
+GHCR par leur CI, et cette console en tire (`docker pull`) un **digest figé** par
+établissement.
 
-## Laravel Sponsors
+---
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+## Les trois espaces de la console
 
-### Premium Partners
+Un seul déploiement, trois publics cloisonnés par rôle :
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+| Espace | URL | Rôle | À quoi ça sert |
+|---|---|---|---|
+| **TECH** | `/tech/*` | `tech_admin` | Créer les établissements, superviser les conteneurs, mettre à jour, sauvegarder, assister |
+| **BUSINESS** | `/business/*` | `owner` | Le propriétaire consulte ses établissements : revenus, clients, employés, rapports |
+| **ÉDITEUR** | `/espace-editeur` | `site_editor` | Éditer le contenu marketing du site vitrine d'un seul établissement |
 
-## Contributing
+L'espace éditeur a sa **propre page de connexion**, sans marquage ERP : un éditeur
+n'a pas à savoir que la console d'administration existe.
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+---
 
-## Code of Conduct
+## Démarrage rapide
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+Prérequis : Docker + Docker Compose, et le réseau partagé créé une fois.
 
-## Security Vulnerabilities
+```bash
+docker network create pms
+```
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+```bash
+cp .env.docker .env && docker compose up -d --build
+```
 
-## License
+```bash
+docker exec wetchah_erp-app php artisan migrate --seed
+```
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+La console répond ensuite sur <http://localhost:8080>.
+
+L'installation complète (secrets, comptes, images GHCR, chemins hôte) est décrite
+dans **[docs/installation.md](docs/installation.md)**.
+
+---
+
+## Documentation
+
+| Document | Contenu |
+|---|---|
+| **[Architecture](docs/architecture.md)** | Vue d'ensemble, conteneurs, réseau, flux de données, modèle de données |
+| **[Installation](docs/installation.md)** | Déploiement de la console chez un client, de zéro à opérationnel |
+| **[Configuration](docs/configuration.md)** | Référence de toutes les variables d'environnement et fichiers `config/` |
+| **[Provisioning](docs/provisioning.md)** | Cycle de vie d'un établissement : création, mise à jour, suppression |
+| **[Rôles et accès](docs/roles-et-acces.md)** | RBAC, les trois espaces, gestion des comptes, isolation multi-tenant |
+| **[Exploitation](docs/exploitation.md)** | Sauvegardes, supervision, mode assistance, diagnostic, incidents courants |
+| **[CMS du site vitrine](docs/cms-site-vitrine.md)** | Module `website`, schéma de contenu, API publique consommée par le site |
+| **[Développement](docs/developpement.md)** | Environnement local, OPcache, assets, structure du code, dette connue |
+
+Les fichiers `.md` à la racine (`PLAN_REALISATION_ARCHITECTURE.md`,
+`INSTRUCTIONS_PROVISIONING.md`, `provisioning-guide.md`, `JOURNAL_DE_BORD.md`…)
+sont des **documents de conception historiques**. Ils décrivent des décisions et
+des états passés — certains ne reflètent plus le code. La documentation à jour est
+celle de `docs/`.
+
+---
+
+## Structure du code
+
+```
+app/
+├─ Http/Controllers/
+│  ├─ AdminAuditController.php    Le contrôleur central (TECH + BUSINESS)
+│  ├─ OwnerController.php         Registre des propriétaires
+│  ├─ SiteEditorController.php    Espace éditeur + comptes éditeurs
+│  └─ TenantUserController.php    Employés, écrits directement dans la base du tenant
+├─ Http/Middleware/
+│  └─ EnsureRoleAccess.php        RBAC + isolation multi-tenant (alias « role »)
+├─ Models/                        Tenant, User, Role, AuditLog, TenantBackup,
+│                                 BackupSchedule, AssistanceSession
+├─ Services/
+│  ├─ TenantProvisioningService.php  Toute la logique Docker
+│  ├─ DockerRegistryService.php      Tags et digests GHCR
+│  ├─ TenantDatabase.php             Accès PDO aux bases des établissements
+│  ├─ TenantBackupService.php        pg_dump / restauration
+│  ├─ BusinessReportingClient.php    Agrégation des API de reporting
+│  └─ BusinessReportExporter.php     Export Excel des rapports
+└─ Support/
+   ├─ SiteContentSchema.php       Schéma déclaratif du CMS
+   └─ TenantRoles.php             Catalogue des rôles de wetchah_app
+```
+
+Point d'entrée principal des routes : [`routes/web.php`](routes/web.php).
+
+---
+
+## Licence
+
+Projet propriétaire. Tous droits réservés.
