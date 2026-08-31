@@ -484,6 +484,25 @@ class TenantProvisioningService
         // Secret de service pour que la console business de pms consomme
         // l'API de reporting (données financières) de cet établissement.
         $reportingSecret = (string) env('REPORTING_SECRET', '');
+        // Messagerie sortante, mutualisée pour toute la plateforme comme les
+        // clés VAPID : l'acheminement (compte Resend, relais SMTP) appartient à
+        // l'éditeur, alors que l'adresse *affichée* au client relève de chaque
+        // établissement — il la choisit dans ses Paramètres, et MailIdentity la
+        // fait primer. MAIL_FROM_ADDRESS n'est donc qu'un filet, jamais
+        // l'expéditeur imposé.
+        //
+        // Sans ces variables, le tenant retombe sur env('MAIL_MAILER', 'log') :
+        // chaque courriel est écrit dans les logs et jamais envoyé, sans la
+        // moindre erreur à l'écran. C'est un silence coûteux — le client
+        // n'a jamais son code d'arrivée et la réception le croit parti.
+        $mailMailer   = $this->yamlSingleQuoteEscape((string) env('MAIL_MAILER', 'log'));
+        $resendKey    = $this->yamlSingleQuoteEscape((string) env('RESEND_API_KEY', ''));
+        $mailScheme   = $this->yamlSingleQuoteEscape((string) env('MAIL_SCHEME', 'smtp'));
+        $mailHost     = $this->yamlSingleQuoteEscape((string) env('MAIL_HOST', ''));
+        $mailPort     = $this->yamlSingleQuoteEscape((string) env('MAIL_PORT', '587'));
+        $mailUsername = $this->yamlSingleQuoteEscape((string) env('MAIL_USERNAME', ''));
+        $mailPassword = $this->yamlSingleQuoteEscape((string) env('MAIL_PASSWORD', ''));
+        $mailFrom     = $this->yamlSingleQuoteEscape((string) env('MAIL_FROM_ADDRESS', ''));
         // Fuseau de la plateforme, propagé au conteneur : l'application, son
         // horloge système et sa base doivent afficher la même heure, sinon une
         // clôture de caisse et son écriture comptable tombent des jours
@@ -518,6 +537,14 @@ class TenantProvisioningService
       VAPID_PUBLIC_KEY: "{$vapidPublic}"
       VAPID_PRIVATE_KEY: "{$vapidPrivate}"
       REPORTING_SECRET: "{$reportingSecret}"
+      MAIL_MAILER: '{$mailMailer}'
+      RESEND_API_KEY: '{$resendKey}'
+      MAIL_SCHEME: '{$mailScheme}'
+      MAIL_HOST: '{$mailHost}'
+      MAIL_PORT: '{$mailPort}'
+      MAIL_USERNAME: '{$mailUsername}'
+      MAIL_PASSWORD: '{$mailPassword}'
+      MAIL_FROM_ADDRESS: '{$mailFrom}'
       SESSION_DRIVER: database
       CACHE_STORE: database
       QUEUE_CONNECTION: database
