@@ -120,6 +120,10 @@
             website: true
         },
 
+        // Données de démonstration : opt-in explicite. Un établissement réel ne
+        // doit jamais recevoir de faux clients par simple inattention.
+        seedDemo: false,
+
         // Methods
         applyPalette(p, s, a, d, sd, tl, td) {
             this.themePrimary = p;
@@ -943,6 +947,36 @@
                             </label>
 
                         </div>
+                    </div>
+                </div>
+
+                <!-- Section: Données de démonstration -->
+                <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                    <div class="bg-slate-900 px-6 py-3">
+                        <h2 class="text-sm font-bold text-white tracking-wide">Démarrage de l'Établissement</h2>
+                    </div>
+                    <div class="p-6">
+                        <label class="relative flex items-start gap-4 rounded-xl border p-4 cursor-pointer select-none transition hover:bg-slate-50 duration-200"
+                            :class="seedDemo ? 'border-amber-500 ring-2 ring-amber-50 bg-amber-50/20' : 'border-slate-200'">
+                            <input type="checkbox" name="seed_demo_data" value="1" x-model="seedDemo"
+                                   class="mt-1 h-4 w-4 rounded text-amber-600 focus:ring-amber-500 shrink-0">
+                            <div class="space-y-1">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xs font-bold text-slate-800">Installer un jeu de données de démonstration</span>
+                                    <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 uppercase">Démo</span>
+                                </div>
+                                <p class="text-[10px] text-slate-500 leading-relaxed">
+                                    Peuple l'établissement d'environ 20 enregistrements fictifs par module —
+                                    clients, chambres, réservations, folios, commandes — pour une présentation
+                                    ou une formation. Installé automatiquement à la fin du provisioning, et
+                                    uniquement pour les modules cochés ci-dessus.
+                                </p>
+                                <p class="text-[10px] text-amber-700 leading-relaxed font-medium">
+                                    À réserver aux établissements de démonstration : ces données se mêlent
+                                    aux données réelles et ne se retirent pas depuis l'interface.
+                                </p>
+                            </div>
+                        </label>
                     </div>
                 </div>
 

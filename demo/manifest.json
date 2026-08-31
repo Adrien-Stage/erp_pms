@@ -1,0 +1,21 @@
+{
+    "version": 1,
+    "description": "Jeu de démonstration installé dans la base d'un établissement.",
+    "volume": {
+        "customers": 20,
+        "bookings": 20,
+        "restaurant_orders": 20,
+        "shop_orders": 20,
+        "housekeeping_assignments": 20,
+        "stock_items": 20,
+        "expenses": 20
+    },
+    "steps": [
+        { "seeder": "CustomerSeeder",    "module": null,           "label": "Clients" },
+        { "seeder": "HotelSeeder",       "module": null,           "label": "Catégories et chambres" },
+        { "seeder": "BookingSeeder",     "module": null,           "label": "Réservations, folios et paiements" },
+        { "seeder": "RestaurantSeeder",  "module": "restaurant",   "label": "Carte et commandes restaurant" },
+        { "seeder": "ShopSeeder",        "module": "shop",         "label": "Boutique et ventes" },
+        { "seeder": "OperationsSeeder",  "module": null,           "label": "Ménage, fournisseurs, stock et charges" }
+    ]
+}

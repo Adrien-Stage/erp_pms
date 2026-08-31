@@ -1017,6 +1017,99 @@
                         </div>
                     @endif
 
+                    {{-- Données de démonstration --}}
+                    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div class="px-6 py-4 border-b border-slate-100">
+                            <h3 class="text-sm font-bold text-slate-800">Données de démonstration</h3>
+                            <p class="text-[10px] text-slate-500 mt-0.5">
+                                Peuple l'établissement d'environ 20 enregistrements fictifs par module actif —
+                                clients, chambres, réservations, folios, commandes, stock et charges
+                            </p>
+                        </div>
+                        <div class="p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
+                            <div class="text-xs space-y-1.5">
+                                @if($demoDataInstalled)
+                                    <div class="flex items-center gap-2">
+                                        <span class="inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
+                                        <span class="font-semibold text-slate-700">Jeu de démonstration déjà présent</span>
+                                    </div>
+                                    <p class="text-[10px] text-slate-500 leading-relaxed max-w-lg">
+                                        Relancer l'action ne crée aucun doublon : seuls les enregistrements manquants
+                                        sont ajoutés. Utile après l'activation d'un nouveau module.
+                                    </p>
+                                @else
+                                    <div class="flex items-center gap-2">
+                                        <span class="inline-flex h-2 w-2 rounded-full bg-slate-300"></span>
+                                        <span class="font-semibold text-slate-700">Aucune donnée de démonstration</span>
+                                    </div>
+                                    <p class="text-[10px] text-amber-700 leading-relaxed max-w-lg font-medium">
+                                        Ces données se mêlent aux données réelles : à réserver aux établissements
+                                        de démonstration ou de formation. Le retrait reste possible ensuite, mais
+                                        épargne tout ce qui aura servi entre-temps.
+                                    </p>
+                                @endif
+                            </div>
+
+                            {{-- Mêmes classes que les autres boutons d'action de cet
+                                 écran : la feuille de style compilée ne contient que
+                                 les utilitaires déjà employés dans le projet, et une
+                                 teinte inédite laisserait un bouton sans fond — donc
+                                 un libellé blanc sur blanc, invisible. --}}
+                            @if($tenant->docker_status === 'running')
+                                <div class="shrink-0 flex items-center gap-2">
+                                    <form method="POST" action="{{ route('tech.establishments.demo-data', $tenant) }}"
+                                          x-data="{ envoi: false }"
+                                          @submit="envoi = true">
+                                        @csrf
+                                        <button type="submit"
+                                                :disabled="envoi"
+                                                class="shrink-0 rounded-lg bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-sm cursor-pointer">
+                                            <span x-show="!envoi">
+                                                {{ $demoDataInstalled ? 'Compléter le jeu' : 'Installer les données' }}
+                                            </span>
+                                            <span x-show="envoi" style="display:none;">Installation…</span>
+                                        </button>
+                                    </form>
+
+                                    {{-- Purge : proposée seulement s'il y a quelque chose à
+                                         retirer, et confirmée en deux temps. Une suppression
+                                         dans une base en service ne doit pas tenir à un clic
+                                         mal placé. --}}
+                                    @if($demoDataInstalled)
+                                        <form method="POST" action="{{ route('tech.establishments.demo-data.purge', $tenant) }}"
+                                              x-data="{ confirme: false, envoi: false }"
+                                              @submit="envoi = true">
+                                            @csrf
+                                            @method('DELETE')
+
+                                            <button type="button" x-show="!confirme" @click="confirme = true"
+                                                    class="shrink-0 rounded-lg border border-red-200 bg-red-50 px-5 py-2.5 text-xs font-bold text-red-700 hover:bg-red-100 transition cursor-pointer">
+                                                Purger
+                                            </button>
+
+                                            <span x-show="confirme" style="display:none;" class="flex items-center gap-2">
+                                                <button type="submit" :disabled="envoi"
+                                                        class="shrink-0 rounded-lg bg-red-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-red-700 transition shadow-sm cursor-pointer">
+                                                    <span x-show="!envoi">Confirmer la purge</span>
+                                                    <span x-show="envoi" style="display:none;">Retrait…</span>
+                                                </button>
+                                                <button type="button" @click="confirme = false"
+                                                        class="text-xs font-bold text-slate-500 hover:text-slate-700 cursor-pointer">
+                                                    Annuler
+                                                </button>
+                                            </span>
+                                        </form>
+                                    @endif
+                                </div>
+                            @else
+                                <span class="shrink-0 rounded-lg bg-slate-300 px-5 py-2.5 text-xs font-bold text-slate-500 cursor-not-allowed"
+                                      title="Le container de l'établissement doit être démarré">
+                                    Container arrêté
+                                </span>
+                            @endif
+                        </div>
+                    </div>
+
                     <!-- Danger Zone Card -->
                     <div class="bg-white rounded-xl border border-red-200 shadow-sm overflow-hidden">
                         <div class="bg-red-500/5 px-6 py-4 flex items-center gap-3 border-b border-red-100">

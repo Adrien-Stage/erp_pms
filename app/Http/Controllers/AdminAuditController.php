@@ -179,6 +179,10 @@ class AdminAuditController extends Controller
             'country' => $request->country ?? 'Cameroun',
             'city' => $request->city ?? 'Douala',
             'logo' => $logoPath,
+            // Intention mémorisée, pas encore exécutée : la base de
+            // l'établissement n'existe pas à cet instant. Le flux de
+            // provisioning l'installera une fois les migrations passées.
+            'seed_demo_data' => $request->boolean('seed_demo_data'),
             'theme' => $request->theme ?? [
                 'primary' => '#391F0E',
                 'secondary' => '#CCAB87',
@@ -263,7 +267,14 @@ class AdminAuditController extends Controller
             }
         }
 
-        return view('admin.tenants.show', compact('tenant', 'tenantUsers', 'tenantRoles', 'section'));
+        // Uniquement pour l'onglet qui l'affiche : la sonde ouvre une connexion
+        // à la base de l'établissement, inutile sur les autres écrans.
+        $demoDataInstalled = $section === 'settings'
+            && app(\App\Services\DemoDataService::class)->estInstalle($tenant);
+
+        return view('admin.tenants.show', compact(
+            'tenant', 'tenantUsers', 'tenantRoles', 'section', 'demoDataInstalled'
+        ));
     }
 
     /**
@@ -814,6 +825,31 @@ class AdminAuditController extends Controller
                     'tech_admin'
                 );
 
+                // Données de démonstration, si la case a été cochée à la
+                // création. Après le provisioning seulement : les migrations
+                // doivent avoir créé les tables. Un échec ici n'invalide pas le
+                // provisioning — l'établissement reste utilisable, vide.
+                if (($tenant->settings['seed_demo_data'] ?? false) === true) {
+                    try {
+                        $resultat = app(\App\Services\DemoDataService::class)->install($tenant, $send);
+
+                        AuditLog::record(
+                            Auth::id(),
+                            'seed_demo_data',
+                            "Données de démonstration installées pour {$tenant->name} ({$resultat['total']} enregistrements)",
+                            'tech_admin'
+                        );
+                    } catch (\Throwable $e) {
+                        $send('warning', "Données de démonstration non installées : {$e->getMessage()}", 'error');
+                    } finally {
+                        // L'intention est consommée : une mise à jour ultérieure
+                        // ne doit pas réinstaller le jeu à l'insu de l'exploitant.
+                        $reglages = $tenant->settings ?? [];
+                        unset($reglages['seed_demo_data']);
+                        $tenant->update(['settings' => $reglages]);
+                    }
+                }
+
                 $send('finished', 'Provisioning terminé avec succès.', 'success');
 
             } catch (\Throwable $e) {
@@ -976,6 +1012,110 @@ class AdminAuditController extends Controller
             "Redémarrage du container pour l'établissement {$tenant->name}", 'tech_admin');
 
         return back()->with('success', "Container de « {$tenant->name} » redémarré.");
+    }
+
+    /**
+     * Installe le jeu de démonstration dans un établissement déjà provisionné.
+     *
+     * Rejouable : les seeders ne recréent jamais ce qui existe déjà. C'est ce
+     * qui permet de relancer l'action après avoir activé un nouveau module, pour
+     * ne peupler que celui-ci.
+     */
+    public function seedDemoData(Tenant $tenant, \App\Services\DemoDataService $demo)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isTechAdmin()) { abort(403); }
+
+        if ($tenant->docker_status !== 'running') {
+            return back()->with('error', "Le container de « {$tenant->name} » doit être démarré pour installer les données.");
+        }
+
+        $lignes = [];
+        $log = function (string $etape, string $message, string $niveau = 'info') use (&$lignes) {
+            $lignes[] = $message;
+        };
+
+        try {
+            $resultat = $demo->install($tenant, $log);
+
+            AuditLog::record(
+                Auth::id(),
+                'seed_demo_data',
+                "Données de démonstration installées pour {$tenant->name} ({$resultat['total']} enregistrements)",
+                'tech_admin',
+                ['logs' => $lignes]
+            );
+
+            return back()->with('success', $resultat['total'] > 0
+                ? "{$resultat['total']} enregistrement(s) de démonstration installés dans « {$tenant->name} »."
+                : "« {$tenant->name} » possédait déjà l'ensemble du jeu de démonstration : rien à ajouter.");
+
+        } catch (\Throwable $e) {
+            AuditLog::record(
+                Auth::id(),
+                'seed_demo_error',
+                "Échec de l'installation des données de démonstration pour {$tenant->name} : " . $e->getMessage(),
+                'tech_admin'
+            );
+
+            return back()->with('error', "Installation impossible : {$e->getMessage()}");
+        }
+    }
+
+    /**
+     * Retire le jeu de démonstration d'un établissement.
+     *
+     * Action destructive, donc bornée : seuls les enregistrements portant un
+     * marqueur d'installation sont éligibles, et le catalogue encore utilisé
+     * par des données réelles est conservé (voir Demo\Purger).
+     */
+    public function purgeDemoData(Tenant $tenant, \App\Services\DemoDataService $demo)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isTechAdmin()) { abort(403); }
+
+        if ($tenant->docker_status !== 'running') {
+            return back()->with('error', "Le container de « {$tenant->name} » doit être démarré pour retirer les données.");
+        }
+
+        $lignes = [];
+        $log = function (string $etape, string $message, string $niveau = 'info') use (&$lignes) {
+            $lignes[] = $message;
+        };
+
+        try {
+            $resultat = $demo->purge($tenant, $log);
+
+            AuditLog::record(
+                Auth::id(),
+                'purge_demo_data',
+                "Données de démonstration retirées de {$tenant->name} ({$resultat['total']} enregistrements)",
+                'tech_admin',
+                ['logs' => $lignes]
+            );
+
+            $message = $resultat['total'] > 0
+                ? "{$resultat['total']} enregistrement(s) de démonstration retirés de « {$tenant->name} »."
+                : "Aucune donnée de démonstration à retirer dans « {$tenant->name} ».";
+
+            // Ce qui a été épargné se dit à l'écran : sans cela, l'utilisateur
+            // croit la purge incomplète en retrouvant des chambres fictives.
+            if ($resultat['kept'] !== []) {
+                $message .= ' Conservé — ' . implode(' ', $resultat['kept']);
+            }
+
+            return back()->with('success', $message);
+
+        } catch (\Throwable $e) {
+            AuditLog::record(
+                Auth::id(),
+                'purge_demo_error',
+                "Échec du retrait des données de démonstration pour {$tenant->name} : " . $e->getMessage(),
+                'tech_admin'
+            );
+
+            return back()->with('error', "Retrait impossible : {$e->getMessage()}");
+        }
     }
 
     public function provisionTenant(Tenant $tenant)

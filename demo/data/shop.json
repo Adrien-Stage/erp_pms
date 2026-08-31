@@ -1,0 +1,33 @@
+{
+    "_comment": "Boutique de l'établissement. Prix en FCFA.",
+    "categories": [
+        { "name": "Artisanat",   "description": "Pièces d'artisans locaux" },
+        { "name": "Textile",     "description": "Tissus et vêtements" },
+        { "name": "Épicerie fine", "description": "Produits du terroir à emporter" },
+        { "name": "Soins",       "description": "Cosmétiques naturels" },
+        { "name": "Dépannage",   "description": "Nécessaire oublié en voyage" }
+    ],
+    "products": [
+        { "name": "Masque bamiléké sculpté",   "category": "Artisanat",     "price": 25000, "stock": 8 },
+        { "name": "Statuette en ébène",        "category": "Artisanat",     "price": 18000, "stock": 12 },
+        { "name": "Panier tressé",             "category": "Artisanat",     "price": 7000,  "stock": 20 },
+        { "name": "Tabouret royal miniature",  "category": "Artisanat",     "price": 15000, "stock": 6 },
+        { "name": "Chemise en toge",           "category": "Textile",       "price": 22000, "stock": 15 },
+        { "name": "Pagne wax 6 yards",         "category": "Textile",       "price": 12000, "stock": 25 },
+        { "name": "Écharpe tissée main",       "category": "Textile",       "price": 9000,  "stock": 18 },
+        { "name": "Sac en tissu ndop",         "category": "Textile",       "price": 14000, "stock": 10 },
+        { "name": "Miel de Bamenda 500 g",     "category": "Épicerie fine", "price": 5000,  "stock": 30 },
+        { "name": "Café arabica moulu 250 g",  "category": "Épicerie fine", "price": 4500,  "stock": 40 },
+        { "name": "Poivre de Penja 100 g",     "category": "Épicerie fine", "price": 6000,  "stock": 22 },
+        { "name": "Chocolat noir origine",     "category": "Épicerie fine", "price": 3500,  "stock": 35 },
+        { "name": "Beurre de karité 200 ml",   "category": "Soins",         "price": 4000,  "stock": 28 },
+        { "name": "Savon noir africain",       "category": "Soins",         "price": 2500,  "stock": 45 },
+        { "name": "Huile de coco 250 ml",      "category": "Soins",         "price": 3500,  "stock": 26 },
+        { "name": "Baume à lèvres karité",     "category": "Soins",         "price": 1500,  "stock": 50 },
+        { "name": "Chargeur universel USB",    "category": "Dépannage",     "price": 8000,  "stock": 14 },
+        { "name": "Parapluie pliant",          "category": "Dépannage",     "price": 5000,  "stock": 16 },
+        { "name": "Adaptateur de prise",       "category": "Dépannage",     "price": 4000,  "stock": 20 },
+        { "name": "Kit dentaire voyage",       "category": "Dépannage",     "price": 2000,  "stock": 40 }
+    ],
+    "payment_methods": ["cash", "cash", "mobile_money", "mobile_money", "card", "room_charge"]
+}

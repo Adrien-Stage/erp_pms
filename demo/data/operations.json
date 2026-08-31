@@ -1,0 +1,82 @@
+{
+    "_comment": "Exploitation : ménage, achats, stock, charges et partenaires. Montants en FCFA.",
+    "housekeeping_teams": [
+        { "name": "Équipe Étage 1", "color": "#3B82F6" },
+        { "name": "Équipe Étage 2", "color": "#10B981" },
+        { "name": "Équipe Étages supérieurs", "color": "#F59E0B" },
+        { "name": "Équipe Parties communes", "color": "#8B5CF6" }
+    ],
+    "assignment_types": ["daily_cleaning", "departure_cleaning", "deep_cleaning", "inspection"],
+    "assignment_statuses": ["completed", "completed", "completed", "in_progress", "pending"],
+
+    "suppliers": [
+        { "name": "Brasseries du Cameroun",   "contact": "Service commercial", "phone": "+237 233 42 10 10", "email": "commandes@brasseries.example", "category": "Boissons" },
+        { "name": "Marché Central Douala",    "contact": "M. Ndongo",          "phone": "+237 699 11 22 33", "email": "ndongo@marche.example",     "category": "Produits frais" },
+        { "name": "Pêcherie du Wouri",        "contact": "Mme Ekani",          "phone": "+237 677 45 66 77", "email": "contact@pecherie.example",  "category": "Poissons" },
+        { "name": "Boulangerie La Rochelle",  "contact": "M. Fotso",           "phone": "+237 694 88 99 00", "email": "pro@rochelle.example",      "category": "Boulangerie" },
+        { "name": "Hygiène Pro Services",     "contact": "Service clients",    "phone": "+237 233 50 60 70", "email": "vente@hygienepro.example",  "category": "Entretien" },
+        { "name": "Linge & Textile SARL",     "contact": "Mme Manga",          "phone": "+237 655 12 34 56", "email": "commande@linge.example",    "category": "Linge" }
+    ],
+
+    "stock_categories": [
+        { "name": "Produits d'entretien" },
+        { "name": "Linge de maison" },
+        { "name": "Accueil chambre" },
+        { "name": "Consommables cuisine" },
+        { "name": "Fournitures bureau" }
+    ],
+    "stock_items": [
+        { "name": "Détergent multi-surfaces 5 L", "category": "Produits d'entretien", "unit": "bidon",  "price": 6500,  "min": 10 },
+        { "name": "Eau de javel 2 L",             "category": "Produits d'entretien", "unit": "bidon",  "price": 1800,  "min": 20 },
+        { "name": "Sacs poubelle 50 L",           "category": "Produits d'entretien", "unit": "rouleau","price": 2500,  "min": 30 },
+        { "name": "Désodorisant",                 "category": "Produits d'entretien", "unit": "flacon", "price": 2000,  "min": 15 },
+        { "name": "Serpillière",                  "category": "Produits d'entretien", "unit": "pièce",  "price": 1500,  "min": 12 },
+        { "name": "Drap plat 2 places",           "category": "Linge de maison",      "unit": "pièce",  "price": 12000, "min": 40 },
+        { "name": "Housse de couette",            "category": "Linge de maison",      "unit": "pièce",  "price": 15000, "min": 40 },
+        { "name": "Taie d'oreiller",              "category": "Linge de maison",      "unit": "pièce",  "price": 4000,  "min": 80 },
+        { "name": "Serviette de bain",            "category": "Linge de maison",      "unit": "pièce",  "price": 6000,  "min": 60 },
+        { "name": "Tapis de bain",                "category": "Linge de maison",      "unit": "pièce",  "price": 5000,  "min": 25 },
+        { "name": "Savonnette d'accueil",         "category": "Accueil chambre",      "unit": "pièce",  "price": 300,   "min": 200 },
+        { "name": "Shampoing 30 ml",              "category": "Accueil chambre",      "unit": "flacon", "price": 400,   "min": 200 },
+        { "name": "Bouteille d'eau 50 cl",        "category": "Accueil chambre",      "unit": "pièce",  "price": 350,   "min": 150 },
+        { "name": "Kit dentaire",                 "category": "Accueil chambre",      "unit": "pièce",  "price": 500,   "min": 100 },
+        { "name": "Chaussons jetables",           "category": "Accueil chambre",      "unit": "paire",  "price": 800,   "min": 80 },
+        { "name": "Huile de cuisson 5 L",         "category": "Consommables cuisine", "unit": "bidon",  "price": 9000,  "min": 12 },
+        { "name": "Riz parfumé 25 kg",            "category": "Consommables cuisine", "unit": "sac",    "price": 22000, "min": 8 },
+        { "name": "Sel de cuisine 1 kg",          "category": "Consommables cuisine", "unit": "paquet", "price": 600,   "min": 20 },
+        { "name": "Ramette papier A4",            "category": "Fournitures bureau",   "unit": "ramette","price": 4000,  "min": 15 },
+        { "name": "Rouleau caisse thermique",     "category": "Fournitures bureau",   "unit": "rouleau","price": 1200,  "min": 25 }
+    ],
+
+    "expense_categories": ["Énergie", "Eau", "Télécommunications", "Entretien", "Salaires", "Marketing", "Transport", "Assurance", "Fournitures", "Maintenance"],
+    "expenses": [
+        { "category": "Énergie",            "label": "Facture ENEO — électricité",        "amount": 485000 },
+        { "category": "Eau",                "label": "Facture CAMWATER",                  "amount": 132000 },
+        { "category": "Télécommunications", "label": "Abonnement fibre et téléphonie",    "amount": 95000 },
+        { "category": "Entretien",          "label": "Nettoyage des façades",             "amount": 150000 },
+        { "category": "Maintenance",        "label": "Entretien groupe électrogène",      "amount": 210000 },
+        { "category": "Maintenance",        "label": "Révision climatiseurs",             "amount": 175000 },
+        { "category": "Marketing",          "label": "Campagne réseaux sociaux",          "amount": 120000 },
+        { "category": "Marketing",          "label": "Impression brochures",              "amount": 65000 },
+        { "category": "Transport",          "label": "Carburant navette clients",         "amount": 180000 },
+        { "category": "Assurance",          "label": "Prime multirisque trimestrielle",   "amount": 340000 },
+        { "category": "Fournitures",        "label": "Réassort produits d'accueil",       "amount": 95000 },
+        { "category": "Entretien",          "label": "Traitement de la piscine",          "amount": 88000 },
+        { "category": "Énergie",            "label": "Recharge gaz cuisine",              "amount": 72000 },
+        { "category": "Maintenance",        "label": "Réparation ascenseur",              "amount": 450000 },
+        { "category": "Transport",          "label": "Entretien véhicule de service",     "amount": 130000 },
+        { "category": "Fournitures",        "label": "Achat linge de rechange",           "amount": 260000 },
+        { "category": "Télécommunications", "label": "Renouvellement licences logiciels", "amount": 145000 },
+        { "category": "Entretien",          "label": "Élagage et jardinage",              "amount": 78000 },
+        { "category": "Marketing",          "label": "Photographies des chambres",        "amount": 200000 },
+        { "category": "Maintenance",        "label": "Contrôle installation incendie",    "amount": 165000 }
+    ],
+
+    "partner_organizations": [
+        { "name": "Agence Voyages Sanaga",   "type": "travel_agency", "discount": 10, "contact": "Mme Nkeng",  "phone": "+237 233 41 55 66" },
+        { "name": "Groupe Hôtelier Littoral","type": "corporate",     "discount": 15, "contact": "M. Owona",   "phone": "+237 699 78 12 34" },
+        { "name": "ONG Espoir Santé",        "type": "ngo",           "discount": 20, "contact": "Mme Biya",   "phone": "+237 677 90 11 22" },
+        { "name": "Chambre de Commerce",     "type": "institution",   "discount": 12, "contact": "M. Atangana","phone": "+237 233 43 77 88" },
+        { "name": "Tour Opérateur Mont Fébé","type": "travel_agency", "discount": 8,  "contact": "Mme Tagne",  "phone": "+237 694 23 45 67" }
+    ]
+}

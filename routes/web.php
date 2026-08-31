@@ -111,6 +111,8 @@ Route::middleware(['auth', 'role:tech_admin'])->prefix('tech')->name('tech.')->g
     Route::post('/establishments/{tenant}/start', [AdminAuditController::class, 'startTenant'])->name('establishments.start');
     Route::post('/establishments/{tenant}/stop', [AdminAuditController::class, 'stopTenant'])->name('establishments.stop');
     Route::post('/establishments/{tenant}/restart', [AdminAuditController::class, 'restartTenant'])->name('establishments.restart');
+    Route::post('/establishments/{tenant}/demo-data', [AdminAuditController::class, 'seedDemoData'])->name('establishments.demo-data');
+    Route::delete('/establishments/{tenant}/demo-data', [AdminAuditController::class, 'purgeDemoData'])->name('establishments.demo-data.purge');
     Route::get('/establishments/{tenant}/health', [AdminAuditController::class, 'healthCheckTenant'])->name('establishments.health');
     Route::get('/establishments/{tenant}/versions', [AdminAuditController::class, 'availableVersions'])->name('establishments.versions');
     Route::get('/establishments/{tenant}/update-version/stream', [AdminAuditController::class, 'updateTenantVersionStream'])->name('establishments.update-version.stream');
