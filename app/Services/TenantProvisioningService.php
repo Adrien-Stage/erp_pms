@@ -125,7 +125,8 @@ class TenantProvisioningService
 
         $imageRef    = $this->pullDockerImage($tenant, $log);
         $webImageRef = $this->hasWebsiteModule($tenant) ? $this->pullWebImage($tenant, $log) : null;
-        $composePath = $this->generateDockerCompose($tenant, $imageRef, $webImageRef, $log);
+        $grcImageRef = $this->hasGrcModule($tenant) ? $this->pullGrcImage($tenant, $log) : null;
+        $composePath = $this->generateDockerCompose($tenant, $imageRef, $webImageRef, $grcImageRef, $log);
         $this->startContainers($tenant, $composePath, $log);
         $this->waitForDatabase($tenant, $log);
         $this->runMigrations($tenant, $log);
@@ -135,6 +136,8 @@ class TenantProvisioningService
             'docker_app_container'  => 'meka-erp-' . $slug . '-app',
             'docker_db_container'   => 'meka-erp-' . $slug . '-db',
             'docker_web_container'  => $webImageRef !== null ? 'meka-erp-' . $slug . '-web' : null,
+            'docker_grc_container'  => $grcImageRef !== null ? 'meka-erp-' . $slug . '-grc' : null,
+            'grc_enabled'           => $grcImageRef !== null,
             'provisioned_at'        => now(),
         ]);
 
@@ -149,6 +152,15 @@ class TenantProvisioningService
     private function hasWebsiteModule(Tenant $tenant): bool
     {
         return in_array('website', $tenant->modules ?? [], true);
+    }
+
+    /**
+     * Le module "grc" (Contrôle de gestion & GRC) pilote le provisioning
+     * du 4e container "grc" (SvelteKit + FastAPI + SQLite).
+     */
+    private function hasGrcModule(Tenant $tenant): bool
+    {
+        return in_array('grc', $tenant->modules ?? [], true);
     }
 
     // ── Étape 1 : Image Docker (pull depuis le registre GHCR) ─────────────────
@@ -407,6 +419,49 @@ class TenantProvisioningService
         return $imageRef;
     }
 
+    /**
+     * Équivalent de pullWebImage() pour l'image du module GRC (wetchah_GRC).
+     */
+    private function pullGrcImage(Tenant $tenant, callable $log): string
+    {
+        $registryImage = config('provisioning.registry_image_grc');
+
+        if (empty($tenant->grc_image_tag)) {
+            $log('image', "📌 Résolution de la version GRC « latest »…", 'info');
+
+            $imagePath = $this->registry->imagePath($registryImage);
+            $digest    = $this->registry->resolveDigest($imagePath, 'latest');
+
+            if (!$digest) {
+                // Fallback tag si image locale
+                $digest = 'latest';
+            }
+
+            $tenant->update(['grc_image_tag' => $digest]);
+            $log('image', "✅ Version GRC figée pour cet établissement : {$digest}", 'success');
+        }
+
+        return $this->pullPinnedGrcImage($tenant, $log);
+    }
+
+    private function pullPinnedGrcImage(Tenant $tenant, callable $log): string
+    {
+        $registryImage = config('provisioning.registry_image_grc');
+        $tag = $tenant->grc_image_tag ?? 'latest';
+        $imageRef = str_contains($tag, 'sha256:') ? $registryImage . '@' . $tag : $registryImage . ':' . $tag;
+
+        $log('image', "⬇️  Récupération de l'image GRC « {$imageRef} »…", 'info');
+        try {
+            $this->dockerPullWithRetry($imageRef, $log);
+            $log('image', "✅ Image GRC prête.", 'success');
+        } catch (\Throwable $e) {
+            $log('image', "⚠️ Image GRC distante non disponible, bascule sur image locale 'wetchah_grc:latest'", 'warning');
+            $imageRef = 'wetchah_grc:latest';
+        }
+
+        return $imageRef;
+    }
+
     // ── Étape 2 : docker-compose par tenant ──────────────────────────────────
 
     /**
@@ -436,7 +491,7 @@ class TenantProvisioningService
         return str_replace("'", "''", $value);
     }
 
-    private function generateDockerCompose(Tenant $tenant, string $imageRef, ?string $webImageRef, callable $log): string
+    private function generateDockerCompose(Tenant $tenant, string $imageRef, ?string $webImageRef, ?string $grcImageRef = null, ?callable $log = null): string
     {
         $baseDir     = rtrim(config('provisioning.tenants_base_path'), '/\\');
         $composeDir  = $baseDir . '/.compose';
@@ -618,6 +673,34 @@ YAML;
 YAML;
         }
 
+        if ($grcImageRef !== null || $this->hasGrcModule($tenant)) {
+            $grcContainer = 'meka-erp-' . $tenant->slug . '-grc';
+            $grcPort      = $tenant->grc_port ?? ($appPort + 2000);
+            $grcImage     = $grcImageRef ?? (config('provisioning.registry_image_grc') . ':' . ($tenant->grc_image_tag ?? 'latest'));
+
+            $services[] = <<<YAML
+  {$grcContainer}:
+    image: {$grcImage}
+    container_name: {$grcContainer}
+    restart: unless-stopped
+    ports:
+      - "{$grcPort}:8000"
+    environment:
+      TENANT_SLUG: "{$tenant->slug}"
+      TENANT_NAME: "{$tenant->name}"
+      DATABASE_URL: "sqlite:////data/grc.db"
+      ERP_API_URL: "http://{$appContainer}"
+      REPORTING_SECRET: "{$reportingSecret}"
+    volumes:
+      - meka_erp_{$tenant->slug}_grcdata:/data
+    depends_on:
+      - {$appContainer}
+    networks:
+      - {$network}
+
+YAML;
+        }
+
         // Nom de projet Docker propre à chaque établissement : sans lui, tous
         // les composes du dossier .compose partagent le même projet et se
         // voient mutuellement comme « orphelins » — un down/up sur l'un
@@ -625,7 +708,7 @@ YAML;
         $projectName = 'meka-erp-' . $tenant->slug;
 
         $yaml = "name: {$projectName}\n\nservices:\n\n" . implode("\n", $services)
-            . "\nnetworks:\n  {$network}:\n    external: true\n\nvolumes:\n  meka_erp_{$tenant->slug}_pgdata:\n  meka_erp_{$tenant->slug}_storage:\n";
+            . "\nnetworks:\n  {$network}:\n    external: true\n\nvolumes:\n  meka_erp_{$tenant->slug}_pgdata:\n  meka_erp_{$tenant->slug}_storage:\n  meka_erp_{$tenant->slug}_grcdata:\n";
 
         if (file_put_contents($composePath, $yaml) === false) {
             throw new RuntimeException("Impossible d'écrire le fichier docker-compose : {$composePath}");
@@ -942,7 +1025,17 @@ YAML;
             $this->exec('docker rm -f ' . escapeshellarg($webContainer) . ' 2>/dev/null');
         }
 
-        $composePath = $this->generateDockerCompose($tenant, $imageRef, $webImageRef, $log);
+        $wantsGrc = $this->hasGrcModule($tenant);
+        $grcContainer = 'meka-erp-' . $tenant->slug . '-grc';
+        $grcImageRef  = null;
+
+        if ($wantsGrc) {
+            $grcImageRef = $this->pullGrcImage($tenant, $log);
+        } else {
+            $this->exec('docker rm -f ' . escapeshellarg($grcContainer) . ' 2>/dev/null');
+        }
+
+        $composePath = $this->generateDockerCompose($tenant, $imageRef, $webImageRef, $grcImageRef, $log);
 
         $log('docker', "🔄 Recréation du container applicatif…", 'info');
         $this->execOrFail(
@@ -954,6 +1047,8 @@ YAML;
         $tenant->update([
             'docker_status'         => 'running',
             'docker_web_container'  => $wantsWebsite ? $webContainer : null,
+            'docker_grc_container'  => $wantsGrc ? $grcContainer : null,
+            'grc_enabled'           => $wantsGrc,
         ]);
 
         $log('done', "✅ Modules appliqués pour « {$tenant->name} ».", 'success');
@@ -979,6 +1074,9 @@ YAML;
         if ($tenant->docker_web_container) {
             $this->exec('docker start ' . escapeshellarg($tenant->docker_web_container) . ' 2>&1');
         }
+        if ($tenant->docker_grc_container) {
+            $this->exec('docker start ' . escapeshellarg($tenant->docker_grc_container) . ' 2>&1');
+        }
         $log('start', "✅ Containers démarrés.", 'success');
     }
 
@@ -989,6 +1087,9 @@ YAML;
         if ($tenant->docker_web_container) {
             $this->exec('docker stop ' . escapeshellarg($tenant->docker_web_container) . ' 2>/dev/null');
         }
+        if ($tenant->docker_grc_container) {
+            $this->exec('docker stop ' . escapeshellarg($tenant->docker_grc_container) . ' 2>/dev/null');
+        }
         $log('stop', "✅ Containers arrêtés.", 'success');
     }
 
@@ -998,6 +1099,9 @@ YAML;
         $this->exec('docker restart ' . escapeshellarg('meka-erp-' . $tenant->slug . '-app') . ' 2>/dev/null');
         if ($tenant->docker_web_container) {
             $this->exec('docker restart ' . escapeshellarg($tenant->docker_web_container) . ' 2>/dev/null');
+        }
+        if ($tenant->docker_grc_container) {
+            $this->exec('docker restart ' . escapeshellarg($tenant->docker_grc_container) . ' 2>/dev/null');
         }
         $log('restart', "✅ Containers redémarrés.", 'success');
     }
@@ -1037,6 +1141,17 @@ YAML;
             $result['healthy']       = $result['healthy'] && $webStatus === 'running';
         }
 
+        if ($tenant->docker_grc_container) {
+            $grcStatus = trim($this->exec(
+                'docker inspect -f "{{.State.Status}}" ' . escapeshellarg($tenant->docker_grc_container) . ' 2>/dev/null'
+            ));
+            if ($grcStatus === '') { $grcStatus = 'absent'; }
+
+            $result['grc_container'] = $tenant->docker_grc_container;
+            $result['grc_status']    = $grcStatus;
+            $result['healthy']       = $result['healthy'] && $grcStatus === 'running';
+        }
+
         return $result;
     }
 
@@ -1061,15 +1176,16 @@ YAML;
             $this->exec('docker rm -f ' . escapeshellarg($dbContainer)  . ' 2>/dev/null');
             $this->exec('docker volume rm meka_erp_' . $slug . '_pgdata 2>/dev/null');
             $this->exec('docker volume rm meka_erp_' . $slug . '_storage 2>/dev/null');
+            $this->exec('docker volume rm meka_erp_' . $slug . '_grcdata 2>/dev/null');
             $log('docker', "Conteneurs orphelins et volumes supprimés.", 'warning');
         }
 
-        // Filet de sécurité : le container "web" peut avoir été laissé orphelin
-        // si le module website a été désactivé sans que docker_web_container
-        // ait été nettoyé (ou si down -v n'a pas trouvé ce service dans le
-        // compose au moment de la suppression).
+        // Filet de sécurité : les containers "web" et "grc" peuvent avoir été laissés orphelins
         if ($tenant->docker_web_container) {
             $this->exec('docker rm -f ' . escapeshellarg($tenant->docker_web_container) . ' 2>/dev/null');
+        }
+        if ($tenant->docker_grc_container) {
+            $this->exec('docker rm -f ' . escapeshellarg($tenant->docker_grc_container) . ' 2>/dev/null');
         }
 
         $log('done', "✅ Établissement « {$tenant->name} » supprimé.", 'success');

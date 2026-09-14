@@ -24,16 +24,20 @@ class Tenant extends Model
         'docker_app_container',
         'docker_db_container',
         'docker_web_container',
+        'docker_grc_container',
         'docker_status', // running, stopped, creating, error
         'docker_image_tag', // digest (sha256:...) de l'image ghcr.io figé pour ce tenant
         'web_image_tag', // digest de l'image wetchah_site figé pour ce tenant (module website)
+        'grc_image_tag', // digest de l'image wetchah_GRC figé pour ce tenant (module grc)
         'app_port',
         'db_port',
         'web_port',
+        'grc_port',
 
         // Modules & Features
         'api_enabled',
         'website_enabled',
+        'grc_enabled',
         'modules',
         
         // Propriétaire et statut
@@ -56,6 +60,7 @@ class Tenant extends Model
         'users_count' => 'integer',
         'api_enabled' => 'boolean',
         'website_enabled' => 'boolean',
+        'grc_enabled' => 'boolean',
         'provisioned_at' => 'datetime',
         'last_health_check' => 'datetime',
     ];

@@ -33,7 +33,7 @@ class ModuleCatalog
      */
     public const TOGGLE_KEYS = [
         'restaurant', 'shop', 'housekeeping', 'discussions',
-        'analytics', 'ledger', 'api', 'website',
+        'analytics', 'ledger', 'api', 'website', 'grc',
     ];
 
     public static function all(): array
@@ -565,6 +565,33 @@ class ModuleCatalog
                 'tips' => [
                     'Le site est un container à part : le mettre à jour est une action distincte de la mise à jour de l\'application.',
                     'Désactiver le module retire le site public — le contenu saisi, lui, reste enregistré.',
+                ],
+            ],
+
+            'grc' => [
+                'label'   => 'Contrôle de gestion & GRC (Wetchah_GRC)',
+                'tagline' => 'Gouvernance, Risques & Conformité : cartographie des risques, audits internes, contrôles, politiques et tiers.',
+                'icon'    => 'shield-check',
+                'accent'  => 'cyan',
+                'type'    => 'optionnel',
+                'key'     => 'grc',
+                'entry'   => 'Portail GRC dédié de l\'établissement',
+                'roles'   => ['controller', 'auditor', 'admin', 'manager'],
+                'screens' => [
+                    ['label' => 'Tableau de bord GRC', 'path' => '/ (Port GRC)', 'desc' => 'Vue consolidée des risques, conformité, contrôles et flux PMS.'],
+                    ['label' => 'Cartographie des Risques', 'path' => '/risks', 'desc' => 'Registre, matrice heatmap 5x5 et calcul des scores bruts/résiduels.'],
+                    ['label' => 'Conformité & Normes', 'path' => '/compliance', 'desc' => 'Référentiels ISO 27001, RGPD, SYSCOHADA et suivi des écarts.'],
+                    ['label' => 'Contrôles & Audit', 'path' => '/audit', 'desc' => 'Catalogue des contrôles, tests, missions d\'audit et plans d\'action CAPA.'],
+                    ['label' => 'Rapports & Exports', 'path' => '/reports', 'desc' => 'Rapports officiels de missions d\'audit PDF (ReportLab) et exports Excel.'],
+                ],
+                'guide' => [
+                    ['title' => 'Activer le module', 'body' => 'L\'activation du module provisionne le 4ᵉ conteneur Docker dédié à la GRC sur son port propre (app_port + 2000).'],
+                    ['title' => 'Créer le compte Contrôleur', 'body' => 'Utilisez le bouton « Créer le Contrôleur de gestion » depuis la fiche de l\'établissement dans l\'ERP pour lui générer ses identifiants d\'accès.'],
+                    ['title' => 'Consommer les flux PMS', 'body' => 'Le module se nourrit automatiquement des recettes, écarts de caisse et anomalies opérationnelles issues de wetchah_app.'],
+                ],
+                'tips' => [
+                    'Le module GRC dispose de sa propre base SQLite isolée et autonome, hébergée sur un volume persistant.',
+                    'L\'accès est strictement réservé aux contrôleurs de gestion, auditeurs et à la direction.',
                 ],
             ],
 

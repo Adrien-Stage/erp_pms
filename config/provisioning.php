@@ -38,6 +38,16 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Image Docker du module Contrôle de Gestion / GRC (registre)
+    |--------------------------------------------------------------------------
+    | Image du conteneur Wetchah_GRC (SvelteKit + FastAPI + SQLite).
+    | Provisionnée en 4e container ("grc") uniquement pour les établissements
+    | avec le module "grc" actif.
+    */
+    'registry_image_grc' => env('REGISTRY_IMAGE_GRC', 'ghcr.io/wetchah/wetchah_grc'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Container admin (pms) sur le réseau Docker partagé
     |--------------------------------------------------------------------------
     | Nom du container applicatif de l'admin lui-même (voir docker-compose.yml

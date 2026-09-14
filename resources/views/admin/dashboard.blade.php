@@ -919,6 +919,7 @@
                                                 <th class="px-3 py-3 text-center">App</th>
                                                 <th class="px-3 py-3 text-center">Base</th>
                                                 <th class="px-3 py-3 text-center">Site</th>
+                                                <th class="px-3 py-3 text-center">GRC</th>
                                                 <th class="px-3 py-3 text-right">Utilisateurs</th>
                                                 <th class="px-3 py-3 text-right">Résa. jour</th>
                                                 <th class="px-5 py-3 text-right">Action</th>
@@ -945,6 +946,14 @@
                                                             <span class="text-slate-300">—</span>
                                                         </template>
                                                     </td>
+                                                    <td class="px-3 py-3 text-center">
+                                                        <template x-if="e.has_grc">
+                                                            <span class="inline-block h-2.5 w-2.5 rounded-full" :class="dot(e.grc_status)" :title="'Contrôle GRC : ' + (e.grc_status ?? 'non provisionné')"></span>
+                                                        </template>
+                                                        <template x-if="!e.has_grc">
+                                                            <span class="text-slate-300">—</span>
+                                                        </template>
+                                                    </td>
                                                     <td class="px-3 py-3 text-right font-bold text-slate-700" x-text="e.users_count"></td>
                                                     <td class="px-3 py-3 text-right font-bold text-slate-700" x-text="e.bookings_today ?? '—'"></td>
                                                     <td class="px-5 py-3 text-right">
@@ -953,7 +962,7 @@
                                                 </tr>
                                             </template>
                                             <template x-if="data.establishments.length === 0">
-                                                <tr><td colspan="7" class="px-5 py-8 text-center text-slate-400">Aucun établissement.</td></tr>
+                                                <tr><td colspan="8" class="px-5 py-8 text-center text-slate-400">Aucun établissement.</td></tr>
                                             </template>
                                         </tbody>
                                     </table>
@@ -2717,14 +2726,23 @@
                                         <span class="text-slate-500">Site vitrine</span>
                                         <span class="flex items-center gap-1.5 font-semibold text-slate-700"><span class="h-2 w-2 rounded-full" :class="dotClass(diag.web_status)"></span><span x-text="diag.web_status ?? 'non provisionné'"></span></span>
                                     </div>
+                                    <div class="flex items-center justify-between" x-show="diag.has_grc">
+                                        <span class="text-slate-500">Contrôle GRC</span>
+                                        <span class="flex items-center gap-1.5 font-semibold text-slate-700"><span class="h-2 w-2 rounded-full" :class="dotClass(diag.grc_status)"></span><span x-text="diag.grc_status ?? 'non provisionné'"></span></span>
+                                    </div>
                                     <div class="flex items-center justify-between border-t border-slate-100 pt-3">
                                         <span class="text-slate-500">Provisionné le</span>
                                         <span class="font-semibold text-slate-700" x-text="diag.provisioned_at ?? '—'"></span>
                                     </div>
                                     <div class="flex items-center justify-between">
-                                        <span class="text-slate-500">URL locale</span>
+                                        <span class="text-slate-500">URL application</span>
                                         <template x-if="diag.app_url"><a :href="diag.app_url" target="_blank" class="font-mono text-indigo-600 hover:underline" x-text="diag.app_url"></a></template>
                                         <template x-if="!diag.app_url"><span class="text-slate-400">—</span></template>
+                                    </div>
+                                    <div class="flex items-center justify-between" x-show="diag.has_grc">
+                                        <span class="text-slate-500">URL GRC</span>
+                                        <template x-if="diag.grc_url"><a :href="diag.grc_url" target="_blank" class="font-mono text-purple-600 hover:underline" x-text="diag.grc_url"></a></template>
+                                        <template x-if="!diag.grc_url"><span class="text-slate-400">—</span></template>
                                     </div>
                                     <div>
                                         <span class="text-slate-500 block mb-1.5">Modules actifs</span>

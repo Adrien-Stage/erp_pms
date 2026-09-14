@@ -543,19 +543,60 @@
                             this.submitting = false;
                             this.errorMsg = 'Impossible de se connecter au serveur.';
                         });
+                    },
+                    showCreateControllerModal: false,
+                    submittingController: false,
+                    errorMsgController: '',
+                    generatedPasswordController: null,
+                    nameController: '', emailController: '', phoneController: '',
+                    resetControllerForm() { this.nameController = ''; this.emailController = ''; this.phoneController = ''; this.errorMsgController = ''; this.generatedPasswordController = null; },
+                    submitController() {
+                        this.submittingController = true;
+                        this.errorMsgController = '';
+                        fetch('{{ route('tech.establishments.create-controller', $tenant) }}', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                                'Accept': 'application/json'
+                            },
+                            body: JSON.stringify({ name: this.nameController, email: this.emailController, phone: this.phoneController })
+                        })
+                        .then(res => res.json().then(data => ({ status: res.status, body: data })))
+                        .then(res => {
+                            this.submittingController = false;
+                            if (res.status === 201) {
+                                this.generatedPasswordController = res.body.generated_password;
+                            } else {
+                                this.errorMsgController = res.body.message || 'Une erreur est survenue lors de la création du contrôleur.';
+                            }
+                        })
+                        .catch(() => {
+                            this.submittingController = false;
+                            this.errorMsgController = 'Impossible de se connecter au serveur.';
+                        });
                     }
                 }">
                     <div>
                         <h2 class="text-xl font-extrabold text-slate-800 tracking-tight">Utilisateurs</h2>
                         <p class="text-xs text-slate-500 mt-1">{{ $tenantUsers->count() }} utilisateur(s) rattaché(s) à {{ $tenant->name }}</p>
                     </div>
-                    <button type="button" @click="showCreateManagerModal = true; resetForm()"
-                            class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 transition cursor-pointer">
-                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                        </svg>
-                        Créer un manager
-                    </button>
+                    <div class="flex items-center gap-2">
+                        <button type="button" @click="showCreateManagerModal = true; resetForm()"
+                                class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 transition cursor-pointer">
+                            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                            </svg>
+                            Créer un manager
+                        </button>
+                        <button type="button" @click="showCreateControllerModal = true; resetControllerForm()"
+                                class="inline-flex items-center gap-2 rounded-lg bg-teal-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-teal-700 transition cursor-pointer">
+                            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+                            </svg>
+                            Créer un contrôleur GRC
+                        </button>
+                    </div>
 
                     <!-- Create Manager Modal -->
                     <div x-show="showCreateManagerModal"
@@ -654,6 +695,113 @@
                                     <div class="flex justify-end pt-2">
                                         <button type="button" @click="showCreateManagerModal = false; window.location.reload();"
                                                 class="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 transition cursor-pointer shadow-sm">
+                                            Terminer
+                                        </button>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- Create Controller Modal -->
+                    <div x-show="showCreateControllerModal"
+                         class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+                         x-transition:enter="transition ease-out duration-300"
+                         x-transition:enter-start="opacity-0"
+                         x-transition:enter-end="opacity-100"
+                         x-transition:leave="transition ease-in duration-200"
+                         x-transition:leave-start="opacity-100"
+                         x-transition:leave-end="opacity-0"
+                         x-cloak>
+                        <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden max-w-md w-full"
+                             @click.away="if (!submittingController) { showCreateControllerModal = generatedPasswordController ? showCreateControllerModal : false }">
+
+                            <!-- Header -->
+                            <div class="bg-slate-950 px-6 py-5 flex items-center gap-3">
+                                <div class="rounded-lg bg-teal-500/20 p-2">
+                                    <svg class="h-5 w-5 text-teal-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+                                    </svg>
+                                </div>
+                                <h3 class="text-sm font-bold text-white tracking-wide">Créer un Contrôleur de Gestion / Auditeur — <span class="font-mono">{{ $tenant->slug }}</span></h3>
+                            </div>
+
+                            <!-- Formulaire (avant création) -->
+                            <template x-if="!generatedPasswordController">
+                                <form @submit.prevent="submitController()" class="p-6 space-y-4">
+                                    <p class="text-xs text-slate-600 leading-relaxed">
+                                        Crée un compte avec le rôle <strong>controller</strong> rattaché à cet établissement. Ce compte disposera des accès au module Wetchah_GRC. Un mot de passe sera généré automatiquement.
+                                    </p>
+
+                                    <template x-if="errorMsgController">
+                                        <div class="rounded-lg bg-red-50 border border-red-150 p-3 text-xs font-semibold text-red-700" x-text="errorMsgController"></div>
+                                    </template>
+
+                                    <div>
+                                        <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Nom complet <span class="text-red-400">*</span></label>
+                                        <input type="text" x-model="nameController" required placeholder="Ex: Paul Atangana"
+                                               class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-700 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 transition">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Adresse e-mail <span class="text-red-400">*</span></label>
+                                        <input type="email" x-model="emailController" required placeholder="controleur@etablissement.com"
+                                               class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-700 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 transition">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Téléphone</label>
+                                        <input type="text" x-model="phoneController" placeholder="+237 600 000 000"
+                                               class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-700 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 transition">
+                                    </div>
+
+                                    <div class="flex items-center justify-end gap-2 pt-2">
+                                        <button type="button" @click="showCreateControllerModal = false" :disabled="submittingController"
+                                                class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer">
+                                            Annuler
+                                        </button>
+                                        <button type="submit" :disabled="submittingController"
+                                                class="rounded-lg bg-teal-600 px-4 py-2 text-xs font-bold text-white hover:bg-teal-700 transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-sm">
+                                            <span x-show="submittingController">Création…</span>
+                                            <span x-show="!submittingController">Créer le contrôleur</span>
+                                        </button>
+                                    </div>
+                                </form>
+                            </template>
+
+                            <!-- Succès (mot de passe affiché) -->
+                            <template x-if="generatedPasswordController">
+                                <div class="p-6 space-y-4">
+                                    <div class="rounded-lg bg-emerald-50 border border-emerald-150 p-4 text-xs text-emerald-800 space-y-1">
+                                        <div class="font-bold text-sm text-emerald-900">✅ Contrôleur de gestion créé avec succès !</div>
+                                        <p class="text-emerald-700 leading-relaxed">
+                                            Copiez ces identifiants dès maintenant. Le mot de passe ne sera plus jamais affiché.
+                                        </p>
+                                    </div>
+                                    <div class="space-y-2">
+                                        <div>
+                                            <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1">Email</label>
+                                            <div class="font-mono text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-800" x-text="emailController"></div>
+                                        </div>
+                                        <div>
+                                            <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1">Mot de passe généré</label>
+                                            <div class="flex items-center gap-2">
+                                                <div class="font-mono text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-800 flex-1" x-text="generatedPasswordController"></div>
+                                                <button type="button"
+                                                        @click="navigator.clipboard.writeText(generatedPasswordController); $el.textContent = 'Copié !'; setTimeout(() => $el.textContent = 'Copier', 1500)"
+                                                        class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-[10px] font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer shrink-0">
+                                                    Copier
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1">Accès Portail GRC</label>
+                                            <a href="http://localhost:{{ $tenant->grc_port ?? ($tenant->app_port + 2000) }}/login" target="_blank" class="font-mono text-xs text-teal-600 hover:text-teal-800 hover:underline">
+                                                http://localhost:{{ $tenant->grc_port ?? ($tenant->app_port + 2000) }}/login
+                                            </a>
+                                        </div>
+                                    </div>
+                                    <div class="flex justify-end pt-2">
+                                        <button type="button" @click="showCreateControllerModal = false; window.location.reload();"
+                                                class="rounded-lg bg-teal-600 px-4 py-2 text-xs font-bold text-white hover:bg-teal-700 transition cursor-pointer shadow-sm">
                                             Terminer
                                         </button>
                                     </div>
@@ -841,6 +989,7 @@
                         'ledger'       => ['label' => 'Comptabilité avancée', 'desc' => 'Grand livre SYSCOHADA : plan de comptes, journaux, balance, clôture, comptes de tiers et lettrage, factures fournisseurs et retenues à la source, analytique. La comptabilité de caisse reste active sans ce module.', 'icon' => 'book-open'],
                         'api'          => ['label' => 'API d\'intégration', 'desc' => 'Expose des routes API sécurisées pour connecter des applications mobiles tierces ou des PMS externes.', 'icon' => 'plug'],
                         'website'      => ['label' => 'Site web', 'desc' => 'Site vitrine public (chambres, menu, contenu CMS) — provisionne un 3ᵉ container. Nécessite l\'API d\'intégration active.', 'icon' => 'globe'],
+                        'grc'          => ['label' => 'Contrôle de gestion & GRC', 'desc' => 'Plateforme de Gouvernance, Risques & Conformité (Wetchah_GRC) — provisionne un 4ᵉ container dédié.', 'icon' => 'shield-check'],
                     ];
                     $tenantModules = $tenant->modules ?? [];
                     // Établissement jamais passé par ce sélecteur (aucune des clés
@@ -958,6 +1107,12 @@
                                     <span class="text-slate-450 font-semibold">Port PostgreSQL (Hôte) :</span>
                                     <span class="font-mono bg-slate-50 border border-slate-200 px-2 py-0.5 rounded ml-2">{{ $tenant->db_port ?? 5432 }}</span>
                                 </div>
+                                @if(in_array('grc', $tenant->modules ?? []))
+                                <div>
+                                    <span class="text-slate-450 font-semibold">Port GRC (Hôte) :</span>
+                                    <a href="http://localhost:{{ $tenant->grc_port ?? ($tenant->app_port + 2000) }}" target="_blank" class="font-mono bg-teal-50 border border-teal-200 px-2 py-0.5 rounded ml-2 text-teal-700 hover:text-teal-900 hover:underline">{{ $tenant->grc_port ?? ($tenant->app_port + 2000) }} (Portail GRC)</a>
+                                </div>
+                                @endif
                             </div>
                             <div class="space-y-3">
                                 <div>

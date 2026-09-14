@@ -117,7 +117,8 @@
             ledger: true,
             ai: false,
             api: true,
-            website: true
+            website: true,
+            grc: true
         },
 
         // Données de démonstration : opt-in explicite. Un établissement réel ne
@@ -942,6 +943,21 @@
                                     </div>
                                     <p class="text-[10px] text-slate-500 leading-relaxed">
                                         Génère un site vitrine public auto-géré pour l'établissement. *Nécessite l'API d'Intégration active.*
+                                    </p>
+                                </div>
+                            </label>
+
+                            <!-- Module: GRC & Contrôle de Gestion -->
+                            <label class="relative flex items-start gap-4 rounded-xl border p-4 cursor-pointer select-none transition hover:bg-slate-50 duration-200"
+                                :class="modules.grc ? 'border-indigo-600 ring-2 ring-indigo-50 bg-indigo-50/10' : 'border-slate-200'">
+                                <input type="checkbox" name="modules[grc]" x-model="modules.grc" class="mt-1 h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500 shrink-0">
+                                <div class="space-y-1">
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-xs font-bold text-slate-800">Contrôle de Gestion & GRC (Audit & Risques)</span>
+                                        <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 uppercase">GRC</span>
+                                    </div>
+                                    <p class="text-[10px] text-slate-500 leading-relaxed">
+                                        Active le 4ᵉ conteneur GRC : cartographie des risques 5x5, pistes d'audit, conformité SYSCOHADA / ISO 27001 et contrôle de gestion.
                                     </p>
                                 </div>
                             </label>

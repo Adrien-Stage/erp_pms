@@ -1166,11 +1166,15 @@ class AdminAuditController extends Controller
             'app_status'    => $health['app_status'],
             'db_status'     => $health['db_status'],
             'web_status'    => $health['web_status'] ?? null,
+            'grc_status'    => $health['grc_status'] ?? null,
             'has_website'   => in_array('website', $tenant->modules ?? [], true),
+            'has_grc'       => in_array('grc', $tenant->modules ?? [], true),
             'modules'       => $tenant->modules ?? [],
             'app_url'       => $tenant->app_port ? 'http://localhost:' . $tenant->app_port : null,
+            'grc_url'       => $tenant->grc_port ? 'http://localhost:' . $tenant->grc_port : null,
             'image_tag'     => $tenant->docker_image_tag,
             'web_image_tag' => $tenant->web_image_tag,
+            'grc_image_tag' => $tenant->grc_image_tag,
             'last_health'   => $tenant->last_health_check?->diffForHumans(),
             'reachable'     => false,
             'users'         => null,
@@ -1515,9 +1519,12 @@ class AdminAuditController extends Controller
                 'app_status'    => $health['app_status'],
                 'db_status'     => $health['db_status'],
                 'web_status'    => $health['web_status'] ?? null,
+                'grc_status'    => $health['grc_status'] ?? null,
                 'has_website'   => in_array('website', $tenant->modules ?? [], true),
+                'has_grc'       => in_array('grc', $tenant->modules ?? [], true),
                 'app_port'      => $tenant->app_port,
                 'web_port'      => $tenant->web_port ?? ($tenant->app_port ? $tenant->app_port + 1000 : null),
+                'grc_port'      => $tenant->grc_port ?? ($tenant->app_port ? $tenant->app_port + 2000 : null),
                 'users_count'   => (int) ($tenant->users_count ?? 0),
                 'bookings_today' => null,
                 'arrivals_today' => null,
@@ -1549,6 +1556,12 @@ class AdminAuditController extends Controller
                 }
                 if ($row['has_website'] && !$tenant->docker_web_container) {
                     $alerts[] = ['level' => 'warning', 'tenant' => $tenant->name, 'message' => "Module Site web actif mais aucun container web provisionné — réappliquer les modules."];
+                }
+                if ($row['has_grc'] && $tenant->docker_grc_container && ($health['grc_status'] ?? 'absent') !== 'running') {
+                    $alerts[] = ['level' => 'warning', 'tenant' => $tenant->name, 'message' => "Module GRC « {$health['grc_status']} » — la plateforme de contrôle de gestion est indisponible."];
+                }
+                if ($row['has_grc'] && !$tenant->docker_grc_container) {
+                    $alerts[] = ['level' => 'warning', 'tenant' => $tenant->name, 'message' => "Module GRC actif mais aucun container GRC provisionné — réappliquer les modules."];
                 }
             }
 
@@ -2293,6 +2306,77 @@ class AdminAuditController extends Controller
 
         } catch (\PDOException $e) {
             \Illuminate\Support\Facades\Log::error("Failed to connect or insert manager in tenant database {$tenant->db_name}: " . $e->getMessage());
+            return response()->json([
+                'message' => "Impossible de se connecter à la base de données de l'établissement: " . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function createTenantController(Request $request, Tenant $tenant)
+    {
+        $user = Auth::user();
+        if (!$user) { abort(401); }
+        if (!$user->isTechAdmin() && ($tenant->owner_id !== $user->id)) {
+            abort(403, "Vous n'avez pas l'autorisation de gérer cet établissement.");
+        }
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:30'],
+            'password' => ['nullable', 'string', 'min:4'],
+        ]);
+
+        $generatedPassword = null;
+        if (empty($validated['password'])) {
+            $generatedPassword = Str::random(10);
+            $validated['password'] = $generatedPassword;
+        }
+
+        try {
+            $pdo = $this->connectToTenantDatabase($tenant);
+
+            $stmt = $pdo->prepare("SELECT 1 FROM users WHERE email = ?");
+            $stmt->execute([$validated['email']]);
+            if ($stmt->fetch()) {
+                return response()->json([
+                    'message' => "Un utilisateur avec cet email existe déjà dans cet établissement."
+                ], 422);
+            }
+
+            $hashedPassword = Hash::make($validated['password']);
+
+            $stmt = $pdo->prepare("
+                INSERT INTO users (name, email, phone, password, role, is_active, created_at, updated_at) 
+                VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())
+            ");
+            
+            $stmt->execute([
+                $validated['name'],
+                $validated['email'],
+                $validated['phone'] ?? null,
+                $hashedPassword,
+                'controller',
+                true
+            ]);
+
+            $tenant->increment('users_count');
+
+            AuditLog::record(
+                Auth::id(),
+                'create_controller',
+                "Création du contrôleur de gestion {$validated['name']} ({$validated['email']}) pour l'établissement {$tenant->name}",
+                $user->role
+            );
+
+            return response()->json([
+                'success' => true,
+                'message' => "Contrôleur de gestion créé avec succès.",
+                'generated_password' => $generatedPassword,
+            ], 201);
+
+        } catch (\PDOException $e) {
+            \Illuminate\Support\Facades\Log::error("Failed to connect or insert controller in tenant database {$tenant->db_name}: " . $e->getMessage());
             return response()->json([
                 'message' => "Impossible de se connecter à la base de données de l'établissement: " . $e->getMessage()
             ], 500);

@@ -88,6 +88,7 @@ Route::middleware(['auth', 'role:tech_admin'])->prefix('tech')->name('tech.')->g
     Route::post('/establishments/{tenant}', [AdminAuditController::class, 'updateTenant'])->name('establishments.update');
     Route::delete('/establishments/{tenant}', [AdminAuditController::class, 'destroyTenant'])->name('establishments.destroy');
     Route::post('/establishments/{tenant}/create-manager', [AdminAuditController::class, 'createTenantManager'])->name('establishments.create-manager');
+    Route::post('/establishments/{tenant}/create-controller', [AdminAuditController::class, 'createTenantController'])->name('establishments.create-controller');
 
     // Employés de l'établissement : ils vivent dans la base du tenant, donc
     // toute modification faite ici est immédiatement effective dans wetchah_app.
@@ -143,6 +144,7 @@ Route::middleware(['auth', 'role:owner'])->prefix('business')->name('business.')
     Route::get('/establishments/{tenant}', [AdminAuditController::class, 'businessShowTenant'])->name('establishments.show');
     Route::get('/establishments/{tenant}/finance-data', [AdminAuditController::class, 'businessEstablishmentFinance'])->name('establishments.finance-data');
     Route::post('/establishments/{tenant}/create-manager', [AdminAuditController::class, 'createTenantManager'])->name('establishments.create-manager');
+    Route::post('/establishments/{tenant}/create-controller', [AdminAuditController::class, 'createTenantController'])->name('establishments.create-controller');
     Route::get('/analytics', [AdminAuditController::class, 'businessDashboard'])->name('analytics');
     Route::get('/clients', [AdminAuditController::class, 'businessDashboard'])->name('clients');
     Route::get('/employees', [AdminAuditController::class, 'businessDashboard'])->name('employees');
