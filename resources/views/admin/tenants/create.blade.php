@@ -163,13 +163,14 @@
             }
         },
         toggleModuleDependency(moduleName) {
-            // Site Web requires API
-            if (moduleName === 'website' && this.modules.website) {
+            // Site Web ou GRC nécessite l'API d'intégration
+            if ((moduleName === 'website' && this.modules.website) || (moduleName === 'grc' && this.modules.grc)) {
                 this.modules.api = true;
             }
-            // If API is disabled, Site Web must be disabled
+            // Désactiver l'API désactive automatiquement le Site Web et le module GRC
             if (moduleName === 'api' && !this.modules.api) {
                 this.modules.website = false;
+                this.modules.grc = false;
             }
         },
         nextStep() {
@@ -927,7 +928,7 @@
                                         <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 uppercase">Dev</span>
                                     </div>
                                     <p class="text-[10px] text-slate-500 leading-relaxed">
-                                        Expose des routes API sécurisées pour connecter des applications mobiles tierces ou des PMS externes.
+                                        Expose des routes API sécurisées pour alimenter le site vitrine, le portail GRC et connecter des applications tierces.
                                     </p>
                                 </div>
                             </label>
@@ -950,14 +951,14 @@
                             <!-- Module: GRC & Contrôle de Gestion -->
                             <label class="relative flex items-start gap-4 rounded-xl border p-4 cursor-pointer select-none transition hover:bg-slate-50 duration-200"
                                 :class="modules.grc ? 'border-indigo-600 ring-2 ring-indigo-50 bg-indigo-50/10' : 'border-slate-200'">
-                                <input type="checkbox" name="modules[grc]" x-model="modules.grc" class="mt-1 h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500 shrink-0">
+                                <input type="checkbox" name="modules[grc]" x-model="modules.grc" @change="toggleModuleDependency('grc')" class="mt-1 h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500 shrink-0">
                                 <div class="space-y-1">
                                     <div class="flex items-center gap-2">
                                         <span class="text-xs font-bold text-slate-800">Contrôle de Gestion & GRC (Audit & Risques)</span>
                                         <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 uppercase">GRC</span>
                                     </div>
                                     <p class="text-[10px] text-slate-500 leading-relaxed">
-                                        Active le 4ᵉ conteneur GRC : cartographie des risques 5x5, pistes d'audit, conformité SYSCOHADA / ISO 27001 et contrôle de gestion.
+                                        Active le 4ᵉ conteneur GRC : cartographie des risques 5x5, pistes d'audit, conformité SYSCOHADA / ISO 27001 et contrôle de gestion. *Nécessite l'API d'Intégration active.*
                                     </p>
                                 </div>
                             </label>

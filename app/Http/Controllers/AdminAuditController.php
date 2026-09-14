@@ -220,6 +220,9 @@ class AdminAuditController extends Controller
             'is_active'            => true,
             'settings'             => $settings,
             'modules'              => $modules,
+            'api_enabled'          => in_array('api', $modules, true),
+            'website_enabled'      => in_array('website', $modules, true),
+            'grc_enabled'          => in_array('grc', $modules, true),
         ]);
 
         AuditLog::record(
@@ -347,11 +350,16 @@ class AdminAuditController extends Controller
         // n'envoie rien → le module disparaît de la liste (désactivation). On filtre
         // par intersection plutôt qu'avec Rule::in : une entrée vide/parasite ne doit
         // pas faire échouer toute la requête et laisser la désactivation sans effet.
-        $allowed = ['restaurant', 'shop', 'housekeeping', 'discussions', 'analytics', 'ledger', 'api', 'website'];
+        $allowed = ['restaurant', 'shop', 'housekeeping', 'discussions', 'analytics', 'ledger', 'api', 'website', 'grc'];
         $modules = array_values(array_intersect($allowed, (array) $request->input('modules', [])));
 
         $modules = $this->applyModuleDependencies($modules);
-        $tenant->update(['modules' => $modules]);
+        $tenant->update([
+            'modules'         => $modules,
+            'api_enabled'     => in_array('api', $modules, true),
+            'website_enabled' => in_array('website', $modules, true),
+            'grc_enabled'     => in_array('grc', $modules, true),
+        ]);
 
         if (empty($tenant->docker_image_tag)) {
             return back()->with('error', "Cet établissement n'est pas encore provisionné — les modules seront appliqués au premier provisioning.");
@@ -500,7 +508,8 @@ class AdminAuditController extends Controller
      */
     private function applyModuleDependencies(array $modules): array
     {
-        if (in_array('website', $modules, true) && !in_array('api', $modules, true)) {
+        // Activer le site web OU le module GRC active automatiquement le module API
+        if ((in_array('website', $modules, true) || in_array('grc', $modules, true)) && !in_array('api', $modules, true)) {
             $modules[] = 'api';
         }
 

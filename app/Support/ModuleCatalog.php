@@ -517,27 +517,29 @@ class ModuleCatalog
 
             'api' => [
                 'label'   => 'API d\'intégration',
-                'tagline' => 'Routes publiques en lecture (chambres, carte) et demandes de réservation depuis l\'extérieur.',
+                'tagline' => 'Routes publiques (site vitrine) et passerelles de données sécurisées pour le portail GRC et applications tierces.',
                 'icon'    => 'plug',
                 'accent'  => 'slate',
                 'type'    => 'optionnel',
                 'key'     => 'api',
-                'entry'   => 'Aucune interface — consommée par des applications tierces',
-                'roles'   => ['applications externes'],
+                'entry'   => 'Aucune interface — consommée par le site vitrine, Wetchah_GRC et applications tierces',
+                'roles'   => ['applications externes', 'portail GRC', 'site vitrine'],
                 'screens' => [
                     ['label' => 'Chambres et types', 'path' => '/api/v1/rooms, /api/v1/room-types', 'desc' => 'Catalogue d\'hébergement en lecture seule.'],
                     ['label' => 'Carte du restaurant', 'path' => '/api/v1/restaurant/menu', 'desc' => 'Carte publique — nécessite le module Restaurant actif.'],
                     ['label' => 'Demande de réservation', 'path' => 'POST /api/v1/bookings', 'desc' => 'Demande entrante, limitée en débit contre le spam.'],
                     ['label' => 'Ping', 'path' => '/api/v1/ping', 'desc' => 'Vérification de disponibilité utilisée par le badge de liaison.'],
+                    ['label' => 'Flux de reporting & audit GRC', 'path' => '/api/reporting/*', 'desc' => 'Données financières, écarts de caisse et alertes pour le contrôleur de gestion.'],
                 ],
                 'guide' => [
-                    ['title' => 'Activer le module', 'body' => 'Sans lui, les routes /api/v1 ne répondent pas. C\'est le prérequis technique du site vitrine.'],
-                    ['title' => 'Vérifier la liaison', 'body' => 'La route ping confirme que l\'application répond ; l\'application affiche elle-même un badge d\'état de liaison avec le site.'],
+                    ['title' => 'Activer le module', 'body' => 'Sans lui, les routes /api/v1 et /api/reporting ne répondent pas. C\'est le prérequis technique automatique du site vitrine et du portail GRC.'],
+                    ['title' => 'Vérifier la liaison', 'body' => 'La route ping confirme que l\'application répond ; l\'application affiche elle-même un badge d\'état de liaison avec le site et le GRC.'],
                     ['title' => 'Traiter les demandes entrantes', 'body' => 'Une demande envoyée par l\'API arrive comme réservation à traiter par la réception : elle n\'est jamais confirmée automatiquement.'],
+                    ['title' => 'Alimentation du GRC', 'body' => 'Le module GRC interroge périodiquement les routes de reporting pour alimenter la cartographie des risques et les anomalies de trésorerie.'],
                 ],
                 'tips' => [
-                    'Lecture seule et sans authentification : ces routes n\'exposent que du contenu destiné à être public.',
-                    'À ne pas confondre avec l\'API de reporting, protégée par jeton de service, que la console business de l\'ERP consomme.',
+                    'L\'activation du site vitrine ou du module GRC active automatiquement cette API d\'intégration.',
+                    'Désactiver ce module coupe simultanément l\'alimentation du site vitrine et du portail GRC.',
                 ],
             ],
 
@@ -575,6 +577,7 @@ class ModuleCatalog
                 'accent'  => 'cyan',
                 'type'    => 'optionnel',
                 'key'     => 'grc',
+                'depends' => 'Nécessite l\'API d\'intégration active (activée automatiquement)',
                 'entry'   => 'Portail GRC dédié de l\'établissement',
                 'roles'   => ['controller', 'auditor', 'admin', 'manager'],
                 'screens' => [
@@ -585,9 +588,9 @@ class ModuleCatalog
                     ['label' => 'Rapports & Exports', 'path' => '/reports', 'desc' => 'Rapports officiels de missions d\'audit PDF (ReportLab) et exports Excel.'],
                 ],
                 'guide' => [
-                    ['title' => 'Activer le module', 'body' => 'L\'activation du module provisionne le 4ᵉ conteneur Docker dédié à la GRC sur son port propre (app_port + 2000).'],
+                    ['title' => 'Activer le module', 'body' => 'L\'activation du module active automatiquement l\'API d\'intégration et provisionne le 4ᵉ conteneur Docker dédié à la GRC sur son port propre (app_port + 2000).'],
                     ['title' => 'Créer le compte Contrôleur', 'body' => 'Utilisez le bouton « Créer le Contrôleur de gestion » depuis la fiche de l\'établissement dans l\'ERP pour lui générer ses identifiants d\'accès.'],
-                    ['title' => 'Consommer les flux PMS', 'body' => 'Le module se nourrit automatiquement des recettes, écarts de caisse et anomalies opérationnelles issues de wetchah_app.'],
+                    ['title' => 'Consommer les flux PMS', 'body' => 'Le module se nourrit automatiquement des recettes, écarts de caisse et anomalies opérationnelles issues de wetchah_app via l\'API.'],
                 ],
                 'tips' => [
                     'Le module GRC dispose de sa propre base SQLite isolée et autonome, hébergée sur un volume persistant.',

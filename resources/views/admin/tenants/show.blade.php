@@ -987,9 +987,9 @@
                         'discussions'  => ['label' => 'Discussions', 'desc' => 'Messagerie interne entre membres du personnel.', 'icon' => 'message-circle'],
                         'analytics'    => ['label' => 'Analytics', 'desc' => 'Tour de contrôle : statistiques et tableaux de bord.', 'icon' => 'chart-column'],
                         'ledger'       => ['label' => 'Comptabilité avancée', 'desc' => 'Grand livre SYSCOHADA : plan de comptes, journaux, balance, clôture, comptes de tiers et lettrage, factures fournisseurs et retenues à la source, analytique. La comptabilité de caisse reste active sans ce module.', 'icon' => 'book-open'],
-                        'api'          => ['label' => 'API d\'intégration', 'desc' => 'Expose des routes API sécurisées pour connecter des applications mobiles tierces ou des PMS externes.', 'icon' => 'plug'],
+                        'api'          => ['label' => 'API d\'intégration', 'desc' => 'Expose des routes API sécurisées pour alimenter le site vitrine, le portail GRC et connecter des applications tierces.', 'icon' => 'plug'],
                         'website'      => ['label' => 'Site web', 'desc' => 'Site vitrine public (chambres, menu, contenu CMS) — provisionne un 3ᵉ container. Nécessite l\'API d\'intégration active.', 'icon' => 'globe'],
-                        'grc'          => ['label' => 'Contrôle de gestion & GRC', 'desc' => 'Plateforme de Gouvernance, Risques & Conformité (Wetchah_GRC) — provisionne un 4ᵉ container dédié.', 'icon' => 'shield-check'],
+                        'grc'          => ['label' => 'Contrôle de gestion & GRC', 'desc' => 'Plateforme de Gouvernance, Risques & Conformité (Wetchah_GRC) — provisionne un 4ᵉ container dédié. Nécessite l\'API d\'intégration active.', 'icon' => 'shield-check'],
                     ];
                     $tenantModules = $tenant->modules ?? [];
                     // Établissement jamais passé par ce sélecteur (aucune des clés
@@ -1010,10 +1010,15 @@
                             @endforeach
                         },
                         toggleModuleDependency(name) {
-                            // Site web nécessite l'API d'intégration : l'activer force l'API,
-                            // mais désactiver l'API seule ne coche pas le site web pour autant.
-                            if (name === 'website' && this.modules.website) { this.modules.api = true; }
-                            if (name === 'api' && !this.modules.api) { this.modules.website = false; }
+                            // Site web ou GRC nécessite l'API d'intégration : l'activer force l'API
+                            if ((name === 'website' && this.modules.website) || (name === 'grc' && this.modules.grc)) {
+                                this.modules.api = true;
+                            }
+                            // Désactiver l'API désactive automatiquement le site web et le GRC
+                            if (name === 'api' && !this.modules.api) {
+                                this.modules.website = false;
+                                this.modules.grc = false;
+                            }
                         }
                     }">
                     @csrf
@@ -1027,7 +1032,7 @@
                                      case liée en x-model, qui empêchait la désactivation de prendre. --}}
                                 <input type="checkbox" hidden
                                        x-model="modules.{{ $key }}"
-                                       @if(in_array($key, ['api', 'website'], true)) @change="toggleModuleDependency('{{ $key }}')" @endif>
+                                       @if(in_array($key, ['api', 'website', 'grc'], true)) @change="toggleModuleDependency('{{ $key }}')" @endif>
                                 <template x-if="modules.{{ $key }}">
                                     <input type="hidden" name="modules[]" value="{{ $key }}">
                                 </template>
