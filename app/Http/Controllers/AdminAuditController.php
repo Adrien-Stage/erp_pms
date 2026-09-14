@@ -2362,6 +2362,27 @@ class AdminAuditController extends Controller
 
             $tenant->increment('users_count');
 
+            // Synchronisation / provisioning direct dans le conteneur Wetchah_GRC
+            if ($tenant->hasModule('grc') && $tenant->grc_port) {
+                try {
+                    $grcUrl = "http://127.0.0.1:{$tenant->grc_port}/api/v1/users/provision-from-erp";
+                    $reportingSecret = config('provisioning.reporting_secret', env('REPORTING_SECRET'));
+                    \Illuminate\Support\Facades\Http::timeout(5)
+                        ->withToken($reportingSecret)
+                        ->post($grcUrl, [
+                            'email' => $validated['email'],
+                            'password' => $validated['password'],
+                            'full_name' => $validated['name'],
+                            'phone' => $validated['phone'] ?? null,
+                            'role' => 'controller',
+                            'department' => 'Contrôle de Gestion & Finance',
+                            'is_active' => true,
+                        ]);
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning("Could not auto-provision controller into GRC container for {$tenant->slug}: " . $e->getMessage());
+                }
+            }
+
             AuditLog::record(
                 Auth::id(),
                 'create_controller',
