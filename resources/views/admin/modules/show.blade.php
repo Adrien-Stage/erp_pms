@@ -257,15 +257,30 @@
                     @else
                         <ul class="divide-y divide-slate-100">
                             @foreach($equipped as $tenant)
-                                <li>
+                                <li class="flex items-center justify-between gap-3 px-5 py-3 transition hover:bg-slate-50">
                                     <a href="{{ route('tech.establishments.show', ['tenant' => $tenant, 'section' => 'modules']) }}"
-                                       class="flex items-center justify-between gap-3 px-5 py-3 transition hover:bg-slate-50">
-                                        <span class="min-w-0">
-                                            <span class="block truncate text-xs font-bold text-slate-800">{{ $tenant->name }}</span>
-                                            <span class="block font-mono text-[10px] text-slate-400">{{ $tenant->slug }}</span>
-                                        </span>
-                                        <i data-lucide="chevron-right" class="h-4 w-4 shrink-0 text-slate-300"></i>
+                                       class="min-w-0 flex-1">
+                                        <span class="block truncate text-xs font-bold text-slate-800">{{ $tenant->name }}</span>
+                                        <span class="block font-mono text-[10px] text-slate-400">{{ $tenant->slug }}</span>
                                     </a>
+                                    <div class="flex items-center gap-3 shrink-0">
+                                        @if(($module['key'] ?? null) === 'grc' && $tenant->hasGrc())
+                                            <a href="{{ $tenant->grcUrl() }}" target="_blank"
+                                               class="inline-flex items-center gap-1 rounded bg-teal-50 px-2 py-0.5 text-[10px] font-bold font-mono text-teal-700 hover:bg-teal-100 border border-teal-200"
+                                               title="Ouvrir le portail GRC">
+                                                <span>Ouvrir GRC ↗</span>
+                                            </a>
+                                        @elseif(($module['key'] ?? null) === 'website' && $tenant->websiteUrl())
+                                            <a href="{{ $tenant->websiteUrl() }}" target="_blank"
+                                               class="inline-flex items-center gap-1 rounded bg-rose-50 px-2 py-0.5 text-[10px] font-bold font-mono text-rose-700 hover:bg-rose-100 border border-rose-200"
+                                               title="Ouvrir le site vitrine">
+                                                <span>Site Web ↗</span>
+                                            </a>
+                                        @endif
+                                        <a href="{{ route('tech.establishments.show', ['tenant' => $tenant, 'section' => 'modules']) }}" class="text-slate-300 hover:text-indigo-600">
+                                            <i data-lucide="chevron-right" class="h-4 w-4"></i>
+                                        </a>
+                                    </div>
                                 </li>
                             @endforeach
                         </ul>

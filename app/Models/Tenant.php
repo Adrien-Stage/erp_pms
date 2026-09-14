@@ -72,4 +72,45 @@ class Tenant extends Model
     {
         return $this->belongsTo(User::class, 'owner_id');
     }
+
+    /**
+     * Indique si le module GRC est activé pour l'établissement.
+     */
+    public function hasGrc(): bool
+    {
+        return (bool) ($this->grc_enabled || in_array('grc', $this->modules ?? [], true));
+    }
+
+    /**
+     * Port résolu pour le module GRC (défaut : app_port + 2000, fallback 8085 pour dev autonome).
+     */
+    public function resolvedGrcPort(): int
+    {
+        return (int) ($this->grc_port ?: ($this->app_port ? $this->app_port + 2000 : 8085));
+    }
+
+    /**
+     * URL d'accès direct au portail Wetchah_GRC.
+     */
+    public function grcUrl(): string
+    {
+        return 'http://localhost:' . $this->resolvedGrcPort();
+    }
+
+    /**
+     * URL d'accès direct à l'application PMS.
+     */
+    public function appUrl(): ?string
+    {
+        return $this->app_port ? 'http://localhost:' . $this->app_port : null;
+    }
+
+    /**
+     * URL d'accès au site web vitrine.
+     */
+    public function websiteUrl(): ?string
+    {
+        $port = $this->web_port ?: ($this->app_port ? $this->app_port + 1000 : null);
+        return $port ? 'http://localhost:' . $port : null;
+    }
 }

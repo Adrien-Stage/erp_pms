@@ -73,6 +73,32 @@
                 <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold border {{ $tenant->is_active ? 'bg-green-500/10 text-green-400 border-green-500/30' : 'bg-red-500/10 text-red-400 border-red-500/30' }}">
                     {{ $tenant->is_active ? 'Actif' : 'Inactif' }}
                 </span>
+
+                {{-- Liens d'accès directs --}}
+                @if($tenant->hasGrc())
+                    <a href="{{ $tenant->grcUrl() }}" target="_blank"
+                       class="inline-flex items-center gap-1.5 rounded-md bg-teal-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-teal-500 transition shadow-sm border border-teal-400/30"
+                       title="Ouvrir la plateforme Wetchah_GRC (Contrôle de Gestion & Audit)">
+                        <svg class="h-3.5 w-3.5 text-teal-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+                        </svg>
+                        <span>Ouvrir GRC</span>
+                        <svg class="h-3 w-3 text-teal-200 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                        </svg>
+                    </a>
+                @endif
+                @if($tenant->appUrl())
+                    <a href="{{ $tenant->appUrl() }}" target="_blank"
+                       class="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-500 transition shadow-sm border border-indigo-400/30"
+                       title="Ouvrir l'application PMS de l'établissement">
+                        <span>Ouvrir App</span>
+                        <svg class="h-3 w-3 text-indigo-200 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                        </svg>
+                    </a>
+                @endif
+
                 <form method="POST" action="{{ route('logout') }}">
                     @csrf
                     <button type="submit" class="rounded-md border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-bold text-slate-300 hover:bg-slate-700 hover:text-white transition">
@@ -127,6 +153,46 @@
                     </a>
                 @endforeach
             </nav>
+
+            <!-- Accès Directs aux Portails -->
+            <div class="border-t border-slate-100 p-4 mt-2">
+                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Accès Directs</p>
+                <div class="space-y-1.5">
+                    @if($tenant->appUrl())
+                        <a href="{{ $tenant->appUrl() }}" target="_blank"
+                           class="flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-semibold text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100/70 border border-indigo-100 transition">
+                            <span class="flex items-center gap-2">
+                                <span class="h-2 w-2 rounded-full {{ $tenant->docker_status === 'running' ? 'bg-emerald-500' : 'bg-slate-300' }}"></span>
+                                <span>Application PMS</span>
+                            </span>
+                            <span class="font-mono text-[10px] text-indigo-500">:{{ $tenant->app_port }} ↗</span>
+                        </a>
+                    @endif
+
+                    @if($tenant->hasGrc())
+                        <a href="{{ $tenant->grcUrl() }}" target="_blank"
+                           class="flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-semibold text-teal-700 bg-teal-50/70 hover:bg-teal-100/70 border border-teal-200/80 transition"
+                           title="Ouvrir la plateforme de Contrôle de Gestion & GRC (Wetchah_GRC)">
+                            <span class="flex items-center gap-2">
+                                <span class="h-2 w-2 rounded-full {{ $tenant->docker_grc_container ? 'bg-teal-500' : 'bg-slate-300' }}"></span>
+                                <span>Wetchah_GRC</span>
+                            </span>
+                            <span class="font-mono text-[10px] text-teal-600">:{{ $tenant->resolvedGrcPort() }} ↗</span>
+                        </a>
+                    @endif
+
+                    @if($tenant->websiteUrl())
+                        <a href="{{ $tenant->websiteUrl() }}" target="_blank"
+                           class="flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-semibold text-rose-700 bg-rose-50/70 hover:bg-rose-100/70 border border-rose-100 transition">
+                            <span class="flex items-center gap-2">
+                                <span class="h-2 w-2 rounded-full {{ $tenant->docker_web_container ? 'bg-rose-500' : 'bg-slate-300' }}"></span>
+                                <span>Site Web</span>
+                            </span>
+                            <span class="font-mono text-[10px] text-rose-500">↗</span>
+                        </a>
+                    @endif
+                </div>
+            </div>
 
             <!-- Sidebar Footer -->
             <div class="border-t border-slate-100 p-4 mt-4">
@@ -347,6 +413,110 @@
                                 <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Devise</p>
                                 <p class="text-2xl font-extrabold text-slate-800">{{ $tenant->currency }}</p>
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Portails & Accès Opérationnels -->
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-6">
+                    <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <svg class="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                            </svg>
+                            <h3 class="text-sm font-bold text-slate-800">Accès directs aux services de l'établissement</h3>
+                        </div>
+                        <span class="text-[10px] text-slate-400">Liens directs d'exploitation</span>
+                    </div>
+                    <div class="p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <!-- Application PMS -->
+                        <div class="rounded-xl border border-slate-200 p-4 bg-slate-50/50 flex flex-col justify-between gap-3">
+                            <div>
+                                <div class="flex items-center justify-between">
+                                    <span class="text-xs font-bold text-slate-800">Application PMS</span>
+                                    <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold {{ $tenant->docker_status === 'running' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600' }}">
+                                        {{ $tenant->docker_status === 'running' ? 'En ligne' : 'Arrêté' }}
+                                    </span>
+                                </div>
+                                <p class="text-[11px] text-slate-500 mt-1">Hébergement, réservations, caisse et restauration.</p>
+                            </div>
+                            @if($tenant->appUrl())
+                                <a href="{{ $tenant->appUrl() }}" target="_blank"
+                                   class="inline-flex items-center justify-center gap-1.5 w-full rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-sm">
+                                    <span>Ouvrir l'application</span>
+                                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
+                                </a>
+                            @endif
+                        </div>
+
+                        <!-- Contrôle de Gestion & GRC -->
+                        <div class="rounded-xl border p-4 flex flex-col justify-between gap-3 {{ $tenant->hasGrc() ? 'border-teal-200 bg-teal-50/30' : 'border-slate-200 bg-slate-50/20 opacity-60' }}">
+                            <div>
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="text-xs font-bold text-slate-800">Wetchah_GRC</span>
+                                        <span class="text-[9px] font-bold px-1.5 py-0.2 rounded bg-teal-100 text-teal-800 uppercase">Module 4</span>
+                                    </div>
+                                    @if($tenant->hasGrc())
+                                        <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold bg-emerald-100 text-emerald-700">
+                                            Actif (:{{ $tenant->resolvedGrcPort() }})
+                                        </span>
+                                    @else
+                                        <span class="text-[9px] text-slate-400 font-semibold">Non activé</span>
+                                    @endif
+                                </div>
+                                <p class="text-[11px] text-slate-500 mt-1">Gouvernance, risques 5x5, conformité, audits et contrôle de gestion.</p>
+                            </div>
+                            @if($tenant->hasGrc())
+                                <a href="{{ $tenant->grcUrl() }}" target="_blank"
+                                   class="inline-flex items-center justify-center gap-1.5 w-full rounded-lg bg-teal-600 px-3 py-2 text-xs font-bold text-white hover:bg-teal-700 transition shadow-sm">
+                                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+                                    </svg>
+                                    <span>Ouvrir Wetchah_GRC</span>
+                                    <svg class="h-3.5 w-3.5 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
+                                </a>
+                            @else
+                                <a href="{{ route('tech.establishments.show', ['tenant' => $tenant, 'section' => 'modules']) }}"
+                                   class="inline-flex items-center justify-center gap-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition">
+                                    <span>Activer le module GRC →</span>
+                                </a>
+                            @endif
+                        </div>
+
+                        <!-- Site Vitrine (Public) -->
+                        @php
+                            $isWebActive = in_array('website', $tenant->modules ?? [], true);
+                        @endphp
+                        <div class="rounded-xl border p-4 flex flex-col justify-between gap-3 {{ $isWebActive ? 'border-rose-200 bg-rose-50/30' : 'border-slate-200 bg-slate-50/20 opacity-60' }}">
+                            <div>
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="text-xs font-bold text-slate-800">Site Web Vitrine</span>
+                                        <span class="text-[9px] font-bold px-1.5 py-0.2 rounded bg-rose-100 text-rose-800 uppercase">Module 3</span>
+                                    </div>
+                                    @if($isWebActive)
+                                        <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold bg-emerald-100 text-emerald-700">
+                                            Actif
+                                        </span>
+                                    @else
+                                        <span class="text-[9px] text-slate-400 font-semibold">Non activé</span>
+                                    @endif
+                                </div>
+                                <p class="text-[11px] text-slate-500 mt-1">Site vitrine public, catalogue et réservations en ligne.</p>
+                            </div>
+                            @if($isWebActive && $tenant->websiteUrl())
+                                <a href="{{ $tenant->websiteUrl() }}" target="_blank"
+                                   class="inline-flex items-center justify-center gap-1.5 w-full rounded-lg bg-rose-600 px-3 py-2 text-xs font-bold text-white hover:bg-rose-700 transition shadow-sm">
+                                    <span>Ouvrir le Site Web</span>
+                                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
+                                </a>
+                            @else
+                                <a href="{{ route('tech.establishments.show', ['tenant' => $tenant, 'section' => 'modules']) }}"
+                                   class="inline-flex items-center justify-center gap-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition">
+                                    <span>Activer le module Web →</span>
+                                </a>
+                            @endif
                         </div>
                     </div>
                 </div>
@@ -794,8 +964,8 @@
                                         </div>
                                         <div>
                                             <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1">Accès Portail GRC</label>
-                                            <a href="http://localhost:{{ $tenant->grc_port ?? ($tenant->app_port + 2000) }}/login" target="_blank" class="font-mono text-xs text-teal-600 hover:text-teal-800 hover:underline">
-                                                http://localhost:{{ $tenant->grc_port ?? ($tenant->app_port + 2000) }}/login
+                                            <a href="{{ $tenant->grcUrl() }}/login" target="_blank" class="font-mono text-xs text-teal-600 hover:text-teal-800 hover:underline">
+                                                {{ $tenant->grcUrl() }}/login
                                             </a>
                                         </div>
                                     </div>
@@ -1050,6 +1220,28 @@
                                 <div class="space-y-1">
                                     <span class="text-xs font-bold text-slate-800">{{ $def['label'] }}</span>
                                     <p class="text-[10px] text-slate-500 leading-relaxed">{{ $def['desc'] }}</p>
+
+                                    @if($key === 'grc')
+                                        <template x-if="modules.grc">
+                                            <div class="pt-2" @click.stop>
+                                                <a href="{{ $tenant->grcUrl() }}" target="_blank"
+                                                   class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-teal-50 border border-teal-200 text-[10px] font-bold text-teal-700 hover:bg-teal-100 transition shadow-2xs">
+                                                    <svg class="h-3 w-3 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
+                                                    <span>Ouvrir la plateforme GRC (:{{ $tenant->resolvedGrcPort() }}) ↗</span>
+                                                </a>
+                                            </div>
+                                        </template>
+                                    @elseif($key === 'website' && $tenant->websiteUrl())
+                                        <template x-if="modules.website">
+                                            <div class="pt-2" @click.stop>
+                                                <a href="{{ $tenant->websiteUrl() }}" target="_blank"
+                                                   class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-rose-50 border border-rose-200 text-[10px] font-bold text-rose-700 hover:bg-rose-100 transition shadow-2xs">
+                                                    <svg class="h-3 w-3 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
+                                                    <span>Ouvrir le Site Web ↗</span>
+                                                </a>
+                                            </div>
+                                        </template>
+                                    @endif
                                 </div>
                             </label>
                         @endforeach
@@ -1112,10 +1304,10 @@
                                     <span class="text-slate-450 font-semibold">Port PostgreSQL (Hôte) :</span>
                                     <span class="font-mono bg-slate-50 border border-slate-200 px-2 py-0.5 rounded ml-2">{{ $tenant->db_port ?? 5432 }}</span>
                                 </div>
-                                @if(in_array('grc', $tenant->modules ?? []))
+                                @if($tenant->hasGrc())
                                 <div>
                                     <span class="text-slate-450 font-semibold">Port GRC (Hôte) :</span>
-                                    <a href="http://localhost:{{ $tenant->grc_port ?? ($tenant->app_port + 2000) }}" target="_blank" class="font-mono bg-teal-50 border border-teal-200 px-2 py-0.5 rounded ml-2 text-teal-700 hover:text-teal-900 hover:underline">{{ $tenant->grc_port ?? ($tenant->app_port + 2000) }} (Portail GRC)</a>
+                                    <a href="{{ $tenant->grcUrl() }}" target="_blank" class="font-mono bg-teal-50 border border-teal-200 px-2 py-0.5 rounded ml-2 text-teal-700 hover:text-teal-900 hover:underline">{{ $tenant->resolvedGrcPort() }} (Portail GRC ↗)</a>
                                 </div>
                                 @endif
                             </div>
