@@ -235,7 +235,36 @@ class TenantUserController extends Controller
         AuditLog::record(Auth::id(), 'tenant_user_update',
             "Employé {$validated['name']} modifié dans {$tenant->name}", 'tenant_users');
 
-        return $this->retour($tenant, $user)->with('success', "Les accès de {$validated['name']} ont été enregistrés.");
+        // Le GRC tient sa propre base : une modification faite ici n'y existe
+        // pas tant qu'elle n'y a pas été poussée. C'est ce qui produisait le
+        // symptôme « compte mis à jour » côté ERP et « utilisateur inexistant »
+        // à la connexion au portail.
+        //
+        // Le report exige le mot de passe en clair, que le GRC hache lui-même :
+        // il n'est donc possible qu'au moment où l'opérateur en saisit un. Une
+        // modification de profil seule ne peut pas être propagée, et c'est dit
+        // plutôt que tu.
+        $message = "Les accès de {$validated['name']} ont été enregistrés.";
+        $estControleur = ($validated['role'] ?? $employe->role ?? null) === 'controller';
+
+        if ($estControleur && $tenant->hasGrc()) {
+            $sync = app(\App\Services\GrcAccountSync::class);
+
+            if (!empty($validated['password'])) {
+                $message .= $sync->message($sync->push($tenant, [
+                    'email'          => $validated['email'],
+                    'password'       => $validated['password'],
+                    'full_name'      => $validated['name'],
+                    'phone'          => $validated['phone'] ?? null,
+                    'previous_email' => $employe->email ?? null,
+                ]));
+            } else {
+                $message .= " Le module GRC conserve le mot de passe précédent :"
+                    . " saisissez-en un nouveau pour y reporter ce compte.";
+            }
+        }
+
+        return $this->retour($tenant, $user)->with('success', $message);
     }
 
     /**

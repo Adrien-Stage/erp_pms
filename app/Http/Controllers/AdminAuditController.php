@@ -2558,56 +2558,15 @@ class AdminAuditController extends Controller
 
             $tenant->increment('users_count');
 
-            // Report du compte dans le conteneur GRC, quand le module est actif.
-            // Deux défauts corrigés ici : l'appel testait hasModule(), méthode
-            // qui n'existe pas sur Tenant — l'exception qui en résultait n'était
-            // pas une PDOException, échappait donc au catch plus bas et renvoyait
-            // un 500 *après* l'insertion du compte, si bien que le contrôleur
-            // était bien créé dans l'établissement mais l'écran annonçait un
-            // échec. Et l'adresse visée était 127.0.0.1, qui depuis ce conteneur
-            // désigne l'ERP lui-même : le GRC se joint par son nom sur le réseau
-            // Docker, comme le fait BusinessReportingClient pour le PMS.
-            $grcSynchronise = null;
-
-            if ($tenant->hasGrc()) {
-                $grcSynchronise = false;
-                $conteneurGrc = $tenant->docker_grc_container ?: ('meka-erp-' . $tenant->slug . '-grc');
-                $secret = (string) config('provisioning.reporting_secret');
-
-                if ($secret === '') {
-                    \Illuminate\Support\Facades\Log::warning(
-                        "[GRC] REPORTING_SECRET non configuré : compte non reporté pour {$tenant->slug}."
-                    );
-                } else {
-                    try {
-                        $reponse = \Illuminate\Support\Facades\Http::timeout(5)
-                            ->withToken($secret)
-                            ->acceptJson()
-                            ->post("http://{$conteneurGrc}:8000/api/v1/users/provision-from-erp", [
-                                'email' => $validated['email'],
-                                'password' => $validated['password'],
-                                'full_name' => $validated['name'],
-                                'phone' => $validated['phone'] ?? null,
-                                'role' => 'controller',
-                                'department' => 'Contrôle de Gestion & Finance',
-                                'is_active' => true,
-                            ]);
-
-                        $grcSynchronise = $reponse->successful();
-
-                        if (!$grcSynchronise) {
-                            \Illuminate\Support\Facades\Log::warning(
-                                "[GRC] Report du contrôleur refusé pour {$tenant->slug} : "
-                                . $reponse->status() . ' ' . $reponse->body()
-                            );
-                        }
-                    } catch (\Throwable $e) {
-                        \Illuminate\Support\Facades\Log::warning(
-                            "[GRC] Conteneur injoignable pour {$tenant->slug} : " . $e->getMessage()
-                        );
-                    }
-                }
-            }
+            // Report du compte vers le conteneur GRC (voir GrcAccountSync :
+            // la logique est partagée avec la modification d'un employé, pour
+            // que les deux chemins ne divergent plus).
+            $grcSynchronise = app(\App\Services\GrcAccountSync::class)->push($tenant, [
+                'email'     => $validated['email'],
+                'password'  => $validated['password'],
+                'full_name' => $validated['name'],
+                'phone'     => $validated['phone'] ?? null,
+            ]);
 
             AuditLog::record(
                 Auth::id(),
