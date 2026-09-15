@@ -936,7 +936,10 @@ YAML;
             ? config('provisioning.registry_image_web') . '@' . $tenant->web_image_tag
             : null;
 
-        $composePath = $this->generateDockerCompose($tenant, $imageRef, $webImageRef, $log);
+        // $grcImageRef reste null : le compose retombe alors sur grc_image_tag
+        // déjà figé, donc le container GRC conserve sa version pendant une
+        // mise à jour applicative.
+        $composePath = $this->generateDockerCompose($tenant, $imageRef, $webImageRef, null, $log);
         $this->assertComposeProjectMatches($tenant, $log);
 
         $log('docker', "🔄 Recréation du container applicatif…", 'info');
@@ -992,7 +995,7 @@ YAML;
 
         $webImageRef = $this->pullPinnedWebImage($tenant, $log);
         $appImageRef = config('provisioning.registry_image') . '@' . $tenant->docker_image_tag;
-        $composePath = $this->generateDockerCompose($tenant, $appImageRef, $webImageRef, $log);
+        $composePath = $this->generateDockerCompose($tenant, $appImageRef, $webImageRef, null, $log);
         $this->assertComposeProjectMatches($tenant, $log);
 
         $log('docker', "🔄 Recréation du container du site…", 'info');
@@ -1008,6 +1011,78 @@ YAML;
         ]);
 
         $log('done', "✅ Site vitrine de « {$tenant->name} » mis à jour.", 'success');
+
+        return true;
+    }
+
+    /**
+     * Met à jour le module GRC d'un établissement vers la dernière image
+     * publiée (tag "latest" du registre GRC) : ré-épingle grc_image_tag,
+     * pull, régénère le compose et recrée uniquement le container "grc"
+     * (app, base de données et site intacts). Retourne false si le GRC est
+     * déjà sur la dernière version (aucune action effectuée).
+     *
+     * Même contrat que updateWeb() — voir AdminAuditController pour les deux
+     * points d'entrée (synchrone et flux SSE).
+     */
+    public function updateGrc(Tenant $tenant, callable $log): bool
+    {
+        if (empty($tenant->docker_image_tag)) {
+            throw new RuntimeException("Établissement non provisionné — aucun module GRC à mettre à jour.");
+        }
+
+        if (!$this->hasGrcModule($tenant)) {
+            throw new RuntimeException("Le module « Contrôle de gestion & GRC » n'est pas actif pour cet établissement.");
+        }
+
+        $log('start', "Mise à jour du module GRC de « {$tenant->name} »");
+
+        $registryImage = config('provisioning.registry_image_grc');
+        $imagePath     = $this->registry->imagePath($registryImage);
+        $digest        = $this->registry->resolveDigest($imagePath, 'latest');
+
+        if (!$digest) {
+            throw new RuntimeException(
+                "Impossible de résoudre le digest de l'image « {$registryImage}:latest » sur le registre."
+            );
+        }
+
+        if ($digest === $tenant->grc_image_tag) {
+            $log('done', "✅ Le module GRC est déjà à la dernière version.", 'success');
+            return false;
+        }
+
+        $tenant->update(['grc_image_tag' => $digest]);
+        $log('image', "✅ Nouvelle version du GRC figée : {$digest}", 'success');
+
+        $grcImageRef = $this->pullPinnedGrcImage($tenant, $log);
+        $appImageRef = config('provisioning.registry_image') . '@' . $tenant->docker_image_tag;
+
+        // Le site n'est pas re-résolu ici, seulement réutilisé s'il est déjà
+        // pinné : son digest ne change pas, donc aucun pull n'est nécessaire.
+        // Le passer explicitement évite que le service "web" disparaisse du
+        // compose régénéré et laisse un container orphelin derrière lui.
+        $webImageRef = ($this->hasWebsiteModule($tenant) && !empty($tenant->web_image_tag))
+            ? config('provisioning.registry_image_web') . '@' . $tenant->web_image_tag
+            : null;
+
+        $composePath = $this->generateDockerCompose($tenant, $appImageRef, $webImageRef, $grcImageRef, $log);
+        $this->assertComposeProjectMatches($tenant, $log);
+
+        $log('docker', "🔄 Recréation du container GRC…", 'info');
+        $this->execOrFail(
+            'docker compose -f ' . escapeshellarg($composePath) . ' up -d 2>&1',
+            "Échec du docker compose up"
+        );
+        $log('docker', "✅ Container GRC mis à jour.", 'success');
+
+        $tenant->update([
+            'docker_status'        => 'running',
+            'docker_grc_container' => 'meka-erp-' . $tenant->slug . '-grc',
+            'grc_enabled'          => true,
+        ]);
+
+        $log('done', "✅ Module GRC de « {$tenant->name} » mis à jour.", 'success');
 
         return true;
     }
