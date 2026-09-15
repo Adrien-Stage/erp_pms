@@ -16,6 +16,7 @@ class Tenant extends Model
         'address',
         'phone',
         'email',
+        'currency',
         
         // Configuration Docker / Base de données
         'db_name',

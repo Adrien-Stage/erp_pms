@@ -323,13 +323,62 @@ class AdminAuditController extends Controller
         if (!$user || !$user->isTechAdmin()) { abort(403); }
         
         $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'address' => ['nullable', 'string', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:30'],
-            'email' => ['nullable', 'email', 'max:255'],
+            'name'     => ['required', 'string', 'max:255'],
+            'address'  => ['nullable', 'string', 'max:255'],
+            'phone'    => ['nullable', 'string', 'max:30'],
+            'email'    => ['nullable', 'email', 'max:255'],
+            'country'  => ['nullable', 'string', 'max:100'],
+            'currency' => ['nullable', 'string', 'size:3'],
+            'logo'     => ['nullable', 'image', 'mimes:png,jpg,jpeg,gif,webp', 'max:2048'],
+            'theme'    => ['nullable', 'array'],
+            'theme.*'  => ['nullable', 'string', 'regex:/^#[0-9A-Fa-f]{6}$/'],
+        ], [
+            'theme.*.regex' => 'Chaque couleur doit être une valeur hexadécimale de la forme #RRGGBB.',
         ]);
 
-        $tenant->update($validated);
+        // Le slug est posté par le formulaire mais volontairement ignoré : il
+        // nomme le conteneur applicatif et la base de l'établissement, et le
+        // renommer ici les laisserait orphelins sans rien redéployer.
+        $tenant->fill(collect($validated)->only(['name', 'address', 'phone', 'email'])->all());
+
+        if ($request->filled('currency')) {
+            $tenant->currency = strtoupper($request->string('currency')->toString());
+        }
+
+        // Pays, thème et logo vivent dans settings : on fusionne pour ne pas
+        // effacer les clés que ce formulaire ne porte pas.
+        $settings = $tenant->settings ?? [];
+
+        if ($request->has('country')) {
+            $settings['country'] = $validated['country'] ?? null;
+        }
+
+        if ($request->filled('theme')) {
+            $settings['theme'] = array_merge(
+                $settings['theme'] ?? [],
+                array_filter($validated['theme'] ?? [], fn ($v) => $v !== null && $v !== '')
+            );
+        }
+
+        if ($request->hasFile('logo')) {
+            // L'ancien fichier part avec le nouveau : sans cela, chaque
+            // remplacement laisse un orphelin sur le disque.
+            if (!empty($settings['logo'])) {
+                \Illuminate\Support\Facades\Storage::disk('public')->delete($settings['logo']);
+            }
+            $settings['logo'] = $request->file('logo')->store('logos', 'public');
+        }
+
+        $tenant->settings = $settings;
+        $tenant->save();
+
+        AuditLog::record(
+            $user->id,
+            'update_tenant',
+            "Modification des informations générales de l'établissement {$tenant->name}",
+            'tech_admin',
+            ['tenant_id' => $tenant->id, 'champs' => array_keys($request->except(['_token', '_method', 'slug']))]
+        );
 
         return back()->with('success', 'Établissement mis à jour.');
     }
@@ -1731,7 +1780,22 @@ class AdminAuditController extends Controller
         $admin = Auth::user();
         if (!$admin || !$admin->isTechAdmin()) { abort(403); }
         if ($user->id === $admin->id) { return back()->with('error', 'Auto-désactivation impossible.'); }
+
         $user->update(['is_active' => !$user->is_active]);
+
+        AuditLog::record(
+            $admin->id,
+            'user_management',
+            sprintf(
+                'Compte %s : utilisateur %s (%s)',
+                $user->is_active ? 'réactivé' : 'désactivé',
+                $user->name,
+                $user->email
+            ),
+            'tech_admin',
+            ['user_id' => $user->id, 'is_active' => $user->is_active]
+        );
+
         return back()->with('success', 'Statut utilisateur modifié.');
     }
 
@@ -1741,6 +1805,17 @@ class AdminAuditController extends Controller
         if (!$admin || !$admin->isTechAdmin()) { abort(403); }
         $tempPassword = Str::random(10);
         $user->update(['password' => Hash::make($tempPassword)]);
+
+        // Le mot de passe lui-même ne part évidemment pas au journal : seul
+        // le fait qu'un administrateur ait pris la main sur ce compte y figure.
+        AuditLog::record(
+            $admin->id,
+            'user_management',
+            "Mot de passe réinitialisé pour l'utilisateur {$user->name} ({$user->email})",
+            'tech_admin',
+            ['user_id' => $user->id]
+        );
+
         return back()->with('success', "Mot de passe réinitialisé en : {$tempPassword}");
     }
 

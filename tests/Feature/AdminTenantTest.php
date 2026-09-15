@@ -59,15 +59,22 @@ test('an admin can update tenant general information and upload a logo', functio
     expect($tenant->address)->toBe('New Address 123');
     expect($tenant->phone)->toBe('+237 655 112 233');
     expect($tenant->email)->toBe('new@tenant.cm');
-    // Le contrôleur ne valide que name, address, phone et email : ni le
-    // slug — qui nomme le conteneur et la base —, ni la devise, ni les
-    // réglages de thème ne passent par cette route. Les attentes portant sur
-    // eux décrivaient une version antérieure du formulaire.
+    // Le slug reste figé : il nomme le conteneur et la base de
+    // l'établissement, et le renommer les laisserait orphelins.
+    expect($tenant->currency)->toBe('USD');
+    expect($tenant->settings['country'])->toBe('Cameroun');
+    expect($tenant->settings['theme']['primary'])->toBe('#1E3A8A');
+    expect($tenant->settings['theme']['secondary'])->toBe('#3B82F6');
+    expect($tenant->settings['logo'])->not->toBeEmpty();
+    Storage::disk('public')->assertExists($tenant->settings['logo']);
 
-    // Note : cette action n'écrit aucune entrée au journal d'audit dans cette
-    // version du contrôleur, alors que la connexion, la déconnexion et
-    // l'export de supervision en écrivent une. L'attente correspondante a été
-    // retirée plutôt que maquillée — voir le compte rendu de tri.
+
+    // La modification d'un établissement laisse une trace : c'est le métier
+    // de cette console.
+    $log = AuditLog::where('event_type', 'update_tenant')->latest()->first();
+    expect($log)->not->toBeNull();
+    expect($log->description)->toContain('Modification des informations générales');
+    expect($log->user_id)->toBe($admin->id);
 });
 
 test('a non-admin user cannot update tenant information', function () {

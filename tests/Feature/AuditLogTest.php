@@ -105,9 +105,9 @@ test('admin can toggle user status and reset password', function () {
     $staff->refresh();
     expect($staff->is_active)->toBeFalse();
 
-    // Note : la bascule d'activation n'écrit aucune entrée au journal dans
-    // cette version du contrôleur. L'attente correspondante a été retirée
-    // plutôt que maquillée — voir le compte rendu de tri.
+    $log = AuditLog::where('event_type', 'user_management')->latest('id')->first();
+    expect($log)->not->toBeNull();
+    expect($log->description)->toContain('désactivé');
 
     // Force password reset
     $response = $this->post(route('tech.users.reset-password', $staff));
@@ -116,10 +116,8 @@ test('admin can toggle user status and reset password', function () {
     // pas dans une clé dédiée.
     $response->assertSessionHas('success');
 
-    // Note : cette action n'écrit aucune entrée au journal d'audit dans cette
-    // version du contrôleur, alors que la connexion, la déconnexion et
-    // l'export de supervision en écrivent une. L'attente correspondante a été
-    // retirée plutôt que maquillée — voir le compte rendu de tri.
+    $log = AuditLog::where('event_type', 'user_management')->latest('id')->first();
+    expect($log->description)->toContain('Mot de passe réinitialisé');
 });
 
 test('admin can filter audit logs by event type', function () {
