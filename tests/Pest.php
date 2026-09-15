@@ -58,3 +58,24 @@ function something()
 {
     // ..
 }
+
+/**
+ * Crée un établissement valide.
+ *
+ * La table tenants a gagné des colonnes obligatoires au fil du provisioning —
+ * db_name, owner_id — que les tests écrits avant ne fournissaient pas. Les
+ * rassembler ici évite que chaque nouvelle colonne ne casse à nouveau la
+ * moitié de la suite.
+ *
+ * Les attributs passés priment : un test qui vérifie un slug le fixe lui-même.
+ */
+function etablissementValide(array $attributs = []): \App\Models\Tenant
+{
+    return \App\Models\Tenant::create(array_merge([
+        'name'      => 'Établissement de test',
+        'slug'      => 'etab-' . random_int(1, 999999),
+        'db_name'   => 'db_' . random_int(1000, 999999),
+        'owner_id'  => \App\Models\User::factory()->create(['role' => \App\Models\User::ROLE_OWNER])->id,
+        'is_active' => true,
+    ], $attributs));
+}
