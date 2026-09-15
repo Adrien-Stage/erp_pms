@@ -718,8 +718,9 @@
                     submittingController: false,
                     errorMsgController: '',
                     generatedPasswordController: null,
+                    grcSynchronise: null,
                     nameController: '', emailController: '', phoneController: '',
-                    resetControllerForm() { this.nameController = ''; this.emailController = ''; this.phoneController = ''; this.errorMsgController = ''; this.generatedPasswordController = null; },
+                    resetControllerForm() { this.nameController = ''; this.emailController = ''; this.phoneController = ''; this.errorMsgController = ''; this.generatedPasswordController = null; this.grcSynchronise = null; },
                     submitController() {
                         this.submittingController = true;
                         this.errorMsgController = '';
@@ -737,6 +738,7 @@
                             this.submittingController = false;
                             if (res.status === 201) {
                                 this.generatedPasswordController = res.body.generated_password;
+                                this.grcSynchronise = res.body.grc_synchronise;
                             } else {
                                 this.errorMsgController = res.body.message || 'Une erreur est survenue lors de la création du contrôleur.';
                             }
@@ -946,6 +948,17 @@
                                             Copiez ces identifiants dès maintenant. Le mot de passe ne sera plus jamais affiché.
                                         </p>
                                     </div>
+
+                                    <template x-if="grcSynchronise === false">
+                                        <div class="rounded-lg bg-amber-50 border border-amber-200 p-4 text-xs text-amber-900 space-y-1">
+                                            <div class="font-bold text-sm">⚠ Compte non reporté dans le module GRC</div>
+                                            <p class="leading-relaxed">
+                                                Le compte existe dans l'établissement, mais le conteneur GRC n'a pas pu être
+                                                joint : ces identifiants ne donnent pas encore accès au portail ci-dessous.
+                                                Vérifiez que le module est démarré, puis recréez le compte avec la même adresse.
+                                            </p>
+                                        </div>
+                                    </template>
                                     <div class="space-y-2">
                                         <div>
                                             <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1">Email</label>
