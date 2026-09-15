@@ -483,6 +483,28 @@ class TenantProvisioningService
     }
 
     /**
+     * Clé de signature des jetons du module GRC, propre à cet établissement.
+     *
+     * Même logique que resolveAppKey() : on réutilise la clé déjà figée dans
+     * le compose du tenant, sinon on en tire une nouvelle. Deux raisons de ne
+     * jamais la partager entre établissements ni la coder en dur :
+     *  - un jeton forgé avec une clé commune ouvrirait le GRC de *tous* les
+     *    établissements, et le port GRC est publié sur l'hôte ;
+     *  - la régénérer à chaque update() déconnecterait tous les utilisateurs.
+     */
+    private function resolveGrcSecretKey(string $composePath): string
+    {
+        if (file_exists($composePath)) {
+            $existing = file_get_contents($composePath);
+            if ($existing !== false && preg_match('/^\s*SECRET_KEY:\s*"([^"]+)"/m', $existing, $matches)) {
+                return $matches[1];
+            }
+        }
+
+        return bin2hex(random_bytes(32));
+    }
+
+    /**
      * Échappe une valeur pour l'insérer dans une chaîne YAML *simple-quote*
      * ('...'): seule la quote simple littérale doit être doublée.
      */
@@ -509,6 +531,8 @@ class TenantProvisioningService
         $dbPass       = $tenant->db_password  ?? 'secret';
         $appPort      = $tenant->app_port;
         $appKey       = $this->resolveAppKey($composePath);
+        // Clé de signature des jetons du module GRC — une par établissement.
+        $grcSecretKey = $this->resolveGrcSecretKey($composePath);
         // URL navigable depuis le navigateur (port mappé sur l'hôte) : sert
         // de base à asset()/config('app.url') pour que les images (chambres,
         // logo...) exposées à un service externe comme le site vitrine
@@ -691,6 +715,7 @@ YAML;
       DATABASE_URL: "sqlite:////data/grc.db"
       ERP_API_URL: "http://{$appContainer}"
       REPORTING_SECRET: "{$reportingSecret}"
+      SECRET_KEY: "{$grcSecretKey}"
     volumes:
       - meka_erp_{$tenant->slug}_grcdata:/data
     depends_on:
