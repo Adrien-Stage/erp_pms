@@ -500,6 +500,118 @@ class AdminAuditController extends Controller
     }
 
     /**
+     * Met à jour le module GRC vers la dernière image publiée sur le registre
+     * (tag « latest »). Synchrone, comme updateTenantWebsite — le flux SSE
+     * ci-dessous reste le chemin utilisé par l'interface.
+     */
+    public function updateTenantGrc(Tenant $tenant, \App\Services\TenantProvisioningService $provisioner)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isTechAdmin()) { abort(403); }
+
+        $logs = [];
+        $log  = function (string $step, string $message, string $level = 'info') use (&$logs) {
+            $logs[] = "[{$level}] {$message}";
+        };
+
+        try {
+            $updated = $provisioner->updateGrc($tenant, $log);
+
+            if (!$updated) {
+                return back()->with('success', 'Le module GRC est déjà à la dernière version.');
+            }
+
+            AuditLog::record(
+                $user->id,
+                'update_tenant_grc',
+                "Module GRC mis à jour pour l'établissement {$tenant->name}",
+                'tech_admin',
+                ['logs' => $logs]
+            );
+
+            return back()->with('success', 'Module GRC mis à jour avec succès.');
+        } catch (\RuntimeException $e) {
+            return back()->with('error', "Échec de la mise à jour du GRC : " . $e->getMessage());
+        }
+    }
+
+    /**
+     * SSE endpoint : met à jour le module GRC vers la dernière image publiée
+     * (tag « latest »), en temps réel — même visualisation que les mises à
+     * jour applicative et du site. updateGrc() renvoie false quand le module
+     * est déjà à jour.
+     */
+    public function updateTenantGrcStream(Tenant $tenant, Request $request, \App\Services\TenantProvisioningService $provisioner)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isTechAdmin()) { abort(403); }
+
+        set_time_limit(600);
+        ini_set('max_execution_time', '600');
+
+        return response()->stream(function () use ($tenant, $provisioner) {
+            if (ob_get_level()) {
+                ob_end_clean();
+            }
+            ob_implicit_flush(true);
+
+            $send = function (string $step, string $message, string $level = 'info') {
+                // Chaque ligne streamée repousse la limite d'exécution : une
+                // mise à jour longue ne doit pas être coupée par le timer PHP
+                // tant qu'elle progresse.
+                set_time_limit(300);
+
+                if (mb_strlen($message) > 3000) {
+                    $message = mb_substr($message, 0, 3000) . '…';
+                }
+                $payload = json_encode([
+                    'step'    => $step,
+                    'message' => $message,
+                    'level'   => $level,
+                    'time'    => now()->format('H:i:s'),
+                ]);
+                echo "data: {$payload}\n\n";
+                if (ob_get_level()) {
+                    ob_flush();
+                }
+                flush();
+            };
+
+            try {
+                $updated = $provisioner->updateGrc($tenant, $send);
+
+                if (!$updated) {
+                    $send('finished', 'Le module GRC est déjà à la dernière version.', 'success');
+                    return;
+                }
+
+                AuditLog::record(
+                    Auth::id(),
+                    'update_tenant_grc',
+                    "Module GRC mis à jour pour l'établissement {$tenant->name}",
+                    'tech_admin'
+                );
+
+                $send('finished', 'Module GRC mis à jour avec succès.', 'success');
+
+            } catch (\Throwable $e) {
+                $send('error', $e->getMessage(), 'error');
+
+                AuditLog::record(
+                    Auth::id(),
+                    'update_tenant_grc_error',
+                    "Échec de la mise à jour du GRC de {$tenant->name} : " . $e->getMessage(),
+                    'tech_admin'
+                );
+            }
+        }, 200, [
+            'Content-Type'      => 'text/event-stream',
+            'Cache-Control'     => 'no-cache',
+            'X-Accel-Buffering' => 'no',
+        ]);
+    }
+
+    /**
      * Règle métier (PLAN_REALISATION_ARCHITECTURE.md, Phase 3) : le site
      * vitrine consomme l'API applicative de l'établissement, donc l'activer
      * force "api" — mais l'inverse n'est pas vrai, activer l'API seule ne

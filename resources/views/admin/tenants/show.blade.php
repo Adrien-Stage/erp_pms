@@ -1274,7 +1274,8 @@
                 <div class="space-y-6" x-data="{
                     showDeleteModal: false, confirmSlug: '',
                     showUpdateModal: false, availableTags: [], selectedTag: '', loadingTags: false, updating: false,
-                    showWebModal: false, webUpdating: false
+                    showWebModal: false, webUpdating: false,
+                    showGrcModal: false, grcUpdating: false
                 }">
                     <!-- Technical details card (read-only) -->
                     <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -1364,6 +1365,29 @@
                                         @click="showWebModal = true"
                                         class="shrink-0 rounded-lg bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-sm cursor-pointer">
                                     Mettre à jour le site
+                                </button>
+                            </div>
+                        </div>
+                    @endif
+
+                    {{-- Version du module GRC (module grc uniquement) --}}
+                    @if(in_array('grc', $tenant->modules ?? []))
+                        <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                            <div class="px-6 py-4 border-b border-slate-100">
+                                <h3 class="text-sm font-bold text-slate-800">Version du module GRC</h3>
+                                <p class="text-[10px] text-slate-500 mt-0.5">Image Docker du contrôle de gestion, des risques et de la conformité, figée pour cet établissement — mise à jour vers la dernière version publiée</p>
+                            </div>
+                            <div class="p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
+                                <div class="text-xs">
+                                    <span class="text-slate-450 font-semibold">Digest actuel :</span>
+                                    <span class="font-mono bg-slate-50 border border-slate-200 px-2 py-0.5 rounded ml-2">
+                                        {{ $tenant->grc_image_tag ? \Illuminate\Support\Str::limit($tenant->grc_image_tag, 22, '…') : 'Non résolu' }}
+                                    </span>
+                                </div>
+                                <button type="button"
+                                        @click="showGrcModal = true"
+                                        class="shrink-0 rounded-lg bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-sm cursor-pointer">
+                                    Mettre à jour le GRC
                                 </button>
                             </div>
                         </div>
@@ -1689,6 +1713,69 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Update GRC Modal -->
+                    <div x-show="showGrcModal"
+                         class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+                         x-transition:enter="transition ease-out duration-300"
+                         x-transition:enter-start="opacity-0"
+                         x-transition:enter-end="opacity-100"
+                         x-transition:leave="transition ease-in duration-200"
+                         x-transition:leave-start="opacity-100"
+                         x-transition:leave-end="opacity-0"
+                         x-cloak>
+
+                        <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden max-w-lg w-full"
+                             @click.away="if (!grcUpdating) { showGrcModal = false }"
+                             x-transition:enter="transition ease-out duration-300 transform scale-95"
+                             x-transition:enter-start="opacity-0 scale-95"
+                             x-transition:enter-end="opacity-100 scale-100"
+                             x-transition:leave="transition ease-in duration-200 transform scale-100"
+                             x-transition:leave-start="opacity-100 scale-100"
+                             x-transition:leave-end="opacity-0 scale-95">
+
+                            <!-- Header -->
+                            <div class="bg-slate-950 px-6 py-5 flex items-center gap-3">
+                                <div class="rounded-lg bg-indigo-500/20 p-2">
+                                    <svg class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                                    </svg>
+                                </div>
+                                <h3 class="text-sm font-bold text-white tracking-wide">Mettre à jour le module GRC</h3>
+                            </div>
+
+                            <!-- Confirmation (avant lancement) -->
+                            <div class="p-6 space-y-4" x-show="!grcUpdating">
+                                <p class="text-xs text-slate-600 leading-relaxed">
+                                    Le container du module GRC sera recréé avec la dernière image publiée sur le registre (tag « latest »). Les risques, missions d'audit, politiques et incidents déjà saisis sont conservés — ils vivent dans un volume distinct du container. Si le module est déjà à jour, aucune action n'est effectuée.
+                                </p>
+                            </div>
+
+                            <!-- Logs en direct (pendant la mise à jour) -->
+                            <div x-show="grcUpdating" class="p-6">
+                                <div id="grc-update-log-output" class="font-mono text-xs text-slate-300 space-y-1.5 bg-slate-950/70 rounded-lg p-5 border border-slate-850 overflow-y-auto h-64" style="word-break: break-word; overflow-wrap: break-word;"></div>
+                                <div class="mt-3 flex justify-end">
+                                    <button type="button" onclick="copyLogText('grc-update-log-output', this)"
+                                            class="rounded border border-slate-700 bg-slate-800 px-2.5 py-1 text-[10px] font-bold text-slate-300 hover:bg-slate-700 hover:text-white transition cursor-pointer">
+                                        Copier les logs
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Footer Actions -->
+                            <div class="bg-slate-50 px-6 py-4 border-t border-slate-100 flex items-center justify-end gap-3">
+                                <button @click="showGrcModal = false" type="button" x-show="!grcUpdating"
+                                        class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer">
+                                    Annuler
+                                </button>
+                                <button type="button" x-show="!grcUpdating"
+                                        @click="grcUpdating = true; startGrcUpdateStream()"
+                                        class="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 transition cursor-pointer shadow-sm">
+                                    Lancer la mise à jour
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <script>
@@ -1784,6 +1871,65 @@
                     evtSource.onerror = function () {
                         evtSource.close();
                     };
+                }
+
+                /**
+                 * Branche un flux SSE de mise à jour sur une zone de logs.
+                 * Même rendu que les deux fonctions ci-dessus, factorisé :
+                 * seules l'URL et la cible changent d'une mise à jour à l'autre.
+                 */
+                function streamUpdateLog(streamUrl, outputId, label) {
+                    const logOutput = document.getElementById(outputId);
+                    logOutput.innerHTML = '';
+                    const evtSource = new EventSource(streamUrl);
+
+                    evtSource.onmessage = function (event) {
+                        try {
+                            const data = JSON.parse(event.data);
+                            const line = document.createElement('div');
+                            line.className = 'flex gap-2.5 items-start py-0.5 border-b border-slate-900/10';
+
+                            const timeSpan = document.createElement('span');
+                            timeSpan.className = 'text-slate-500 shrink-0 font-semibold select-none';
+                            timeSpan.textContent = `[${data.time}]`;
+
+                            const msgSpan = document.createElement('span');
+                            msgSpan.className = {
+                                'success': 'text-emerald-400 font-semibold',
+                                'error':   'text-red-400 font-semibold',
+                                'warning': 'text-amber-400',
+                                'info':    'text-slate-300',
+                            }[data.level] || 'text-slate-300';
+                            msgSpan.textContent = data.message;
+
+                            line.appendChild(timeSpan);
+                            line.appendChild(msgSpan);
+                            logOutput.appendChild(line);
+                            logOutput.scrollTop = logOutput.scrollHeight;
+
+                            if (data.step === 'done' || data.step === 'finished') {
+                                evtSource.close();
+                                setTimeout(() => location.reload(), 1500);
+                            }
+                            if (data.level === 'error' || data.step === 'error') {
+                                evtSource.close();
+                            }
+                        } catch (e) {
+                            console.error(`Error parsing ${label} update stream payload:`, e);
+                        }
+                    };
+
+                    evtSource.onerror = function () {
+                        evtSource.close();
+                    };
+                }
+
+                function startGrcUpdateStream() {
+                    streamUpdateLog(
+                        '{{ route("tech.establishments.update-grc.stream", $tenant) }}',
+                        'grc-update-log-output',
+                        'GRC'
+                    );
                 }
                 </script>
 

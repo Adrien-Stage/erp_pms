@@ -119,6 +119,8 @@ Route::middleware(['auth', 'role:tech_admin'])->prefix('tech')->name('tech.')->g
     Route::get('/establishments/{tenant}/update-version/stream', [AdminAuditController::class, 'updateTenantVersionStream'])->name('establishments.update-version.stream');
     Route::post('/establishments/{tenant}/update-website', [AdminAuditController::class, 'updateTenantWebsite'])->name('establishments.update-website');
     Route::get('/establishments/{tenant}/update-website/stream', [AdminAuditController::class, 'updateTenantWebsiteStream'])->name('establishments.update-website.stream');
+    Route::post('/establishments/{tenant}/update-grc', [AdminAuditController::class, 'updateTenantGrc'])->name('establishments.update-grc');
+    Route::get('/establishments/{tenant}/update-grc/stream', [AdminAuditController::class, 'updateTenantGrcStream'])->name('establishments.update-grc.stream');
 
     // Gestion des Utilisateurs ( TECH et BUSINESS )
     Route::post('/users/{user}/toggle-active', [AdminAuditController::class, 'toggleUserActive'])->name('users.toggle-active');
