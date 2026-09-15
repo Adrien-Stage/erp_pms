@@ -14,6 +14,17 @@ use Tests\TestCase;
 */
 
 pest()->extend(TestCase::class)
+    ->beforeEach(function () {
+        // Les vues appellent @vite. Hors serveur de développement, Laravel va
+        // chercher le manifeste produit par « npm run build » — absent d'un
+        // dépôt fraîchement cloné, puisque public/build et public/hot sont
+        // tous deux ignorés par git. Chaque test rendant une vue repart alors
+        // en 500, pour une raison étrangère à ce qu'il vérifie.
+        //
+        // La compilation reste contrôlée là où elle compte : l'image de
+        // production exécute « npm run build ».
+        $this->withoutVite();
+    })
  // ->use(Illuminate\Foundation\Testing\RefreshDatabase::class)
     ->in('Feature');
 
