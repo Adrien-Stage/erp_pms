@@ -179,6 +179,10 @@ class AdminAuditController extends Controller
             'country' => $request->country ?? 'Cameroun',
             'city' => $request->city ?? 'Douala',
             'logo' => $logoPath,
+            // Intention mémorisée, pas encore exécutée : la base de
+            // l'établissement n'existe pas à cet instant. Le flux de
+            // provisioning l'installera une fois les migrations passées.
+            'seed_demo_data' => $request->boolean('seed_demo_data'),
             'theme' => $request->theme ?? [
                 'primary' => '#391F0E',
                 'secondary' => '#CCAB87',
@@ -216,6 +220,9 @@ class AdminAuditController extends Controller
             'is_active'            => true,
             'settings'             => $settings,
             'modules'              => $modules,
+            'api_enabled'          => in_array('api', $modules, true),
+            'website_enabled'      => in_array('website', $modules, true),
+            'grc_enabled'          => in_array('grc', $modules, true),
         ]);
 
         AuditLog::record(
@@ -263,7 +270,14 @@ class AdminAuditController extends Controller
             }
         }
 
-        return view('admin.tenants.show', compact('tenant', 'tenantUsers', 'tenantRoles', 'section'));
+        // Uniquement pour l'onglet qui l'affiche : la sonde ouvre une connexion
+        // à la base de l'établissement, inutile sur les autres écrans.
+        $demoDataInstalled = $section === 'settings'
+            && app(\App\Services\DemoDataService::class)->estInstalle($tenant);
+
+        return view('admin.tenants.show', compact(
+            'tenant', 'tenantUsers', 'tenantRoles', 'section', 'demoDataInstalled'
+        ));
     }
 
     /**
@@ -309,13 +323,62 @@ class AdminAuditController extends Controller
         if (!$user || !$user->isTechAdmin()) { abort(403); }
         
         $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'address' => ['nullable', 'string', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:30'],
-            'email' => ['nullable', 'email', 'max:255'],
+            'name'     => ['required', 'string', 'max:255'],
+            'address'  => ['nullable', 'string', 'max:255'],
+            'phone'    => ['nullable', 'string', 'max:30'],
+            'email'    => ['nullable', 'email', 'max:255'],
+            'country'  => ['nullable', 'string', 'max:100'],
+            'currency' => ['nullable', 'string', 'size:3'],
+            'logo'     => ['nullable', 'image', 'mimes:png,jpg,jpeg,gif,webp', 'max:2048'],
+            'theme'    => ['nullable', 'array'],
+            'theme.*'  => ['nullable', 'string', 'regex:/^#[0-9A-Fa-f]{6}$/'],
+        ], [
+            'theme.*.regex' => 'Chaque couleur doit être une valeur hexadécimale de la forme #RRGGBB.',
         ]);
 
-        $tenant->update($validated);
+        // Le slug est posté par le formulaire mais volontairement ignoré : il
+        // nomme le conteneur applicatif et la base de l'établissement, et le
+        // renommer ici les laisserait orphelins sans rien redéployer.
+        $tenant->fill(collect($validated)->only(['name', 'address', 'phone', 'email'])->all());
+
+        if ($request->filled('currency')) {
+            $tenant->currency = strtoupper($request->string('currency')->toString());
+        }
+
+        // Pays, thème et logo vivent dans settings : on fusionne pour ne pas
+        // effacer les clés que ce formulaire ne porte pas.
+        $settings = $tenant->settings ?? [];
+
+        if ($request->has('country')) {
+            $settings['country'] = $validated['country'] ?? null;
+        }
+
+        if ($request->filled('theme')) {
+            $settings['theme'] = array_merge(
+                $settings['theme'] ?? [],
+                array_filter($validated['theme'] ?? [], fn ($v) => $v !== null && $v !== '')
+            );
+        }
+
+        if ($request->hasFile('logo')) {
+            // L'ancien fichier part avec le nouveau : sans cela, chaque
+            // remplacement laisse un orphelin sur le disque.
+            if (!empty($settings['logo'])) {
+                \Illuminate\Support\Facades\Storage::disk('public')->delete($settings['logo']);
+            }
+            $settings['logo'] = $request->file('logo')->store('logos', 'public');
+        }
+
+        $tenant->settings = $settings;
+        $tenant->save();
+
+        AuditLog::record(
+            $user->id,
+            'update_tenant',
+            "Modification des informations générales de l'établissement {$tenant->name}",
+            'tech_admin',
+            ['tenant_id' => $tenant->id, 'champs' => array_keys($request->except(['_token', '_method', 'slug']))]
+        );
 
         return back()->with('success', 'Établissement mis à jour.');
     }
@@ -336,11 +399,16 @@ class AdminAuditController extends Controller
         // n'envoie rien → le module disparaît de la liste (désactivation). On filtre
         // par intersection plutôt qu'avec Rule::in : une entrée vide/parasite ne doit
         // pas faire échouer toute la requête et laisser la désactivation sans effet.
-        $allowed = ['restaurant', 'shop', 'housekeeping', 'discussions', 'analytics', 'ledger', 'api', 'website'];
+        $allowed = ['restaurant', 'shop', 'housekeeping', 'discussions', 'analytics', 'ledger', 'api', 'website', 'grc'];
         $modules = array_values(array_intersect($allowed, (array) $request->input('modules', [])));
 
         $modules = $this->applyModuleDependencies($modules);
-        $tenant->update(['modules' => $modules]);
+        $tenant->update([
+            'modules'         => $modules,
+            'api_enabled'     => in_array('api', $modules, true),
+            'website_enabled' => in_array('website', $modules, true),
+            'grc_enabled'     => in_array('grc', $modules, true),
+        ]);
 
         if (empty($tenant->docker_image_tag)) {
             return back()->with('error', "Cet établissement n'est pas encore provisionné — les modules seront appliqués au premier provisioning.");
@@ -481,6 +549,118 @@ class AdminAuditController extends Controller
     }
 
     /**
+     * Met à jour le module GRC vers la dernière image publiée sur le registre
+     * (tag « latest »). Synchrone, comme updateTenantWebsite — le flux SSE
+     * ci-dessous reste le chemin utilisé par l'interface.
+     */
+    public function updateTenantGrc(Tenant $tenant, \App\Services\TenantProvisioningService $provisioner)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isTechAdmin()) { abort(403); }
+
+        $logs = [];
+        $log  = function (string $step, string $message, string $level = 'info') use (&$logs) {
+            $logs[] = "[{$level}] {$message}";
+        };
+
+        try {
+            $updated = $provisioner->updateGrc($tenant, $log);
+
+            if (!$updated) {
+                return back()->with('success', 'Le module GRC est déjà à la dernière version.');
+            }
+
+            AuditLog::record(
+                $user->id,
+                'update_tenant_grc',
+                "Module GRC mis à jour pour l'établissement {$tenant->name}",
+                'tech_admin',
+                ['logs' => $logs]
+            );
+
+            return back()->with('success', 'Module GRC mis à jour avec succès.');
+        } catch (\RuntimeException $e) {
+            return back()->with('error', "Échec de la mise à jour du GRC : " . $e->getMessage());
+        }
+    }
+
+    /**
+     * SSE endpoint : met à jour le module GRC vers la dernière image publiée
+     * (tag « latest »), en temps réel — même visualisation que les mises à
+     * jour applicative et du site. updateGrc() renvoie false quand le module
+     * est déjà à jour.
+     */
+    public function updateTenantGrcStream(Tenant $tenant, Request $request, \App\Services\TenantProvisioningService $provisioner)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isTechAdmin()) { abort(403); }
+
+        set_time_limit(600);
+        ini_set('max_execution_time', '600');
+
+        return response()->stream(function () use ($tenant, $provisioner) {
+            if (ob_get_level()) {
+                ob_end_clean();
+            }
+            ob_implicit_flush(true);
+
+            $send = function (string $step, string $message, string $level = 'info') {
+                // Chaque ligne streamée repousse la limite d'exécution : une
+                // mise à jour longue ne doit pas être coupée par le timer PHP
+                // tant qu'elle progresse.
+                set_time_limit(300);
+
+                if (mb_strlen($message) > 3000) {
+                    $message = mb_substr($message, 0, 3000) . '…';
+                }
+                $payload = json_encode([
+                    'step'    => $step,
+                    'message' => $message,
+                    'level'   => $level,
+                    'time'    => now()->format('H:i:s'),
+                ]);
+                echo "data: {$payload}\n\n";
+                if (ob_get_level()) {
+                    ob_flush();
+                }
+                flush();
+            };
+
+            try {
+                $updated = $provisioner->updateGrc($tenant, $send);
+
+                if (!$updated) {
+                    $send('finished', 'Le module GRC est déjà à la dernière version.', 'success');
+                    return;
+                }
+
+                AuditLog::record(
+                    Auth::id(),
+                    'update_tenant_grc',
+                    "Module GRC mis à jour pour l'établissement {$tenant->name}",
+                    'tech_admin'
+                );
+
+                $send('finished', 'Module GRC mis à jour avec succès.', 'success');
+
+            } catch (\Throwable $e) {
+                $send('error', $e->getMessage(), 'error');
+
+                AuditLog::record(
+                    Auth::id(),
+                    'update_tenant_grc_error',
+                    "Échec de la mise à jour du GRC de {$tenant->name} : " . $e->getMessage(),
+                    'tech_admin'
+                );
+            }
+        }, 200, [
+            'Content-Type'      => 'text/event-stream',
+            'Cache-Control'     => 'no-cache',
+            'X-Accel-Buffering' => 'no',
+        ]);
+    }
+
+    /**
      * Règle métier (PLAN_REALISATION_ARCHITECTURE.md, Phase 3) : le site
      * vitrine consomme l'API applicative de l'établissement, donc l'activer
      * force "api" — mais l'inverse n'est pas vrai, activer l'API seule ne
@@ -489,7 +669,8 @@ class AdminAuditController extends Controller
      */
     private function applyModuleDependencies(array $modules): array
     {
-        if (in_array('website', $modules, true) && !in_array('api', $modules, true)) {
+        // Activer le site web OU le module GRC active automatiquement le module API
+        if ((in_array('website', $modules, true) || in_array('grc', $modules, true)) && !in_array('api', $modules, true)) {
             $modules[] = 'api';
         }
 
@@ -814,6 +995,31 @@ class AdminAuditController extends Controller
                     'tech_admin'
                 );
 
+                // Données de démonstration, si la case a été cochée à la
+                // création. Après le provisioning seulement : les migrations
+                // doivent avoir créé les tables. Un échec ici n'invalide pas le
+                // provisioning — l'établissement reste utilisable, vide.
+                if (($tenant->settings['seed_demo_data'] ?? false) === true) {
+                    try {
+                        $resultat = app(\App\Services\DemoDataService::class)->install($tenant, $send);
+
+                        AuditLog::record(
+                            Auth::id(),
+                            'seed_demo_data',
+                            "Données de démonstration installées pour {$tenant->name} ({$resultat['total']} enregistrements)",
+                            'tech_admin'
+                        );
+                    } catch (\Throwable $e) {
+                        $send('warning', "Données de démonstration non installées : {$e->getMessage()}", 'error');
+                    } finally {
+                        // L'intention est consommée : une mise à jour ultérieure
+                        // ne doit pas réinstaller le jeu à l'insu de l'exploitant.
+                        $reglages = $tenant->settings ?? [];
+                        unset($reglages['seed_demo_data']);
+                        $tenant->update(['settings' => $reglages]);
+                    }
+                }
+
                 $send('finished', 'Provisioning terminé avec succès.', 'success');
 
             } catch (\Throwable $e) {
@@ -978,6 +1184,110 @@ class AdminAuditController extends Controller
         return back()->with('success', "Container de « {$tenant->name} » redémarré.");
     }
 
+    /**
+     * Installe le jeu de démonstration dans un établissement déjà provisionné.
+     *
+     * Rejouable : les seeders ne recréent jamais ce qui existe déjà. C'est ce
+     * qui permet de relancer l'action après avoir activé un nouveau module, pour
+     * ne peupler que celui-ci.
+     */
+    public function seedDemoData(Tenant $tenant, \App\Services\DemoDataService $demo)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isTechAdmin()) { abort(403); }
+
+        if ($tenant->docker_status !== 'running') {
+            return back()->with('error', "Le container de « {$tenant->name} » doit être démarré pour installer les données.");
+        }
+
+        $lignes = [];
+        $log = function (string $etape, string $message, string $niveau = 'info') use (&$lignes) {
+            $lignes[] = $message;
+        };
+
+        try {
+            $resultat = $demo->install($tenant, $log);
+
+            AuditLog::record(
+                Auth::id(),
+                'seed_demo_data',
+                "Données de démonstration installées pour {$tenant->name} ({$resultat['total']} enregistrements)",
+                'tech_admin',
+                ['logs' => $lignes]
+            );
+
+            return back()->with('success', $resultat['total'] > 0
+                ? "{$resultat['total']} enregistrement(s) de démonstration installés dans « {$tenant->name} »."
+                : "« {$tenant->name} » possédait déjà l'ensemble du jeu de démonstration : rien à ajouter.");
+
+        } catch (\Throwable $e) {
+            AuditLog::record(
+                Auth::id(),
+                'seed_demo_error',
+                "Échec de l'installation des données de démonstration pour {$tenant->name} : " . $e->getMessage(),
+                'tech_admin'
+            );
+
+            return back()->with('error', "Installation impossible : {$e->getMessage()}");
+        }
+    }
+
+    /**
+     * Retire le jeu de démonstration d'un établissement.
+     *
+     * Action destructive, donc bornée : seuls les enregistrements portant un
+     * marqueur d'installation sont éligibles, et le catalogue encore utilisé
+     * par des données réelles est conservé (voir Demo\Purger).
+     */
+    public function purgeDemoData(Tenant $tenant, \App\Services\DemoDataService $demo)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->isTechAdmin()) { abort(403); }
+
+        if ($tenant->docker_status !== 'running') {
+            return back()->with('error', "Le container de « {$tenant->name} » doit être démarré pour retirer les données.");
+        }
+
+        $lignes = [];
+        $log = function (string $etape, string $message, string $niveau = 'info') use (&$lignes) {
+            $lignes[] = $message;
+        };
+
+        try {
+            $resultat = $demo->purge($tenant, $log);
+
+            AuditLog::record(
+                Auth::id(),
+                'purge_demo_data',
+                "Données de démonstration retirées de {$tenant->name} ({$resultat['total']} enregistrements)",
+                'tech_admin',
+                ['logs' => $lignes]
+            );
+
+            $message = $resultat['total'] > 0
+                ? "{$resultat['total']} enregistrement(s) de démonstration retirés de « {$tenant->name} »."
+                : "Aucune donnée de démonstration à retirer dans « {$tenant->name} ».";
+
+            // Ce qui a été épargné se dit à l'écran : sans cela, l'utilisateur
+            // croit la purge incomplète en retrouvant des chambres fictives.
+            if ($resultat['kept'] !== []) {
+                $message .= ' Conservé — ' . implode(' ', $resultat['kept']);
+            }
+
+            return back()->with('success', $message);
+
+        } catch (\Throwable $e) {
+            AuditLog::record(
+                Auth::id(),
+                'purge_demo_error',
+                "Échec du retrait des données de démonstration pour {$tenant->name} : " . $e->getMessage(),
+                'tech_admin'
+            );
+
+            return back()->with('error', "Retrait impossible : {$e->getMessage()}");
+        }
+    }
+
     public function provisionTenant(Tenant $tenant)
     {
         $user = Auth::user();
@@ -1026,11 +1336,15 @@ class AdminAuditController extends Controller
             'app_status'    => $health['app_status'],
             'db_status'     => $health['db_status'],
             'web_status'    => $health['web_status'] ?? null,
+            'grc_status'    => $health['grc_status'] ?? null,
             'has_website'   => in_array('website', $tenant->modules ?? [], true),
+            'has_grc'       => in_array('grc', $tenant->modules ?? [], true),
             'modules'       => $tenant->modules ?? [],
             'app_url'       => $tenant->app_port ? 'http://localhost:' . $tenant->app_port : null,
+            'grc_url'       => $tenant->grc_port ? 'http://localhost:' . $tenant->grc_port : null,
             'image_tag'     => $tenant->docker_image_tag,
             'web_image_tag' => $tenant->web_image_tag,
+            'grc_image_tag' => $tenant->grc_image_tag,
             'last_health'   => $tenant->last_health_check?->diffForHumans(),
             'reachable'     => false,
             'users'         => null,
@@ -1375,9 +1689,12 @@ class AdminAuditController extends Controller
                 'app_status'    => $health['app_status'],
                 'db_status'     => $health['db_status'],
                 'web_status'    => $health['web_status'] ?? null,
+                'grc_status'    => $health['grc_status'] ?? null,
                 'has_website'   => in_array('website', $tenant->modules ?? [], true),
+                'has_grc'       => in_array('grc', $tenant->modules ?? [], true),
                 'app_port'      => $tenant->app_port,
                 'web_port'      => $tenant->web_port ?? ($tenant->app_port ? $tenant->app_port + 1000 : null),
+                'grc_port'      => $tenant->grc_port ?? ($tenant->app_port ? $tenant->app_port + 2000 : null),
                 'users_count'   => (int) ($tenant->users_count ?? 0),
                 'bookings_today' => null,
                 'arrivals_today' => null,
@@ -1409,6 +1726,12 @@ class AdminAuditController extends Controller
                 }
                 if ($row['has_website'] && !$tenant->docker_web_container) {
                     $alerts[] = ['level' => 'warning', 'tenant' => $tenant->name, 'message' => "Module Site web actif mais aucun container web provisionné — réappliquer les modules."];
+                }
+                if ($row['has_grc'] && $tenant->docker_grc_container && ($health['grc_status'] ?? 'absent') !== 'running') {
+                    $alerts[] = ['level' => 'warning', 'tenant' => $tenant->name, 'message' => "Module GRC « {$health['grc_status']} » — la plateforme de contrôle de gestion est indisponible."];
+                }
+                if ($row['has_grc'] && !$tenant->docker_grc_container) {
+                    $alerts[] = ['level' => 'warning', 'tenant' => $tenant->name, 'message' => "Module GRC actif mais aucun container GRC provisionné — réappliquer les modules."];
                 }
             }
 
@@ -1457,7 +1780,22 @@ class AdminAuditController extends Controller
         $admin = Auth::user();
         if (!$admin || !$admin->isTechAdmin()) { abort(403); }
         if ($user->id === $admin->id) { return back()->with('error', 'Auto-désactivation impossible.'); }
+
         $user->update(['is_active' => !$user->is_active]);
+
+        AuditLog::record(
+            $admin->id,
+            'user_management',
+            sprintf(
+                'Compte %s : utilisateur %s (%s)',
+                $user->is_active ? 'réactivé' : 'désactivé',
+                $user->name,
+                $user->email
+            ),
+            'tech_admin',
+            ['user_id' => $user->id, 'is_active' => $user->is_active]
+        );
+
         return back()->with('success', 'Statut utilisateur modifié.');
     }
 
@@ -1467,6 +1805,17 @@ class AdminAuditController extends Controller
         if (!$admin || !$admin->isTechAdmin()) { abort(403); }
         $tempPassword = Str::random(10);
         $user->update(['password' => Hash::make($tempPassword)]);
+
+        // Le mot de passe lui-même ne part évidemment pas au journal : seul
+        // le fait qu'un administrateur ait pris la main sur ce compte y figure.
+        AuditLog::record(
+            $admin->id,
+            'user_management',
+            "Mot de passe réinitialisé pour l'utilisateur {$user->name} ({$user->email})",
+            'tech_admin',
+            ['user_id' => $user->id]
+        );
+
         return back()->with('success', "Mot de passe réinitialisé en : {$tempPassword}");
     }
 
@@ -2153,6 +2502,98 @@ class AdminAuditController extends Controller
 
         } catch (\PDOException $e) {
             \Illuminate\Support\Facades\Log::error("Failed to connect or insert manager in tenant database {$tenant->db_name}: " . $e->getMessage());
+            return response()->json([
+                'message' => "Impossible de se connecter à la base de données de l'établissement: " . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function createTenantController(Request $request, Tenant $tenant)
+    {
+        $user = Auth::user();
+        if (!$user) { abort(401); }
+        if (!$user->isTechAdmin() && ($tenant->owner_id !== $user->id)) {
+            abort(403, "Vous n'avez pas l'autorisation de gérer cet établissement.");
+        }
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:30'],
+            'password' => ['nullable', 'string', 'min:4'],
+        ]);
+
+        $generatedPassword = null;
+        if (empty($validated['password'])) {
+            $generatedPassword = Str::random(10);
+            $validated['password'] = $generatedPassword;
+        }
+
+        try {
+            $pdo = $this->connectToTenantDatabase($tenant);
+
+            $stmt = $pdo->prepare("SELECT 1 FROM users WHERE email = ?");
+            $stmt->execute([$validated['email']]);
+            if ($stmt->fetch()) {
+                return response()->json([
+                    'message' => "Un utilisateur avec cet email existe déjà dans cet établissement."
+                ], 422);
+            }
+
+            $hashedPassword = Hash::make($validated['password']);
+
+            $stmt = $pdo->prepare("
+                INSERT INTO users (name, email, phone, password, role, is_active, created_at, updated_at) 
+                VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())
+            ");
+            
+            $stmt->execute([
+                $validated['name'],
+                $validated['email'],
+                $validated['phone'] ?? null,
+                $hashedPassword,
+                'controller',
+                true
+            ]);
+
+            $tenant->increment('users_count');
+
+            // Synchronisation / provisioning direct dans le conteneur Wetchah_GRC
+            if ($tenant->hasModule('grc') && $tenant->grc_port) {
+                try {
+                    $grcUrl = "http://127.0.0.1:{$tenant->grc_port}/api/v1/users/provision-from-erp";
+                    $reportingSecret = config('provisioning.reporting_secret', env('REPORTING_SECRET'));
+                    \Illuminate\Support\Facades\Http::timeout(5)
+                        ->withToken($reportingSecret)
+                        ->post($grcUrl, [
+                            'email' => $validated['email'],
+                            'password' => $validated['password'],
+                            'full_name' => $validated['name'],
+                            'phone' => $validated['phone'] ?? null,
+                            'role' => 'controller',
+                            'department' => 'Contrôle de Gestion & Finance',
+                            'is_active' => true,
+                        ]);
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning("Could not auto-provision controller into GRC container for {$tenant->slug}: " . $e->getMessage());
+                }
+            }
+
+            AuditLog::record(
+                Auth::id(),
+                'create_controller',
+                "Création du contrôleur de gestion {$validated['name']} ({$validated['email']}) pour l'établissement {$tenant->name}",
+                $user->role
+            );
+
+            return response()->json([
+                'success' => true,
+                'message' => "Contrôleur de gestion créé avec succès.",
+                'generated_password' => $generatedPassword,
+            ], 201);
+
+        } catch (\PDOException $e) {
+            \Illuminate\Support\Facades\Log::error("Failed to connect or insert controller in tenant database {$tenant->db_name}: " . $e->getMessage());
             return response()->json([
                 'message' => "Impossible de se connecter à la base de données de l'établissement: " . $e->getMessage()
             ], 500);

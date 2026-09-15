@@ -43,6 +43,11 @@ class TenantRoles
                 'description' => 'Journal des dépenses, écritures et rapports de trésorerie.',
                 'module' => 'accounting',
             ],
+            'controller' => [
+                'label' => 'Contrôleur de gestion / Auditeur',
+                'description' => 'Supervision de la gouvernance, des risques, du contrôle interne et des audits via Wetchah_GRC.',
+                'module' => 'grc',
+            ],
             'housekeeping_leader' => [
                 'label' => 'Gouvernant(e)',
                 'description' => 'Planification du nettoyage, affectation des équipes d\'étage.',

@@ -88,6 +88,7 @@ Route::middleware(['auth', 'role:tech_admin'])->prefix('tech')->name('tech.')->g
     Route::post('/establishments/{tenant}', [AdminAuditController::class, 'updateTenant'])->name('establishments.update');
     Route::delete('/establishments/{tenant}', [AdminAuditController::class, 'destroyTenant'])->name('establishments.destroy');
     Route::post('/establishments/{tenant}/create-manager', [AdminAuditController::class, 'createTenantManager'])->name('establishments.create-manager');
+    Route::post('/establishments/{tenant}/create-controller', [AdminAuditController::class, 'createTenantController'])->name('establishments.create-controller');
 
     // Employés de l'établissement : ils vivent dans la base du tenant, donc
     // toute modification faite ici est immédiatement effective dans wetchah_app.
@@ -111,11 +112,15 @@ Route::middleware(['auth', 'role:tech_admin'])->prefix('tech')->name('tech.')->g
     Route::post('/establishments/{tenant}/start', [AdminAuditController::class, 'startTenant'])->name('establishments.start');
     Route::post('/establishments/{tenant}/stop', [AdminAuditController::class, 'stopTenant'])->name('establishments.stop');
     Route::post('/establishments/{tenant}/restart', [AdminAuditController::class, 'restartTenant'])->name('establishments.restart');
+    Route::post('/establishments/{tenant}/demo-data', [AdminAuditController::class, 'seedDemoData'])->name('establishments.demo-data');
+    Route::delete('/establishments/{tenant}/demo-data', [AdminAuditController::class, 'purgeDemoData'])->name('establishments.demo-data.purge');
     Route::get('/establishments/{tenant}/health', [AdminAuditController::class, 'healthCheckTenant'])->name('establishments.health');
     Route::get('/establishments/{tenant}/versions', [AdminAuditController::class, 'availableVersions'])->name('establishments.versions');
     Route::get('/establishments/{tenant}/update-version/stream', [AdminAuditController::class, 'updateTenantVersionStream'])->name('establishments.update-version.stream');
     Route::post('/establishments/{tenant}/update-website', [AdminAuditController::class, 'updateTenantWebsite'])->name('establishments.update-website');
     Route::get('/establishments/{tenant}/update-website/stream', [AdminAuditController::class, 'updateTenantWebsiteStream'])->name('establishments.update-website.stream');
+    Route::post('/establishments/{tenant}/update-grc', [AdminAuditController::class, 'updateTenantGrc'])->name('establishments.update-grc');
+    Route::get('/establishments/{tenant}/update-grc/stream', [AdminAuditController::class, 'updateTenantGrcStream'])->name('establishments.update-grc.stream');
 
     // Gestion des Utilisateurs ( TECH et BUSINESS )
     Route::post('/users/{user}/toggle-active', [AdminAuditController::class, 'toggleUserActive'])->name('users.toggle-active');
@@ -141,6 +146,7 @@ Route::middleware(['auth', 'role:owner'])->prefix('business')->name('business.')
     Route::get('/establishments/{tenant}', [AdminAuditController::class, 'businessShowTenant'])->name('establishments.show');
     Route::get('/establishments/{tenant}/finance-data', [AdminAuditController::class, 'businessEstablishmentFinance'])->name('establishments.finance-data');
     Route::post('/establishments/{tenant}/create-manager', [AdminAuditController::class, 'createTenantManager'])->name('establishments.create-manager');
+    Route::post('/establishments/{tenant}/create-controller', [AdminAuditController::class, 'createTenantController'])->name('establishments.create-controller');
     Route::get('/analytics', [AdminAuditController::class, 'businessDashboard'])->name('analytics');
     Route::get('/clients', [AdminAuditController::class, 'businessDashboard'])->name('clients');
     Route::get('/employees', [AdminAuditController::class, 'businessDashboard'])->name('employees');

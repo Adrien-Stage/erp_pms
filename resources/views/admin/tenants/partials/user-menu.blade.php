@@ -11,8 +11,17 @@
     $rolesActuels = collect($user->roles ?? [])->pluck('slug')->all();
     $niveauxActuels = collect($user->roles ?? [])->mapWithKeys(fn ($r) => [$r['slug'] => $r['level']])->all();
 @endphp
-<div x-data="{ open: false }" @keydown.escape.window="open = false" class="relative inline-block text-left">
-    <button type="button" @click="open = !open" @click.outside="open = false"
+<div x-data="{
+        open: false,
+        menuTop: 0, menuLeft: 0,
+        openMenu() {
+            const r = $refs.btn.getBoundingClientRect();
+            this.menuTop = r.bottom + window.scrollY + 4;
+            this.menuLeft = r.right + window.scrollX - 240;
+            this.open = true;
+        },
+    }" @keydown.escape.window="open = false" class="inline-block text-left">
+    <button type="button" x-ref="btn" @click="open ? (open = false) : openMenu()"
             class="rounded-md p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
             :aria-expanded="open" aria-haspopup="true"
             aria-label="Actions pour {{ $user->name }}">
@@ -21,8 +30,14 @@
         </svg>
     </button>
 
+    {{-- Téléportée hors de la carte (overflow-hidden) et du tableau : sinon
+         le menu se retrouve tronqué par le clip de son ancêtre, quel que
+         soit son z-index. --}}
+    <template x-teleport="body">
     <div x-show="open" x-cloak x-transition.opacity.duration.100ms
-         class="absolute right-0 z-20 mt-1 w-60 origin-top-right overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg"
+         @click.outside="if (!$refs.btn.contains($event.target)) open = false"
+         :style="`top: ${menuTop}px; left: ${menuLeft}px;`"
+         class="fixed z-50 w-60 origin-top-right overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg"
          role="menu">
 
         <a href="{{ route('tech.establishments.users.show', ['tenant' => $tenant, 'user' => $user->id]) }}"
@@ -36,7 +51,7 @@
 
         <div class="border-t border-slate-100"></div>
 
-        <button type="button" @click="open = false; window.openTenantUserEdit(this)"
+        <button type="button" @click="open = false; window.openTenantUserEdit($el)"
                 data-id="{{ $user->id }}"
                 data-name="{{ $user->name }}"
                 data-email="{{ $user->email }}"
@@ -88,4 +103,5 @@
             </button>
         </form>
     </div>
+    </template>
 </div>

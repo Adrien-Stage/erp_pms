@@ -16,6 +16,7 @@ class Tenant extends Model
         'address',
         'phone',
         'email',
+        'currency',
         
         // Configuration Docker / Base de données
         'db_name',
@@ -24,16 +25,20 @@ class Tenant extends Model
         'docker_app_container',
         'docker_db_container',
         'docker_web_container',
+        'docker_grc_container',
         'docker_status', // running, stopped, creating, error
         'docker_image_tag', // digest (sha256:...) de l'image ghcr.io figé pour ce tenant
         'web_image_tag', // digest de l'image wetchah_site figé pour ce tenant (module website)
+        'grc_image_tag', // digest de l'image wetchah_GRC figé pour ce tenant (module grc)
         'app_port',
         'db_port',
         'web_port',
+        'grc_port',
 
         // Modules & Features
         'api_enabled',
         'website_enabled',
+        'grc_enabled',
         'modules',
         
         // Propriétaire et statut
@@ -56,6 +61,7 @@ class Tenant extends Model
         'users_count' => 'integer',
         'api_enabled' => 'boolean',
         'website_enabled' => 'boolean',
+        'grc_enabled' => 'boolean',
         'provisioned_at' => 'datetime',
         'last_health_check' => 'datetime',
     ];
@@ -66,5 +72,46 @@ class Tenant extends Model
     public function owner(): BelongsTo
     {
         return $this->belongsTo(User::class, 'owner_id');
+    }
+
+    /**
+     * Indique si le module GRC est activé pour l'établissement.
+     */
+    public function hasGrc(): bool
+    {
+        return (bool) ($this->grc_enabled || in_array('grc', $this->modules ?? [], true));
+    }
+
+    /**
+     * Port résolu pour le module GRC (défaut : app_port + 2000, fallback 8085 pour dev autonome).
+     */
+    public function resolvedGrcPort(): int
+    {
+        return (int) ($this->grc_port ?: ($this->app_port ? $this->app_port + 2000 : 8085));
+    }
+
+    /**
+     * URL d'accès direct au portail Wetchah_GRC.
+     */
+    public function grcUrl(): string
+    {
+        return 'http://localhost:' . $this->resolvedGrcPort();
+    }
+
+    /**
+     * URL d'accès direct à l'application PMS.
+     */
+    public function appUrl(): ?string
+    {
+        return $this->app_port ? 'http://localhost:' . $this->app_port : null;
+    }
+
+    /**
+     * URL d'accès au site web vitrine.
+     */
+    public function websiteUrl(): ?string
+    {
+        $port = $this->web_port ?: ($this->app_port ? $this->app_port + 1000 : null);
+        return $port ? 'http://localhost:' . $port : null;
     }
 }

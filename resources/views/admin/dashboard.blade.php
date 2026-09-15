@@ -396,12 +396,35 @@
                                             localhost:{{ $tenant->app_port }}
                                         </a>
                                     </div>
+                                    @if($tenant->hasGrc())
+                                        <div class="flex justify-between items-center">
+                                            <span class="text-slate-400">Portail GRC :</span>
+                                            <a href="{{ $tenant->grcUrl() }}" target="_blank" class="font-semibold text-teal-600 hover:text-teal-800 hover:underline font-mono text-[10px] truncate max-w-[150px]" title="{{ $tenant->grcUrl() }}">
+                                                localhost:{{ $tenant->resolvedGrcPort() }} ↗
+                                            </a>
+                                        </div>
+                                    @endif
                                 </div>
                             </div>
                         </div>
                         
                         <!-- Actions -->
-                        <div class="bg-slate-50 px-5 py-3 border-t border-slate-100 flex justify-end gap-2" x-data="{}">
+                        <div class="bg-slate-50 px-5 py-3 border-t border-slate-100 flex items-center justify-end gap-2" x-data="{}">
+                            @if($tenant->hasGrc())
+                                <a
+                                    href="{{ $tenant->grcUrl() }}"
+                                    target="_blank"
+                                    class="inline-flex items-center gap-1.5 rounded-md bg-teal-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-teal-700 transition shadow-sm"
+                                    title="Ouvrir Wetchah_GRC (Contrôle de Gestion & Audit)"
+                                >
+                                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+                                    </svg>
+                                    <span>GRC</span>
+                                    <svg class="h-3 w-3 opacity-75" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
+                                </a>
+                            @endif
+
                             @if($isTech)
                                 <a 
                                     href="{{ route('tech.establishments.show', $tenant) }}"
@@ -919,6 +942,7 @@
                                                 <th class="px-3 py-3 text-center">App</th>
                                                 <th class="px-3 py-3 text-center">Base</th>
                                                 <th class="px-3 py-3 text-center">Site</th>
+                                                <th class="px-3 py-3 text-center">GRC</th>
                                                 <th class="px-3 py-3 text-right">Utilisateurs</th>
                                                 <th class="px-3 py-3 text-right">Résa. jour</th>
                                                 <th class="px-5 py-3 text-right">Action</th>
@@ -932,28 +956,57 @@
                                                         <p class="font-mono text-[10px] text-slate-400" x-text="e.slug"></p>
                                                     </td>
                                                     <td class="px-3 py-3 text-center">
-                                                        <span class="inline-block h-2.5 w-2.5 rounded-full" :class="dot(e.app_status)" :title="'Application : ' + e.app_status"></span>
+                                                        <a :href="'http://localhost:' + e.app_port" target="_blank" class="inline-flex items-center gap-1 hover:opacity-80 transition" :title="'Ouvrir l\'application sur le port ' + e.app_port">
+                                                            <span class="inline-block h-2.5 w-2.5 rounded-full" :class="dot(e.app_status)"></span>
+                                                        </a>
                                                     </td>
                                                     <td class="px-3 py-3 text-center">
                                                         <span class="inline-block h-2.5 w-2.5 rounded-full" :class="dot(e.db_status)" :title="'Base de données : ' + e.db_status"></span>
                                                     </td>
                                                     <td class="px-3 py-3 text-center">
                                                         <template x-if="e.has_website">
-                                                            <span class="inline-block h-2.5 w-2.5 rounded-full" :class="dot(e.web_status)" :title="'Site vitrine : ' + (e.web_status ?? 'non provisionné')"></span>
+                                                            <a :href="'http://localhost:' + (e.web_port || (e.app_port ? e.app_port + 1000 : ''))" target="_blank"
+                                                               class="inline-flex items-center gap-1 hover:opacity-80 transition"
+                                                               :title="'Ouvrir le site vitrine (port ' + (e.web_port || (e.app_port ? e.app_port + 1000 : '')) + ')'">
+                                                                <span class="inline-block h-2.5 w-2.5 rounded-full" :class="dot(e.web_status)"></span>
+                                                            </a>
                                                         </template>
                                                         <template x-if="!e.has_website">
+                                                            <span class="text-slate-300">—</span>
+                                                        </template>
+                                                    </td>
+                                                    <td class="px-3 py-3 text-center">
+                                                        <template x-if="e.has_grc">
+                                                            <a :href="'http://localhost:' + (e.grc_port || (e.app_port ? e.app_port + 2000 : 8085))" target="_blank"
+                                                               class="inline-flex items-center gap-1 hover:opacity-80 transition"
+                                                               :title="'Ouvrir Wetchah_GRC (port ' + (e.grc_port || (e.app_port ? e.app_port + 2000 : 8085)) + ')'">
+                                                                <span class="inline-block h-2.5 w-2.5 rounded-full" :class="dot(e.grc_status)"></span>
+                                                                <svg class="h-2.5 w-2.5 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
+                                                            </a>
+                                                        </template>
+                                                        <template x-if="!e.has_grc">
                                                             <span class="text-slate-300">—</span>
                                                         </template>
                                                     </td>
                                                     <td class="px-3 py-3 text-right font-bold text-slate-700" x-text="e.users_count"></td>
                                                     <td class="px-3 py-3 text-right font-bold text-slate-700" x-text="e.bookings_today ?? '—'"></td>
                                                     <td class="px-5 py-3 text-right">
-                                                        <a :href="e.url" class="font-semibold text-indigo-600 hover:text-indigo-800 hover:underline">Fiche →</a>
+                                                        <div class="flex items-center justify-end gap-2.5">
+                                                            <template x-if="e.has_grc">
+                                                                <a :href="'http://localhost:' + (e.grc_port || (e.app_port ? e.app_port + 2000 : 8085))" target="_blank"
+                                                                   class="font-bold text-[11px] text-teal-600 hover:text-teal-850 hover:underline inline-flex items-center gap-0.5"
+                                                                   title="Ouvrir Wetchah_GRC">
+                                                                    <span>GRC</span>
+                                                                    <svg class="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
+                                                                </a>
+                                                            </template>
+                                                            <a :href="e.url" class="font-semibold text-indigo-600 hover:text-indigo-800 hover:underline">Fiche →</a>
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             </template>
                                             <template x-if="data.establishments.length === 0">
-                                                <tr><td colspan="7" class="px-5 py-8 text-center text-slate-400">Aucun établissement.</td></tr>
+                                                <tr><td colspan="8" class="px-5 py-8 text-center text-slate-400">Aucun établissement.</td></tr>
                                             </template>
                                         </tbody>
                                     </table>
@@ -2717,14 +2770,23 @@
                                         <span class="text-slate-500">Site vitrine</span>
                                         <span class="flex items-center gap-1.5 font-semibold text-slate-700"><span class="h-2 w-2 rounded-full" :class="dotClass(diag.web_status)"></span><span x-text="diag.web_status ?? 'non provisionné'"></span></span>
                                     </div>
+                                    <div class="flex items-center justify-between" x-show="diag.has_grc">
+                                        <span class="text-slate-500">Contrôle GRC</span>
+                                        <span class="flex items-center gap-1.5 font-semibold text-slate-700"><span class="h-2 w-2 rounded-full" :class="dotClass(diag.grc_status)"></span><span x-text="diag.grc_status ?? 'non provisionné'"></span></span>
+                                    </div>
                                     <div class="flex items-center justify-between border-t border-slate-100 pt-3">
                                         <span class="text-slate-500">Provisionné le</span>
                                         <span class="font-semibold text-slate-700" x-text="diag.provisioned_at ?? '—'"></span>
                                     </div>
                                     <div class="flex items-center justify-between">
-                                        <span class="text-slate-500">URL locale</span>
+                                        <span class="text-slate-500">URL application</span>
                                         <template x-if="diag.app_url"><a :href="diag.app_url" target="_blank" class="font-mono text-indigo-600 hover:underline" x-text="diag.app_url"></a></template>
                                         <template x-if="!diag.app_url"><span class="text-slate-400">—</span></template>
+                                    </div>
+                                    <div class="flex items-center justify-between" x-show="diag.has_grc">
+                                        <span class="text-slate-500">URL GRC</span>
+                                        <template x-if="diag.grc_url"><a :href="diag.grc_url" target="_blank" class="font-mono text-purple-600 hover:underline" x-text="diag.grc_url"></a></template>
+                                        <template x-if="!diag.grc_url"><span class="text-slate-400">—</span></template>
                                     </div>
                                     <div>
                                         <span class="text-slate-500 block mb-1.5">Modules actifs</span>

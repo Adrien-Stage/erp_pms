@@ -14,6 +14,17 @@ use Tests\TestCase;
 */
 
 pest()->extend(TestCase::class)
+    ->beforeEach(function () {
+        // Les vues appellent @vite. Hors serveur de développement, Laravel va
+        // chercher le manifeste produit par « npm run build » — absent d'un
+        // dépôt fraîchement cloné, puisque public/build et public/hot sont
+        // tous deux ignorés par git. Chaque test rendant une vue repart alors
+        // en 500, pour une raison étrangère à ce qu'il vérifie.
+        //
+        // La compilation reste contrôlée là où elle compte : l'image de
+        // production exécute « npm run build ».
+        $this->withoutVite();
+    })
  // ->use(Illuminate\Foundation\Testing\RefreshDatabase::class)
     ->in('Feature');
 
@@ -46,4 +57,25 @@ expect()->extend('toBeOne', function () {
 function something()
 {
     // ..
+}
+
+/**
+ * Crée un établissement valide.
+ *
+ * La table tenants a gagné des colonnes obligatoires au fil du provisioning —
+ * db_name, owner_id — que les tests écrits avant ne fournissaient pas. Les
+ * rassembler ici évite que chaque nouvelle colonne ne casse à nouveau la
+ * moitié de la suite.
+ *
+ * Les attributs passés priment : un test qui vérifie un slug le fixe lui-même.
+ */
+function etablissementValide(array $attributs = []): \App\Models\Tenant
+{
+    return \App\Models\Tenant::create(array_merge([
+        'name'      => 'Établissement de test',
+        'slug'      => 'etab-' . random_int(1, 999999),
+        'db_name'   => 'db_' . random_int(1000, 999999),
+        'owner_id'  => \App\Models\User::factory()->create(['role' => \App\Models\User::ROLE_OWNER])->id,
+        'is_active' => true,
+    ], $attributs));
 }

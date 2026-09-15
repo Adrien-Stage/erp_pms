@@ -73,6 +73,32 @@
                 <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold border {{ $tenant->is_active ? 'bg-green-500/10 text-green-400 border-green-500/30' : 'bg-red-500/10 text-red-400 border-red-500/30' }}">
                     {{ $tenant->is_active ? 'Actif' : 'Inactif' }}
                 </span>
+
+                {{-- Liens d'accès directs --}}
+                @if($tenant->hasGrc())
+                    <a href="{{ $tenant->grcUrl() }}" target="_blank"
+                       class="inline-flex items-center gap-1.5 rounded-md bg-teal-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-teal-500 transition shadow-sm border border-teal-400/30"
+                       title="Ouvrir la plateforme Wetchah_GRC (Contrôle de Gestion & Audit)">
+                        <svg class="h-3.5 w-3.5 text-teal-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+                        </svg>
+                        <span>Ouvrir GRC</span>
+                        <svg class="h-3 w-3 text-teal-200 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                        </svg>
+                    </a>
+                @endif
+                @if($tenant->appUrl())
+                    <a href="{{ $tenant->appUrl() }}" target="_blank"
+                       class="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-500 transition shadow-sm border border-indigo-400/30"
+                       title="Ouvrir l'application PMS de l'établissement">
+                        <span>Ouvrir App</span>
+                        <svg class="h-3 w-3 text-indigo-200 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                        </svg>
+                    </a>
+                @endif
+
                 <form method="POST" action="{{ route('logout') }}">
                     @csrf
                     <button type="submit" class="rounded-md border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-bold text-slate-300 hover:bg-slate-700 hover:text-white transition">
@@ -127,6 +153,46 @@
                     </a>
                 @endforeach
             </nav>
+
+            <!-- Accès Directs aux Portails -->
+            <div class="border-t border-slate-100 p-4 mt-2">
+                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Accès Directs</p>
+                <div class="space-y-1.5">
+                    @if($tenant->appUrl())
+                        <a href="{{ $tenant->appUrl() }}" target="_blank"
+                           class="flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-semibold text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100/70 border border-indigo-100 transition">
+                            <span class="flex items-center gap-2">
+                                <span class="h-2 w-2 rounded-full {{ $tenant->docker_status === 'running' ? 'bg-emerald-500' : 'bg-slate-300' }}"></span>
+                                <span>Application PMS</span>
+                            </span>
+                            <span class="font-mono text-[10px] text-indigo-500">:{{ $tenant->app_port }} ↗</span>
+                        </a>
+                    @endif
+
+                    @if($tenant->hasGrc())
+                        <a href="{{ $tenant->grcUrl() }}" target="_blank"
+                           class="flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-semibold text-teal-700 bg-teal-50/70 hover:bg-teal-100/70 border border-teal-200/80 transition"
+                           title="Ouvrir la plateforme de Contrôle de Gestion & GRC (Wetchah_GRC)">
+                            <span class="flex items-center gap-2">
+                                <span class="h-2 w-2 rounded-full {{ $tenant->docker_grc_container ? 'bg-teal-500' : 'bg-slate-300' }}"></span>
+                                <span>Wetchah_GRC</span>
+                            </span>
+                            <span class="font-mono text-[10px] text-teal-600">:{{ $tenant->resolvedGrcPort() }} ↗</span>
+                        </a>
+                    @endif
+
+                    @if($tenant->websiteUrl())
+                        <a href="{{ $tenant->websiteUrl() }}" target="_blank"
+                           class="flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-semibold text-rose-700 bg-rose-50/70 hover:bg-rose-100/70 border border-rose-100 transition">
+                            <span class="flex items-center gap-2">
+                                <span class="h-2 w-2 rounded-full {{ $tenant->docker_web_container ? 'bg-rose-500' : 'bg-slate-300' }}"></span>
+                                <span>Site Web</span>
+                            </span>
+                            <span class="font-mono text-[10px] text-rose-500">↗</span>
+                        </a>
+                    @endif
+                </div>
+            </div>
 
             <!-- Sidebar Footer -->
             <div class="border-t border-slate-100 p-4 mt-4">
@@ -351,6 +417,110 @@
                     </div>
                 </div>
 
+                <!-- Portails & Accès Opérationnels -->
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-6">
+                    <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <svg class="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                            </svg>
+                            <h3 class="text-sm font-bold text-slate-800">Accès directs aux services de l'établissement</h3>
+                        </div>
+                        <span class="text-[10px] text-slate-400">Liens directs d'exploitation</span>
+                    </div>
+                    <div class="p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <!-- Application PMS -->
+                        <div class="rounded-xl border border-slate-200 p-4 bg-slate-50/50 flex flex-col justify-between gap-3">
+                            <div>
+                                <div class="flex items-center justify-between">
+                                    <span class="text-xs font-bold text-slate-800">Application PMS</span>
+                                    <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold {{ $tenant->docker_status === 'running' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600' }}">
+                                        {{ $tenant->docker_status === 'running' ? 'En ligne' : 'Arrêté' }}
+                                    </span>
+                                </div>
+                                <p class="text-[11px] text-slate-500 mt-1">Hébergement, réservations, caisse et restauration.</p>
+                            </div>
+                            @if($tenant->appUrl())
+                                <a href="{{ $tenant->appUrl() }}" target="_blank"
+                                   class="inline-flex items-center justify-center gap-1.5 w-full rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-sm">
+                                    <span>Ouvrir l'application</span>
+                                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
+                                </a>
+                            @endif
+                        </div>
+
+                        <!-- Contrôle de Gestion & GRC -->
+                        <div class="rounded-xl border p-4 flex flex-col justify-between gap-3 {{ $tenant->hasGrc() ? 'border-teal-200 bg-teal-50/30' : 'border-slate-200 bg-slate-50/20 opacity-60' }}">
+                            <div>
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="text-xs font-bold text-slate-800">Wetchah_GRC</span>
+                                        <span class="text-[9px] font-bold px-1.5 py-0.2 rounded bg-teal-100 text-teal-800 uppercase">Module 4</span>
+                                    </div>
+                                    @if($tenant->hasGrc())
+                                        <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold bg-emerald-100 text-emerald-700">
+                                            Actif (:{{ $tenant->resolvedGrcPort() }})
+                                        </span>
+                                    @else
+                                        <span class="text-[9px] text-slate-400 font-semibold">Non activé</span>
+                                    @endif
+                                </div>
+                                <p class="text-[11px] text-slate-500 mt-1">Gouvernance, risques 5x5, conformité, audits et contrôle de gestion.</p>
+                            </div>
+                            @if($tenant->hasGrc())
+                                <a href="{{ $tenant->grcUrl() }}" target="_blank"
+                                   class="inline-flex items-center justify-center gap-1.5 w-full rounded-lg bg-teal-600 px-3 py-2 text-xs font-bold text-white hover:bg-teal-700 transition shadow-sm">
+                                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+                                    </svg>
+                                    <span>Ouvrir Wetchah_GRC</span>
+                                    <svg class="h-3.5 w-3.5 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
+                                </a>
+                            @else
+                                <a href="{{ route('tech.establishments.show', ['tenant' => $tenant, 'section' => 'modules']) }}"
+                                   class="inline-flex items-center justify-center gap-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition">
+                                    <span>Activer le module GRC →</span>
+                                </a>
+                            @endif
+                        </div>
+
+                        <!-- Site Vitrine (Public) -->
+                        @php
+                            $isWebActive = in_array('website', $tenant->modules ?? [], true);
+                        @endphp
+                        <div class="rounded-xl border p-4 flex flex-col justify-between gap-3 {{ $isWebActive ? 'border-rose-200 bg-rose-50/30' : 'border-slate-200 bg-slate-50/20 opacity-60' }}">
+                            <div>
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="text-xs font-bold text-slate-800">Site Web Vitrine</span>
+                                        <span class="text-[9px] font-bold px-1.5 py-0.2 rounded bg-rose-100 text-rose-800 uppercase">Module 3</span>
+                                    </div>
+                                    @if($isWebActive)
+                                        <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold bg-emerald-100 text-emerald-700">
+                                            Actif
+                                        </span>
+                                    @else
+                                        <span class="text-[9px] text-slate-400 font-semibold">Non activé</span>
+                                    @endif
+                                </div>
+                                <p class="text-[11px] text-slate-500 mt-1">Site vitrine public, catalogue et réservations en ligne.</p>
+                            </div>
+                            @if($isWebActive && $tenant->websiteUrl())
+                                <a href="{{ $tenant->websiteUrl() }}" target="_blank"
+                                   class="inline-flex items-center justify-center gap-1.5 w-full rounded-lg bg-rose-600 px-3 py-2 text-xs font-bold text-white hover:bg-rose-700 transition shadow-sm">
+                                    <span>Ouvrir le Site Web</span>
+                                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
+                                </a>
+                            @else
+                                <a href="{{ route('tech.establishments.show', ['tenant' => $tenant, 'section' => 'modules']) }}"
+                                   class="inline-flex items-center justify-center gap-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition">
+                                    <span>Activer le module Web →</span>
+                                </a>
+                            @endif
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Info Summary -->
                 <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                     <div class="px-6 py-4 border-b border-slate-100">
@@ -543,19 +713,60 @@
                             this.submitting = false;
                             this.errorMsg = 'Impossible de se connecter au serveur.';
                         });
+                    },
+                    showCreateControllerModal: false,
+                    submittingController: false,
+                    errorMsgController: '',
+                    generatedPasswordController: null,
+                    nameController: '', emailController: '', phoneController: '',
+                    resetControllerForm() { this.nameController = ''; this.emailController = ''; this.phoneController = ''; this.errorMsgController = ''; this.generatedPasswordController = null; },
+                    submitController() {
+                        this.submittingController = true;
+                        this.errorMsgController = '';
+                        fetch('{{ route('tech.establishments.create-controller', $tenant) }}', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                                'Accept': 'application/json'
+                            },
+                            body: JSON.stringify({ name: this.nameController, email: this.emailController, phone: this.phoneController })
+                        })
+                        .then(res => res.json().then(data => ({ status: res.status, body: data })))
+                        .then(res => {
+                            this.submittingController = false;
+                            if (res.status === 201) {
+                                this.generatedPasswordController = res.body.generated_password;
+                            } else {
+                                this.errorMsgController = res.body.message || 'Une erreur est survenue lors de la création du contrôleur.';
+                            }
+                        })
+                        .catch(() => {
+                            this.submittingController = false;
+                            this.errorMsgController = 'Impossible de se connecter au serveur.';
+                        });
                     }
                 }">
                     <div>
                         <h2 class="text-xl font-extrabold text-slate-800 tracking-tight">Utilisateurs</h2>
                         <p class="text-xs text-slate-500 mt-1">{{ $tenantUsers->count() }} utilisateur(s) rattaché(s) à {{ $tenant->name }}</p>
                     </div>
-                    <button type="button" @click="showCreateManagerModal = true; resetForm()"
-                            class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 transition cursor-pointer">
-                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                        </svg>
-                        Créer un manager
-                    </button>
+                    <div class="flex items-center gap-2">
+                        <button type="button" @click="showCreateManagerModal = true; resetForm()"
+                                class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 transition cursor-pointer">
+                            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                            </svg>
+                            Créer un manager
+                        </button>
+                        <button type="button" @click="showCreateControllerModal = true; resetControllerForm()"
+                                class="inline-flex items-center gap-2 rounded-lg bg-teal-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-teal-700 transition cursor-pointer">
+                            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+                            </svg>
+                            Créer un contrôleur GRC
+                        </button>
+                    </div>
 
                     <!-- Create Manager Modal -->
                     <div x-show="showCreateManagerModal"
@@ -654,6 +865,113 @@
                                     <div class="flex justify-end pt-2">
                                         <button type="button" @click="showCreateManagerModal = false; window.location.reload();"
                                                 class="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 transition cursor-pointer shadow-sm">
+                                            Terminer
+                                        </button>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- Create Controller Modal -->
+                    <div x-show="showCreateControllerModal"
+                         class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+                         x-transition:enter="transition ease-out duration-300"
+                         x-transition:enter-start="opacity-0"
+                         x-transition:enter-end="opacity-100"
+                         x-transition:leave="transition ease-in duration-200"
+                         x-transition:leave-start="opacity-100"
+                         x-transition:leave-end="opacity-0"
+                         x-cloak>
+                        <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden max-w-md w-full"
+                             @click.away="if (!submittingController) { showCreateControllerModal = generatedPasswordController ? showCreateControllerModal : false }">
+
+                            <!-- Header -->
+                            <div class="bg-slate-950 px-6 py-5 flex items-center gap-3">
+                                <div class="rounded-lg bg-teal-500/20 p-2">
+                                    <svg class="h-5 w-5 text-teal-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+                                    </svg>
+                                </div>
+                                <h3 class="text-sm font-bold text-white tracking-wide">Créer un Contrôleur de Gestion / Auditeur — <span class="font-mono">{{ $tenant->slug }}</span></h3>
+                            </div>
+
+                            <!-- Formulaire (avant création) -->
+                            <template x-if="!generatedPasswordController">
+                                <form @submit.prevent="submitController()" class="p-6 space-y-4">
+                                    <p class="text-xs text-slate-600 leading-relaxed">
+                                        Crée un compte avec le rôle <strong>controller</strong> rattaché à cet établissement. Ce compte disposera des accès au module Wetchah_GRC. Un mot de passe sera généré automatiquement.
+                                    </p>
+
+                                    <template x-if="errorMsgController">
+                                        <div class="rounded-lg bg-red-50 border border-red-150 p-3 text-xs font-semibold text-red-700" x-text="errorMsgController"></div>
+                                    </template>
+
+                                    <div>
+                                        <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Nom complet <span class="text-red-400">*</span></label>
+                                        <input type="text" x-model="nameController" required placeholder="Ex: Paul Atangana"
+                                               class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-700 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 transition">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Adresse e-mail <span class="text-red-400">*</span></label>
+                                        <input type="email" x-model="emailController" required placeholder="controleur@etablissement.com"
+                                               class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-700 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 transition">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1.5">Téléphone</label>
+                                        <input type="text" x-model="phoneController" placeholder="+237 600 000 000"
+                                               class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-700 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 transition">
+                                    </div>
+
+                                    <div class="flex items-center justify-end gap-2 pt-2">
+                                        <button type="button" @click="showCreateControllerModal = false" :disabled="submittingController"
+                                                class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer">
+                                            Annuler
+                                        </button>
+                                        <button type="submit" :disabled="submittingController"
+                                                class="rounded-lg bg-teal-600 px-4 py-2 text-xs font-bold text-white hover:bg-teal-700 transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-sm">
+                                            <span x-show="submittingController">Création…</span>
+                                            <span x-show="!submittingController">Créer le contrôleur</span>
+                                        </button>
+                                    </div>
+                                </form>
+                            </template>
+
+                            <!-- Succès (mot de passe affiché) -->
+                            <template x-if="generatedPasswordController">
+                                <div class="p-6 space-y-4">
+                                    <div class="rounded-lg bg-emerald-50 border border-emerald-150 p-4 text-xs text-emerald-800 space-y-1">
+                                        <div class="font-bold text-sm text-emerald-900">✅ Contrôleur de gestion créé avec succès !</div>
+                                        <p class="text-emerald-700 leading-relaxed">
+                                            Copiez ces identifiants dès maintenant. Le mot de passe ne sera plus jamais affiché.
+                                        </p>
+                                    </div>
+                                    <div class="space-y-2">
+                                        <div>
+                                            <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1">Email</label>
+                                            <div class="font-mono text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-800" x-text="emailController"></div>
+                                        </div>
+                                        <div>
+                                            <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1">Mot de passe généré</label>
+                                            <div class="flex items-center gap-2">
+                                                <div class="font-mono text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-800 flex-1" x-text="generatedPasswordController"></div>
+                                                <button type="button"
+                                                        @click="navigator.clipboard.writeText(generatedPasswordController); $el.textContent = 'Copié !'; setTimeout(() => $el.textContent = 'Copier', 1500)"
+                                                        class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-[10px] font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer shrink-0">
+                                                    Copier
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1">Accès Portail GRC</label>
+                                            <a href="{{ $tenant->grcUrl() }}/login" target="_blank" class="font-mono text-xs text-teal-600 hover:text-teal-800 hover:underline">
+                                                {{ $tenant->grcUrl() }}/login
+                                            </a>
+                                        </div>
+                                    </div>
+                                    <div class="flex justify-end pt-2">
+                                        <button type="button" @click="showCreateControllerModal = false; window.location.reload();"
+                                                class="rounded-lg bg-teal-600 px-4 py-2 text-xs font-bold text-white hover:bg-teal-700 transition cursor-pointer shadow-sm">
                                             Terminer
                                         </button>
                                     </div>
@@ -839,8 +1157,9 @@
                         'discussions'  => ['label' => 'Discussions', 'desc' => 'Messagerie interne entre membres du personnel.', 'icon' => 'message-circle'],
                         'analytics'    => ['label' => 'Analytics', 'desc' => 'Tour de contrôle : statistiques et tableaux de bord.', 'icon' => 'chart-column'],
                         'ledger'       => ['label' => 'Comptabilité avancée', 'desc' => 'Grand livre SYSCOHADA : plan de comptes, journaux, balance, clôture, comptes de tiers et lettrage, factures fournisseurs et retenues à la source, analytique. La comptabilité de caisse reste active sans ce module.', 'icon' => 'book-open'],
-                        'api'          => ['label' => 'API d\'intégration', 'desc' => 'Expose des routes API sécurisées pour connecter des applications mobiles tierces ou des PMS externes.', 'icon' => 'plug'],
+                        'api'          => ['label' => 'API d\'intégration', 'desc' => 'Expose des routes API sécurisées pour alimenter le site vitrine, le portail GRC et connecter des applications tierces.', 'icon' => 'plug'],
                         'website'      => ['label' => 'Site web', 'desc' => 'Site vitrine public (chambres, menu, contenu CMS) — provisionne un 3ᵉ container. Nécessite l\'API d\'intégration active.', 'icon' => 'globe'],
+                        'grc'          => ['label' => 'Contrôle de gestion & GRC', 'desc' => 'Plateforme de Gouvernance, Risques & Conformité (Wetchah_GRC) — provisionne un 4ᵉ container dédié. Nécessite l\'API d\'intégration active.', 'icon' => 'shield-check'],
                     ];
                     $tenantModules = $tenant->modules ?? [];
                     // Établissement jamais passé par ce sélecteur (aucune des clés
@@ -861,10 +1180,15 @@
                             @endforeach
                         },
                         toggleModuleDependency(name) {
-                            // Site web nécessite l'API d'intégration : l'activer force l'API,
-                            // mais désactiver l'API seule ne coche pas le site web pour autant.
-                            if (name === 'website' && this.modules.website) { this.modules.api = true; }
-                            if (name === 'api' && !this.modules.api) { this.modules.website = false; }
+                            // Site web ou GRC nécessite l'API d'intégration : l'activer force l'API
+                            if ((name === 'website' && this.modules.website) || (name === 'grc' && this.modules.grc)) {
+                                this.modules.api = true;
+                            }
+                            // Désactiver l'API désactive automatiquement le site web et le GRC
+                            if (name === 'api' && !this.modules.api) {
+                                this.modules.website = false;
+                                this.modules.grc = false;
+                            }
                         }
                     }">
                     @csrf
@@ -878,7 +1202,7 @@
                                      case liée en x-model, qui empêchait la désactivation de prendre. --}}
                                 <input type="checkbox" hidden
                                        x-model="modules.{{ $key }}"
-                                       @if(in_array($key, ['api', 'website'], true)) @change="toggleModuleDependency('{{ $key }}')" @endif>
+                                       @if(in_array($key, ['api', 'website', 'grc'], true)) @change="toggleModuleDependency('{{ $key }}')" @endif>
                                 <template x-if="modules.{{ $key }}">
                                     <input type="hidden" name="modules[]" value="{{ $key }}">
                                 </template>
@@ -896,6 +1220,28 @@
                                 <div class="space-y-1">
                                     <span class="text-xs font-bold text-slate-800">{{ $def['label'] }}</span>
                                     <p class="text-[10px] text-slate-500 leading-relaxed">{{ $def['desc'] }}</p>
+
+                                    @if($key === 'grc')
+                                        <template x-if="modules.grc">
+                                            <div class="pt-2" @click.stop>
+                                                <a href="{{ $tenant->grcUrl() }}" target="_blank"
+                                                   class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-teal-50 border border-teal-200 text-[10px] font-bold text-teal-700 hover:bg-teal-100 transition shadow-2xs">
+                                                    <svg class="h-3 w-3 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
+                                                    <span>Ouvrir la plateforme GRC (:{{ $tenant->resolvedGrcPort() }}) ↗</span>
+                                                </a>
+                                            </div>
+                                        </template>
+                                    @elseif($key === 'website' && $tenant->websiteUrl())
+                                        <template x-if="modules.website">
+                                            <div class="pt-2" @click.stop>
+                                                <a href="{{ $tenant->websiteUrl() }}" target="_blank"
+                                                   class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-rose-50 border border-rose-200 text-[10px] font-bold text-rose-700 hover:bg-rose-100 transition shadow-2xs">
+                                                    <svg class="h-3 w-3 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
+                                                    <span>Ouvrir le Site Web ↗</span>
+                                                </a>
+                                            </div>
+                                        </template>
+                                    @endif
                                 </div>
                             </label>
                         @endforeach
@@ -928,7 +1274,8 @@
                 <div class="space-y-6" x-data="{
                     showDeleteModal: false, confirmSlug: '',
                     showUpdateModal: false, availableTags: [], selectedTag: '', loadingTags: false, updating: false,
-                    showWebModal: false, webUpdating: false
+                    showWebModal: false, webUpdating: false,
+                    showGrcModal: false, grcUpdating: false
                 }">
                     <!-- Technical details card (read-only) -->
                     <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -958,6 +1305,12 @@
                                     <span class="text-slate-450 font-semibold">Port PostgreSQL (Hôte) :</span>
                                     <span class="font-mono bg-slate-50 border border-slate-200 px-2 py-0.5 rounded ml-2">{{ $tenant->db_port ?? 5432 }}</span>
                                 </div>
+                                @if($tenant->hasGrc())
+                                <div>
+                                    <span class="text-slate-450 font-semibold">Port GRC (Hôte) :</span>
+                                    <a href="{{ $tenant->grcUrl() }}" target="_blank" class="font-mono bg-teal-50 border border-teal-200 px-2 py-0.5 rounded ml-2 text-teal-700 hover:text-teal-900 hover:underline">{{ $tenant->resolvedGrcPort() }} (Portail GRC ↗)</a>
+                                </div>
+                                @endif
                             </div>
                             <div class="space-y-3">
                                 <div>
@@ -1016,6 +1369,122 @@
                             </div>
                         </div>
                     @endif
+
+                    {{-- Version du module GRC (module grc uniquement) --}}
+                    @if(in_array('grc', $tenant->modules ?? []))
+                        <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                            <div class="px-6 py-4 border-b border-slate-100">
+                                <h3 class="text-sm font-bold text-slate-800">Version du module GRC</h3>
+                                <p class="text-[10px] text-slate-500 mt-0.5">Image Docker du contrôle de gestion, des risques et de la conformité, figée pour cet établissement — mise à jour vers la dernière version publiée</p>
+                            </div>
+                            <div class="p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
+                                <div class="text-xs">
+                                    <span class="text-slate-450 font-semibold">Digest actuel :</span>
+                                    <span class="font-mono bg-slate-50 border border-slate-200 px-2 py-0.5 rounded ml-2">
+                                        {{ $tenant->grc_image_tag ? \Illuminate\Support\Str::limit($tenant->grc_image_tag, 22, '…') : 'Non résolu' }}
+                                    </span>
+                                </div>
+                                <button type="button"
+                                        @click="showGrcModal = true"
+                                        class="shrink-0 rounded-lg bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-sm cursor-pointer">
+                                    Mettre à jour le GRC
+                                </button>
+                            </div>
+                        </div>
+                    @endif
+
+                    {{-- Données de démonstration --}}
+                    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div class="px-6 py-4 border-b border-slate-100">
+                            <h3 class="text-sm font-bold text-slate-800">Données de démonstration</h3>
+                            <p class="text-[10px] text-slate-500 mt-0.5">
+                                Peuple l'établissement d'environ 20 enregistrements fictifs par module actif —
+                                clients, chambres, réservations, folios, commandes, stock et charges
+                            </p>
+                        </div>
+                        <div class="p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
+                            <div class="text-xs space-y-1.5">
+                                @if($demoDataInstalled)
+                                    <div class="flex items-center gap-2">
+                                        <span class="inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
+                                        <span class="font-semibold text-slate-700">Jeu de démonstration déjà présent</span>
+                                    </div>
+                                    <p class="text-[10px] text-slate-500 leading-relaxed max-w-lg">
+                                        Relancer l'action ne crée aucun doublon : seuls les enregistrements manquants
+                                        sont ajoutés. Utile après l'activation d'un nouveau module.
+                                    </p>
+                                @else
+                                    <div class="flex items-center gap-2">
+                                        <span class="inline-flex h-2 w-2 rounded-full bg-slate-300"></span>
+                                        <span class="font-semibold text-slate-700">Aucune donnée de démonstration</span>
+                                    </div>
+                                    <p class="text-[10px] text-amber-700 leading-relaxed max-w-lg font-medium">
+                                        Ces données se mêlent aux données réelles : à réserver aux établissements
+                                        de démonstration ou de formation. Le retrait reste possible ensuite, mais
+                                        épargne tout ce qui aura servi entre-temps.
+                                    </p>
+                                @endif
+                            </div>
+
+                            {{-- Mêmes classes que les autres boutons d'action de cet
+                                 écran : la feuille de style compilée ne contient que
+                                 les utilitaires déjà employés dans le projet, et une
+                                 teinte inédite laisserait un bouton sans fond — donc
+                                 un libellé blanc sur blanc, invisible. --}}
+                            @if($tenant->docker_status === 'running')
+                                <div class="shrink-0 flex items-center gap-2">
+                                    <form method="POST" action="{{ route('tech.establishments.demo-data', $tenant) }}"
+                                          x-data="{ envoi: false }"
+                                          @submit="envoi = true">
+                                        @csrf
+                                        <button type="submit"
+                                                :disabled="envoi"
+                                                class="shrink-0 rounded-lg bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-sm cursor-pointer">
+                                            <span x-show="!envoi">
+                                                {{ $demoDataInstalled ? 'Compléter le jeu' : 'Installer les données' }}
+                                            </span>
+                                            <span x-show="envoi" style="display:none;">Installation…</span>
+                                        </button>
+                                    </form>
+
+                                    {{-- Purge : proposée seulement s'il y a quelque chose à
+                                         retirer, et confirmée en deux temps. Une suppression
+                                         dans une base en service ne doit pas tenir à un clic
+                                         mal placé. --}}
+                                    @if($demoDataInstalled)
+                                        <form method="POST" action="{{ route('tech.establishments.demo-data.purge', $tenant) }}"
+                                              x-data="{ confirme: false, envoi: false }"
+                                              @submit="envoi = true">
+                                            @csrf
+                                            @method('DELETE')
+
+                                            <button type="button" x-show="!confirme" @click="confirme = true"
+                                                    class="shrink-0 rounded-lg border border-red-200 bg-red-50 px-5 py-2.5 text-xs font-bold text-red-700 hover:bg-red-100 transition cursor-pointer">
+                                                Purger
+                                            </button>
+
+                                            <span x-show="confirme" style="display:none;" class="flex items-center gap-2">
+                                                <button type="submit" :disabled="envoi"
+                                                        class="shrink-0 rounded-lg bg-red-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-red-700 transition shadow-sm cursor-pointer">
+                                                    <span x-show="!envoi">Confirmer la purge</span>
+                                                    <span x-show="envoi" style="display:none;">Retrait…</span>
+                                                </button>
+                                                <button type="button" @click="confirme = false"
+                                                        class="text-xs font-bold text-slate-500 hover:text-slate-700 cursor-pointer">
+                                                    Annuler
+                                                </button>
+                                            </span>
+                                        </form>
+                                    @endif
+                                </div>
+                            @else
+                                <span class="shrink-0 rounded-lg bg-slate-300 px-5 py-2.5 text-xs font-bold text-slate-500 cursor-not-allowed"
+                                      title="Le container de l'établissement doit être démarré">
+                                    Container arrêté
+                                </span>
+                            @endif
+                        </div>
+                    </div>
 
                     <!-- Danger Zone Card -->
                     <div class="bg-white rounded-xl border border-red-200 shadow-sm overflow-hidden">
@@ -1244,6 +1713,69 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Update GRC Modal -->
+                    <div x-show="showGrcModal"
+                         class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+                         x-transition:enter="transition ease-out duration-300"
+                         x-transition:enter-start="opacity-0"
+                         x-transition:enter-end="opacity-100"
+                         x-transition:leave="transition ease-in duration-200"
+                         x-transition:leave-start="opacity-100"
+                         x-transition:leave-end="opacity-0"
+                         x-cloak>
+
+                        <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden max-w-lg w-full"
+                             @click.away="if (!grcUpdating) { showGrcModal = false }"
+                             x-transition:enter="transition ease-out duration-300 transform scale-95"
+                             x-transition:enter-start="opacity-0 scale-95"
+                             x-transition:enter-end="opacity-100 scale-100"
+                             x-transition:leave="transition ease-in duration-200 transform scale-100"
+                             x-transition:leave-start="opacity-100 scale-100"
+                             x-transition:leave-end="opacity-0 scale-95">
+
+                            <!-- Header -->
+                            <div class="bg-slate-950 px-6 py-5 flex items-center gap-3">
+                                <div class="rounded-lg bg-indigo-500/20 p-2">
+                                    <svg class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                                    </svg>
+                                </div>
+                                <h3 class="text-sm font-bold text-white tracking-wide">Mettre à jour le module GRC</h3>
+                            </div>
+
+                            <!-- Confirmation (avant lancement) -->
+                            <div class="p-6 space-y-4" x-show="!grcUpdating">
+                                <p class="text-xs text-slate-600 leading-relaxed">
+                                    Le container du module GRC sera recréé avec la dernière image publiée sur le registre (tag « latest »). Les risques, missions d'audit, politiques et incidents déjà saisis sont conservés — ils vivent dans un volume distinct du container. Si le module est déjà à jour, aucune action n'est effectuée.
+                                </p>
+                            </div>
+
+                            <!-- Logs en direct (pendant la mise à jour) -->
+                            <div x-show="grcUpdating" class="p-6">
+                                <div id="grc-update-log-output" class="font-mono text-xs text-slate-300 space-y-1.5 bg-slate-950/70 rounded-lg p-5 border border-slate-850 overflow-y-auto h-64" style="word-break: break-word; overflow-wrap: break-word;"></div>
+                                <div class="mt-3 flex justify-end">
+                                    <button type="button" onclick="copyLogText('grc-update-log-output', this)"
+                                            class="rounded border border-slate-700 bg-slate-800 px-2.5 py-1 text-[10px] font-bold text-slate-300 hover:bg-slate-700 hover:text-white transition cursor-pointer">
+                                        Copier les logs
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Footer Actions -->
+                            <div class="bg-slate-50 px-6 py-4 border-t border-slate-100 flex items-center justify-end gap-3">
+                                <button @click="showGrcModal = false" type="button" x-show="!grcUpdating"
+                                        class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer">
+                                    Annuler
+                                </button>
+                                <button type="button" x-show="!grcUpdating"
+                                        @click="grcUpdating = true; startGrcUpdateStream()"
+                                        class="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 transition cursor-pointer shadow-sm">
+                                    Lancer la mise à jour
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <script>
@@ -1339,6 +1871,65 @@
                     evtSource.onerror = function () {
                         evtSource.close();
                     };
+                }
+
+                /**
+                 * Branche un flux SSE de mise à jour sur une zone de logs.
+                 * Même rendu que les deux fonctions ci-dessus, factorisé :
+                 * seules l'URL et la cible changent d'une mise à jour à l'autre.
+                 */
+                function streamUpdateLog(streamUrl, outputId, label) {
+                    const logOutput = document.getElementById(outputId);
+                    logOutput.innerHTML = '';
+                    const evtSource = new EventSource(streamUrl);
+
+                    evtSource.onmessage = function (event) {
+                        try {
+                            const data = JSON.parse(event.data);
+                            const line = document.createElement('div');
+                            line.className = 'flex gap-2.5 items-start py-0.5 border-b border-slate-900/10';
+
+                            const timeSpan = document.createElement('span');
+                            timeSpan.className = 'text-slate-500 shrink-0 font-semibold select-none';
+                            timeSpan.textContent = `[${data.time}]`;
+
+                            const msgSpan = document.createElement('span');
+                            msgSpan.className = {
+                                'success': 'text-emerald-400 font-semibold',
+                                'error':   'text-red-400 font-semibold',
+                                'warning': 'text-amber-400',
+                                'info':    'text-slate-300',
+                            }[data.level] || 'text-slate-300';
+                            msgSpan.textContent = data.message;
+
+                            line.appendChild(timeSpan);
+                            line.appendChild(msgSpan);
+                            logOutput.appendChild(line);
+                            logOutput.scrollTop = logOutput.scrollHeight;
+
+                            if (data.step === 'done' || data.step === 'finished') {
+                                evtSource.close();
+                                setTimeout(() => location.reload(), 1500);
+                            }
+                            if (data.level === 'error' || data.step === 'error') {
+                                evtSource.close();
+                            }
+                        } catch (e) {
+                            console.error(`Error parsing ${label} update stream payload:`, e);
+                        }
+                    };
+
+                    evtSource.onerror = function () {
+                        evtSource.close();
+                    };
+                }
+
+                function startGrcUpdateStream() {
+                    streamUpdateLog(
+                        '{{ route("tech.establishments.update-grc.stream", $tenant) }}',
+                        'grc-update-log-output',
+                        'GRC'
+                    );
                 }
                 </script>
 

@@ -1,0 +1,22 @@
+{
+    "_comment": "Vivier de noms servant à composer les clients. Noms d'Afrique centrale et de l'Ouest, cohérents avec la clientèle des établissements desservis.",
+    "first_names": [
+        "Aline", "Brice", "Cynthia", "Daniel", "Estelle", "Franck", "Grâce", "Hervé",
+        "Ingrid", "Joseph", "Larissa", "Martial", "Nadège", "Olivier", "Pascaline",
+        "Rodrigue", "Sandrine", "Thierry", "Viviane", "Willy", "Yolande", "Zacharie",
+        "Armelle", "Boris", "Chantal", "Désiré"
+    ],
+    "last_names": [
+        "Kamga", "Tchoupo", "Nguemo", "Ndzié", "Fokou", "Mbarga", "Essomba", "Atangana",
+        "Owona", "Biya", "Njoya", "Mefire", "Tagne", "Sonkeng", "Ngassa", "Fotso",
+        "Djoumessi", "Ekani", "Manga", "Bikoï", "Ondoa", "Zambo", "Nkeng", "Moukoko"
+    ],
+    "cities": [
+        "Douala", "Yaoundé", "Bafoussam", "Kribi", "Limbé", "Garoua", "Bamenda",
+        "Ngaoundéré", "Buéa", "Dschang", "Libreville", "Abidjan", "Dakar", "Cotonou"
+    ],
+    "countries": ["CM", "CM", "CM", "CM", "CI", "SN", "GA", "FR", "BE", "NG"],
+    "id_types": ["cni", "passport", "residence_permit"],
+    "loyalty_levels": ["bronze", "bronze", "silver", "silver", "gold", "platinum"],
+    "sources": ["direct", "phone", "walk_in", "email", "ota_bookingcom"]
+}

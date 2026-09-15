@@ -1,0 +1,37 @@
+{
+    "_comment": "Carte du restaurant. Prix en FCFA. meal_services : breakfast, lunch, dinner.",
+    "categories": [
+        { "name": "Petit déjeuner", "description": "Servi de 6h30 à 10h30" },
+        { "name": "Entrées",        "description": "Pour ouvrir le repas" },
+        { "name": "Plats du terroir", "description": "Spécialités camerounaises" },
+        { "name": "Grillades",      "description": "Au feu de bois" },
+        { "name": "Desserts",       "description": "Faits maison" },
+        { "name": "Boissons",       "description": "Fraîches et chaudes" }
+    ],
+    "items": [
+        { "name": "Omelette nature",        "category": "Petit déjeuner",   "price": 2500,  "meals": ["breakfast"] },
+        { "name": "Bouillie de maïs",       "category": "Petit déjeuner",   "price": 1500,  "meals": ["breakfast"] },
+        { "name": "Beignets haricots",      "category": "Petit déjeuner",   "price": 2000,  "meals": ["breakfast"] },
+        { "name": "Pain perdu",             "category": "Petit déjeuner",   "price": 2500,  "meals": ["breakfast"] },
+        { "name": "Salade de crudités",     "category": "Entrées",          "price": 3000,  "meals": ["lunch", "dinner"] },
+        { "name": "Avocat crevettes",       "category": "Entrées",          "price": 4500,  "meals": ["lunch", "dinner"] },
+        { "name": "Velouté de courge",      "category": "Entrées",          "price": 3000,  "meals": ["dinner"] },
+        { "name": "Ndolè aux crevettes",    "category": "Plats du terroir", "price": 7000,  "meals": ["lunch", "dinner"] },
+        { "name": "Poulet DG",              "category": "Plats du terroir", "price": 8000,  "meals": ["lunch", "dinner"] },
+        { "name": "Eru et water fufu",      "category": "Plats du terroir", "price": 6000,  "meals": ["lunch"] },
+        { "name": "Sauce arachide",         "category": "Plats du terroir", "price": 5500,  "meals": ["lunch", "dinner"] },
+        { "name": "Koki de haricots",       "category": "Plats du terroir", "price": 4500,  "meals": ["lunch"] },
+        { "name": "Poisson braisé",         "category": "Grillades",        "price": 9000,  "meals": ["lunch", "dinner"] },
+        { "name": "Brochettes de bœuf",     "category": "Grillades",        "price": 6500,  "meals": ["lunch", "dinner"] },
+        { "name": "Poulet braisé entier",   "category": "Grillades",        "price": 10000, "meals": ["dinner"] },
+        { "name": "Côtes de porc grillées", "category": "Grillades",        "price": 7500,  "meals": ["dinner"] },
+        { "name": "Salade de fruits",       "category": "Desserts",         "price": 2500,  "meals": ["lunch", "dinner"] },
+        { "name": "Gâteau au chocolat",     "category": "Desserts",         "price": 3000,  "meals": ["lunch", "dinner"] },
+        { "name": "Jus de gingembre",       "category": "Boissons",         "price": 1500,  "meals": ["breakfast", "lunch", "dinner"] },
+        { "name": "Café expresso",          "category": "Boissons",         "price": 1000,  "meals": ["breakfast", "lunch", "dinner"] },
+        { "name": "Eau minérale 1,5 L",     "category": "Boissons",         "price": 1000,  "meals": ["breakfast", "lunch", "dinner"] },
+        { "name": "Bière locale",           "category": "Boissons",         "price": 1500,  "meals": ["lunch", "dinner"] }
+    ],
+    "tables": ["T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8", "Terrasse 1", "Terrasse 2"],
+    "order_statuses": ["served", "served", "served", "ready", "preparing", "pending"]
+}

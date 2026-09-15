@@ -117,8 +117,13 @@
             ledger: true,
             ai: false,
             api: true,
-            website: true
+            website: true,
+            grc: true
         },
+
+        // Données de démonstration : opt-in explicite. Un établissement réel ne
+        // doit jamais recevoir de faux clients par simple inattention.
+        seedDemo: false,
 
         // Methods
         applyPalette(p, s, a, d, sd, tl, td) {
@@ -158,13 +163,14 @@
             }
         },
         toggleModuleDependency(moduleName) {
-            // Site Web requires API
-            if (moduleName === 'website' && this.modules.website) {
+            // Site Web ou GRC nécessite l'API d'intégration
+            if ((moduleName === 'website' && this.modules.website) || (moduleName === 'grc' && this.modules.grc)) {
                 this.modules.api = true;
             }
-            // If API is disabled, Site Web must be disabled
+            // Désactiver l'API désactive automatiquement le Site Web et le module GRC
             if (moduleName === 'api' && !this.modules.api) {
                 this.modules.website = false;
+                this.modules.grc = false;
             }
         },
         nextStep() {
@@ -922,7 +928,7 @@
                                         <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 uppercase">Dev</span>
                                     </div>
                                     <p class="text-[10px] text-slate-500 leading-relaxed">
-                                        Expose des routes API sécurisées pour connecter des applications mobiles tierces ou des PMS externes.
+                                        Expose des routes API sécurisées pour alimenter le site vitrine, le portail GRC et connecter des applications tierces.
                                     </p>
                                 </div>
                             </label>
@@ -942,7 +948,52 @@
                                 </div>
                             </label>
 
+                            <!-- Module: GRC & Contrôle de Gestion -->
+                            <label class="relative flex items-start gap-4 rounded-xl border p-4 cursor-pointer select-none transition hover:bg-slate-50 duration-200"
+                                :class="modules.grc ? 'border-indigo-600 ring-2 ring-indigo-50 bg-indigo-50/10' : 'border-slate-200'">
+                                <input type="checkbox" name="modules[grc]" x-model="modules.grc" @change="toggleModuleDependency('grc')" class="mt-1 h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500 shrink-0">
+                                <div class="space-y-1">
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-xs font-bold text-slate-800">Contrôle de Gestion & GRC (Audit & Risques)</span>
+                                        <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 uppercase">GRC</span>
+                                    </div>
+                                    <p class="text-[10px] text-slate-500 leading-relaxed">
+                                        Active le 4ᵉ conteneur GRC : cartographie des risques 5x5, pistes d'audit, conformité SYSCOHADA / ISO 27001 et contrôle de gestion. *Nécessite l'API d'Intégration active.*
+                                    </p>
+                                </div>
+                            </label>
+
                         </div>
+                    </div>
+                </div>
+
+                <!-- Section: Données de démonstration -->
+                <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                    <div class="bg-slate-900 px-6 py-3">
+                        <h2 class="text-sm font-bold text-white tracking-wide">Démarrage de l'Établissement</h2>
+                    </div>
+                    <div class="p-6">
+                        <label class="relative flex items-start gap-4 rounded-xl border p-4 cursor-pointer select-none transition hover:bg-slate-50 duration-200"
+                            :class="seedDemo ? 'border-amber-500 ring-2 ring-amber-50 bg-amber-50/20' : 'border-slate-200'">
+                            <input type="checkbox" name="seed_demo_data" value="1" x-model="seedDemo"
+                                   class="mt-1 h-4 w-4 rounded text-amber-600 focus:ring-amber-500 shrink-0">
+                            <div class="space-y-1">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xs font-bold text-slate-800">Installer un jeu de données de démonstration</span>
+                                    <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 uppercase">Démo</span>
+                                </div>
+                                <p class="text-[10px] text-slate-500 leading-relaxed">
+                                    Peuple l'établissement d'environ 20 enregistrements fictifs par module —
+                                    clients, chambres, réservations, folios, commandes — pour une présentation
+                                    ou une formation. Installé automatiquement à la fin du provisioning, et
+                                    uniquement pour les modules cochés ci-dessus.
+                                </p>
+                                <p class="text-[10px] text-amber-700 leading-relaxed font-medium">
+                                    À réserver aux établissements de démonstration : ces données se mêlent
+                                    aux données réelles et ne se retirent pas depuis l'interface.
+                                </p>
+                            </div>
+                        </label>
                     </div>
                 </div>
 
