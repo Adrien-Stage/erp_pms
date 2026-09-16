@@ -225,7 +225,8 @@ class TenantProvisioningService
         throw new RuntimeException(
             "Échec du téléchargement de l'image après {$maxAttempts} tentatives. "
             . "Vérifiez la connexion internet puis relancez la mise à jour "
-            . "(la reprise repart des couches déjà téléchargées).\n\nDernière sortie :\n{$lastOutput}"
+            . "(la reprise repart des couches déjà téléchargées).\n\nDernière sortie :\n"
+            . $this->sortieLisible($lastOutput)
         );
     }
 
@@ -246,8 +247,25 @@ class TenantProvisioningService
         // avant que exec ne remplace le shell.
         $cmd = 'exec docker pull ' . escapeshellarg($imageRef) . ' 2>&1';
 
-        $pipes = [];
-        $process = @proc_open($cmd, [1 => ['pipe', 'w']], $pipes);
+        // Un pseudo-terminal, et non un simple tuyau. Redirigé vers un tuyau,
+        // « docker pull » n'écrit qu'une ligne par *changement d'état* de
+        // couche et reste entièrement muet pendant le transfert lui-même :
+        // mesuré, 942 octets pour 26 couches, puis plus rien. Le silence d'une
+        // couche volumineuse devenait alors indiscernable d'un blocage, et la
+        // surveillance tuait un téléchargement parfaitement sain — sur toute
+        // image dont une seule couche dépasse le seuil, à chaque tentative.
+        // Sur un terminal, Docker émet un compteur d'octets en continu.
+        $pipes   = [];
+        $process = @proc_open($cmd, [1 => ['pty']], $pipes);
+
+        // Le pseudo-terminal manque (PHP compilé sans, environnement réduit) :
+        // on retombe sur le tuyau, en sachant que l'absence de sortie n'y
+        // prouvera plus rien.
+        $progressionObservable = is_resource($process);
+
+        if (!$progressionObservable) {
+            $process = @proc_open($cmd, [1 => ['pipe', 'w']], $pipes);
+        }
 
         if (!is_resource($process)) {
             return [false, "Impossible de lancer « docker pull ».", 'lancement impossible'];
@@ -273,15 +291,18 @@ class TenantProvisioningService
             }
 
             if ($ready > 0) {
-                $chunk = fread($pipes[1], 65536);
+                // Un pseudo-terminal dont le processus fils vient de sortir rend
+                // une erreur d'E/S (errno 5) plutôt qu'une fin de fichier : on la
+                // traite comme l'absence de données, la sortie réelle étant
+                // détectée juste après par proc_get_status().
+                $chunk = @fread($pipes[1], 65536);
                 if ($chunk !== '' && $chunk !== false) {
                     $buffer      .= $chunk;
                     $lastActivity = time();
 
-                    $chunkLines = preg_split('/[\r\n]+/', trim($chunk));
-                    $lastLine   = is_array($chunkLines) ? end($chunkLines) : '';
-                    if (is_string($lastLine) && $lastLine !== '') {
-                        $tail = mb_substr($lastLine, 0, 120);
+                    $lastLine = $this->derniereLigneLisible($chunk);
+                    if ($lastLine !== '') {
+                        $tail = $lastLine;
                     }
                 }
             }
@@ -289,7 +310,7 @@ class TenantProvisioningService
             $status = proc_get_status($process);
 
             if (!$status['running']) {
-                $rest = stream_get_contents($pipes[1]);
+                $rest = @stream_get_contents($pipes[1]);
                 if (is_string($rest) && $rest !== '') {
                     $buffer .= $rest;
                 }
@@ -305,8 +326,11 @@ class TenantProvisioningService
 
             $now = time();
 
-            // Bloqué : plus aucune progression depuis trop longtemps.
-            if ($now - $lastActivity >= $stallSeconds) {
+            // Bloqué : plus aucune progression depuis trop longtemps. Le
+            // verdict ne vaut que si le silence est significatif — sur un
+            // simple tuyau il ne l'est pas, et seule la durée maximale
+            // ci-dessous reste un garde-fou honnête.
+            if ($progressionObservable && $now - $lastActivity >= $stallSeconds) {
                 $this->terminateProcess($process, $pipes);
                 return [false, $buffer, "aucune progression depuis {$stallSeconds}s"];
             }
@@ -327,6 +351,42 @@ class TenantProvisioningService
         }
 
         // Inatteignable : chaque sortie de boucle retourne explicitement.
+    }
+
+    /**
+     * Dernière ligne affichable d'un fragment de sortie.
+     *
+     * Sur un pseudo-terminal, Docker redessine son tableau de progression à
+     * coups de déplacements de curseur et d'effacements de ligne. Ces
+     * séquences n'ont aucun sens dans le journal : on ne garde que le texte.
+     */
+    private function derniereLigneLisible(string $chunk): string
+    {
+        $propre = preg_replace('/\e\[[0-9;?]*[A-Za-z]|\e[()][B0]|\e[<=>]/', '', $chunk) ?? '';
+
+        $lignes = preg_split('/[\r\n]+/', $propre) ?: [];
+        $lignes = array_values(array_filter(array_map('trim', $lignes), fn ($l) => $l !== ''));
+
+        return $lignes === [] ? '' : mb_substr((string) end($lignes), 0, 120);
+    }
+
+    /**
+     * Sortie d'un pull, rendue lisible pour le journal.
+     *
+     * Sur un pseudo-terminal, Docker réécrit sans cesse son tableau de
+     * progression : le tampon brut contient des milliers de redessins et les
+     * séquences d'échappement qui vont avec. On n'en garde que les dernières
+     * lignes de texte, dédoublonnées.
+     */
+    private function sortieLisible(string $buffer, int $lignesGardees = 30): string
+    {
+        $propre = preg_replace('/\e\[[0-9;?]*[A-Za-z]|\e[()][B0]|\e[<=>]/', '', $buffer) ?? '';
+
+        $lignes = preg_split('/[\r\n]+/', $propre) ?: [];
+        $lignes = array_map('trim', $lignes);
+        $lignes = array_values(array_unique(array_filter($lignes, fn ($l) => $l !== '')));
+
+        return implode("\n", array_slice($lignes, -$lignesGardees));
     }
 
     /**
