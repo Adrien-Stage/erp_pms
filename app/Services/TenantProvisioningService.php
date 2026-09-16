@@ -444,11 +444,28 @@ class TenantProvisioningService
         return $this->pullPinnedGrcImage($tenant, $log);
     }
 
+    /**
+     * Assemble une référence d'image.
+     *
+     * Un digest se rattache par « @ », un tag par « : ». Les confondre produit
+     * « image:sha256:… », que Docker refuse — « invalid reference format ».
+     * Le refus ne tombe qu'au « compose up », bien après que le pull a réussi :
+     * le journal affiche donc une image « prête » juste avant de la déclarer
+     * invalide, et l'erreur se lit loin de sa cause.
+     */
+    private function imageReference(string $registryImage, ?string $tag): string
+    {
+        $tag = $tag ?: 'latest';
+
+        return str_contains($tag, 'sha256:')
+            ? $registryImage . '@' . $tag
+            : $registryImage . ':' . $tag;
+    }
+
     private function pullPinnedGrcImage(Tenant $tenant, callable $log): string
     {
         $registryImage = config('provisioning.registry_image_grc');
-        $tag = $tenant->grc_image_tag ?? 'latest';
-        $imageRef = str_contains($tag, 'sha256:') ? $registryImage . '@' . $tag : $registryImage . ':' . $tag;
+        $imageRef = $this->imageReference($registryImage, $tenant->grc_image_tag);
 
         $log('image', "⬇️  Récupération de l'image GRC « {$imageRef} »…", 'info');
         try {
@@ -700,7 +717,13 @@ YAML;
         if ($grcImageRef !== null || $this->hasGrcModule($tenant)) {
             $grcContainer = 'meka-erp-' . $tenant->slug . '-grc';
             $grcPort      = $tenant->grc_port ?? ($appPort + 2000);
-            $grcImage     = $grcImageRef ?? (config('provisioning.registry_image_grc') . ':' . ($tenant->grc_image_tag ?? 'latest'));
+            // Seul endroit qui rattachait le digest par « : » : c'est lui qui
+            // produisait « wetchah_grc:sha256:… » dès qu'une mise à jour
+            // applicative laissait le GRC retomber sur son tag déjà figé.
+            $grcImage     = $grcImageRef ?? $this->imageReference(
+                config('provisioning.registry_image_grc'),
+                $tenant->grc_image_tag
+            );
 
             $services[] = <<<YAML
   {$grcContainer}:
