@@ -2558,26 +2558,15 @@ class AdminAuditController extends Controller
 
             $tenant->increment('users_count');
 
-            // Synchronisation / provisioning direct dans le conteneur Wetchah_GRC
-            if ($tenant->hasModule('grc') && $tenant->grc_port) {
-                try {
-                    $grcUrl = "http://127.0.0.1:{$tenant->grc_port}/api/v1/users/provision-from-erp";
-                    $reportingSecret = config('provisioning.reporting_secret', env('REPORTING_SECRET'));
-                    \Illuminate\Support\Facades\Http::timeout(5)
-                        ->withToken($reportingSecret)
-                        ->post($grcUrl, [
-                            'email' => $validated['email'],
-                            'password' => $validated['password'],
-                            'full_name' => $validated['name'],
-                            'phone' => $validated['phone'] ?? null,
-                            'role' => 'controller',
-                            'department' => 'Contrôle de Gestion & Finance',
-                            'is_active' => true,
-                        ]);
-                } catch (\Throwable $e) {
-                    \Illuminate\Support\Facades\Log::warning("Could not auto-provision controller into GRC container for {$tenant->slug}: " . $e->getMessage());
-                }
-            }
+            // Report du compte vers le conteneur GRC (voir GrcAccountSync :
+            // la logique est partagée avec la modification d'un employé, pour
+            // que les deux chemins ne divergent plus).
+            $grcSynchronise = app(\App\Services\GrcAccountSync::class)->push($tenant, [
+                'email'     => $validated['email'],
+                'password'  => $validated['password'],
+                'full_name' => $validated['name'],
+                'phone'     => $validated['phone'] ?? null,
+            ]);
 
             AuditLog::record(
                 Auth::id(),
@@ -2586,10 +2575,17 @@ class AdminAuditController extends Controller
                 $user->role
             );
 
+            $message = "Contrôleur de gestion créé avec succès.";
+            if ($grcSynchronise === false) {
+                $message .= " Attention : le compte n'a pas pu être reporté dans le module GRC —"
+                    . " il faudra relancer l'opération une fois le conteneur joignable.";
+            }
+
             return response()->json([
                 'success' => true,
-                'message' => "Contrôleur de gestion créé avec succès.",
+                'message' => $message,
                 'generated_password' => $generatedPassword,
+                'grc_synchronise' => $grcSynchronise,
             ], 201);
 
         } catch (\PDOException $e) {
