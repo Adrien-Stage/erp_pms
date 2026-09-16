@@ -113,8 +113,15 @@ return [
     |   puis relancé — Docker reprend les couches déjà téléchargées.
     | pull_max_seconds : durée maximale d'une seule tentative de pull, garde-fou
     |   au cas où le transfert « avancerait » sans jamais aboutir.
+    |
+    | Le plafond était à 900 s. Mesuré sur une image applicative de 26 couches,
+    | un téléchargement sain dépasse largement ce seuil sur une liaison lente :
+    | le garde-fou tuait alors la seule chose qu'il devait protéger. Puisque le
+    | blocage réel est désormais détecté sur la progression elle-même — le pull
+    | est surveillé depuis un pseudo-terminal, où Docker émet un compteur en
+    | continu — ce plafond peut être généreux sans rien laisser passer.
     */
     'pull_stall_timeout' => (int) env('PULL_STALL_TIMEOUT', 120),
-    'pull_max_seconds'   => (int) env('PULL_MAX_SECONDS', 900),
+    'pull_max_seconds'   => (int) env('PULL_MAX_SECONDS', 3600),
 
 ];
