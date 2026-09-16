@@ -8,9 +8,19 @@ name: Tests
 # Ce workflow n'est rattaché à aucune publication d'image (le dépôt n'en
 # produit pas). Il sert de garde-fou avant fusion.
 on:
+  # Restreint à main : sur une branche de travail, la demande de fusion
+  # déclenchait déjà la même suite sur le même commit, deux fois.
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
+
+# Trois poussées d'affilée n'ont qu'un dernier état utile : les précédentes
+# sont abandonnées au lieu de faire la queue. Jamais sur main, où la
+# publication d'image ne doit pas pouvoir être interrompue.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   pest:
