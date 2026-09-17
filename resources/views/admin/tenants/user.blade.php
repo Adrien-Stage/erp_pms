@@ -97,15 +97,15 @@
                     {{ $employe->role }}
                 </span>
             @endif
-            @if($employe->department_name)
+            @if(!empty($employe->department_name))
                 <span class="inline-flex items-center gap-1.5 rounded-full bg-slate-50 border border-slate-200 px-2.5 py-1 text-[10px] font-bold text-slate-700">
                     <i data-lucide="{{ $employe->department_icon ?? 'briefcase' }}" class="h-3.5 w-3.5 text-indigo-600"></i>
                     <span>{{ $employe->department_name }}</span>
-                    <span class="text-[9px] font-mono px-1 py-0.2 bg-slate-200/70 text-slate-600 rounded">{{ $employe->department_code }}</span>
+                    <span class="text-[9px] font-mono px-1 py-0.2 bg-slate-200/70 text-slate-600 rounded">{{ $employe->department_code ?? '' }}</span>
                 </span>
             @endif
             <span class="inline-flex items-center rounded-full bg-slate-100 border border-slate-200 px-2.5 py-1 text-[10px] font-bold text-slate-600">
-                {{ count($employe->roles) }} accès module
+                {{ count($employe->roles ?? []) }} accès module
             </span>
         </div>
     </div>
@@ -167,7 +167,7 @@
                                     class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-white">
                                 <option value="">-- Aucun département --</option>
                                 @foreach($departments as $dept)
-                                    <option value="{{ $dept->id }}" @selected((int) old('department_id', $employe->department_id) === (int) $dept->id)>
+                                    <option value="{{ $dept->id }}" @selected((int) old('department_id', $employe->department_id ?? null) === (int) $dept->id)>
                                         {{ $dept->name }} ({{ $dept->code }})
                                     </option>
                                 @endforeach
@@ -277,9 +277,9 @@
             <section class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                 <div class="border-b border-slate-100 px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div>
-                        <h3 class="text-sm font-extrabold text-slate-800">Permissions modulaires par département</h3>
+                        <h3 class="text-sm font-extrabold text-slate-800">Accès par module</h3>
                         <p class="mt-0.5 text-[11px] text-slate-500">
-                            Configurez les droits d'accès module par module. Le mode <span class="font-semibold text-slate-700">Hériter</span> applique automatiquement les privilèges du département de rattachement.
+                            Configurez les permissions modulaires par département. Le mode <span class="font-semibold text-slate-700">Hériter</span> applique automatiquement les privilèges du département de rattachement.
                         </p>
                     </div>
                     <div class="flex items-center gap-2 text-[10px] font-semibold text-slate-500">

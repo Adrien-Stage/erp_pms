@@ -1033,7 +1033,7 @@
                             </thead>
                             <tbody class="divide-y divide-slate-100">
                                 @forelse($tenantUsers as $user)
-                                    <tr class="hover:bg-slate-50 transition" x-show="selectedDept === 'all' || selectedDept === '{{ $user->department_id }}'">
+                                    <tr class="hover:bg-slate-50 transition" x-show="selectedDept === 'all' || selectedDept === '{{ $user->department_id ?? '' }}'">
                                         <td class="px-5 py-3">
                                             <a href="{{ route('tech.establishments.users.show', ['tenant' => $tenant, 'user' => $user->id]) }}"
                                                class="font-semibold text-slate-800 hover:text-indigo-600 hover:underline">
@@ -1042,11 +1042,11 @@
                                         </td>
                                         <td class="px-5 py-3 text-slate-600 font-mono">{{ $user->email }}</td>
                                         <td class="px-5 py-3">
-                                            @if($user->department_name)
+                                            @if(!empty($user->department_name))
                                                 <span class="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] font-semibold bg-slate-50 border border-slate-200 text-slate-700">
                                                     <i data-lucide="{{ $user->department_icon ?? 'briefcase' }}" class="h-3.5 w-3.5 text-indigo-600"></i>
                                                     <span>{{ $user->department_name }}</span>
-                                                    <span class="text-[9px] font-mono px-1 py-0.2 bg-slate-200/70 text-slate-600 rounded">{{ $user->department_code }}</span>
+                                                    <span class="text-[9px] font-mono px-1 py-0.2 bg-slate-200/70 text-slate-600 rounded">{{ $user->department_code ?? '' }}</span>
                                                 </span>
                                             @else
                                                 <span class="text-slate-400 text-xs italic">Non affecté</span>
