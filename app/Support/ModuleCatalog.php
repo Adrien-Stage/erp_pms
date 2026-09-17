@@ -38,7 +38,22 @@ class ModuleCatalog
 
     public static function all(): array
     {
-        return array_merge(self::core(), self::optional());
+        $all = array_merge(self::core(), self::optional());
+        foreach ($all as $key => &$mod) {
+            if (!isset($mod['service'])) {
+                $mod['service'] = match ($key) {
+                    'website' => ServiceCatalog::SERVICE_SITE,
+                    'grc'     => ServiceCatalog::SERVICE_GRC,
+                    default   => ServiceCatalog::SERVICE_APP,
+                };
+            }
+            if (!isset($mod['departments'])) {
+                $mod['departments'] = DepartmentCatalog::departmentsForModule($mod['key'] ?? $key);
+            }
+        }
+        unset($mod);
+
+        return $all;
     }
 
     public static function find(string $slug): ?array
@@ -46,6 +61,42 @@ class ModuleCatalog
         $module = self::all()[$slug] ?? null;
 
         return $module ? array_merge(['slug' => $slug], $module) : null;
+    }
+
+    /**
+     * Modules rattachés à un département donné.
+     */
+    public static function forDepartment(string $deptSlug): array
+    {
+        return array_filter(self::all(), function ($mod, $key) use ($deptSlug) {
+            $depts = $mod['departments'] ?? DepartmentCatalog::departmentsForModule($mod['key'] ?? $key);
+            return in_array($deptSlug, $depts, true);
+        }, ARRAY_FILTER_USE_BOTH);
+    }
+
+    /**
+     * Modules hébergés par un service donné (app, site, grc).
+     */
+    public static function forService(string $serviceSlug): array
+    {
+        return array_filter(self::all(), function ($mod) use ($serviceSlug) {
+            return ($mod['service'] ?? ServiceCatalog::SERVICE_APP) === $serviceSlug;
+        });
+    }
+
+    /**
+     * Groupement de l'ensemble des modules par département.
+     */
+    public static function groupedByDepartment(): array
+    {
+        $grouped = [];
+        foreach (DepartmentCatalog::all() as $deptSlug => $dept) {
+            $grouped[$deptSlug] = [
+                'department' => $dept,
+                'modules'    => self::forDepartment($deptSlug),
+            ];
+        }
+        return $grouped;
     }
 
     /**

@@ -55,8 +55,8 @@ class GrcAccountSync
                     // Permet au GRC de renommer le compte existant au lieu
                     // d'en créer un second quand l'adresse a changé.
                     'previous_email' => $compte['previous_email'] ?? null,
-                    'role'           => 'controller',
-                    'department'     => 'Contrôle de Gestion & Finance',
+                    'role'           => $compte['role'] ?? 'controller',
+                    'department'     => $compte['department'] ?? 'Contrôle de Gestion & Finance',
                     'is_active'      => true,
                 ], fn ($v) => $v !== null));
 

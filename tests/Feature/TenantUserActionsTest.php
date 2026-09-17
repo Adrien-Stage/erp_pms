@@ -104,6 +104,13 @@ class TenantDatabaseDouble extends TenantDatabase
             'created_at'        => '2026-05-12 08:00:00',
             'updated_at'        => '2026-08-01 09:30:00',
             'roles'             => $this->rolesAffectes,
+            'module_permissions' => [],
+            'department_id'     => null,
+            'department_name'   => null,
+            'department_code'   => null,
+            'department_slug'   => null,
+            'department_icon'   => null,
+            'department_accent' => null,
         ]);
     }
 
@@ -116,6 +123,30 @@ class TenantDatabaseDouble extends TenantDatabase
     public function assignableRoles(Tenant $tenant): array
     {
         return $this->rolesAssignables;
+    }
+
+    public function departments(Tenant $tenant): array
+    {
+        return [
+            (object) [
+                'id' => 1,
+                'name' => 'Direction',
+                'slug' => 'direction',
+                'code' => 'DIR',
+                'description' => null,
+                'icon' => 'briefcase',
+                'accent' => 'indigo',
+                'sort_order' => 1,
+                'is_active' => true,
+                'modules' => [],
+            ],
+        ];
+    }
+
+    public function syncUserPermissions(Tenant $tenant, int $userId, ?int $departmentId, array $modulePermissions): void
+    {
+        // Le test double n'exécute pas de base de tenant ; cette opération n'est
+        // pas utile au contrôle d'autorisation de la fiche.
     }
 
     public int $managers = 2;
@@ -144,7 +175,7 @@ function employe(int $id, string $nom = 'Serge Mbarga', string $role = 'receptio
     ];
 }
 
-// ── Autorisations ─────────────────────────────────────────────────────────────
+// ── Autorisations ───────────────────────────────────────────────────────────
 
 test('un propriétaire ne gère que les employés de ses propres établissements', function () {
     $tenant = actionTenant();
@@ -174,7 +205,7 @@ test('un éditeur de contenu ne touche pas aux employés', function () {
     expect(app(TenantDatabase::class)->requetes)->toBeEmpty();
 });
 
-// ── Activation ────────────────────────────────────────────────────────────────
+// ── Activation ─────────────────────────────────────────────────────────────
 
 test('désactiver un employé écrit dans la base de son établissement', function () {
     $tenant = actionTenant();
@@ -221,7 +252,7 @@ test('une base injoignable donne un message clair plutôt qu\'une erreur brute',
     expect(session('error'))->toContain('conteneurs');
 });
 
-// ── Suppression ───────────────────────────────────────────────────────────────
+// ── Suppression ─────────────────────────────────────────────────────────────
 
 test('supprimer un employé le retire de la base du tenant', function () {
     $tenant = actionTenant();
@@ -299,7 +330,7 @@ test('un rôle coché sans niveau précisé donne l\'écriture', function () {
     expect($insert['params'])->toBe([7, 4, 'write']);
 });
 
-// ── Fiche détaillée ───────────────────────────────────────────────────────────
+// ── Fiche détaillée ─────────────────────────────────────────────────────────
 
 test('la fiche d\'un employé affiche ses informations et ses accès', function () {
     $tenant = actionTenant();

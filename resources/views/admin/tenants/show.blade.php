@@ -994,66 +994,104 @@
                     </div>
                 </div>
 
-                <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                    <table class="w-full text-left text-xs">
-                        <thead class="bg-slate-50 border-b border-slate-200">
-                            <tr>
-                                <th class="px-5 py-3 text-[10px] font-bold tracking-wider text-slate-400 uppercase">Nom</th>
-                                <th class="px-5 py-3 text-[10px] font-bold tracking-wider text-slate-400 uppercase">Email</th>
-                                <th class="px-5 py-3 text-[10px] font-bold tracking-wider text-slate-400 uppercase">Accès</th>
-                                <th class="px-5 py-3 text-[10px] font-bold tracking-wider text-slate-400 uppercase">Statut</th>
-                                <th class="px-5 py-3"><span class="sr-only">Actions</span></th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-slate-100">
-                            @forelse($tenantUsers as $user)
-                                <tr class="hover:bg-slate-50 transition">
-                                    <td class="px-5 py-3">
-                                        <a href="{{ route('tech.establishments.users.show', ['tenant' => $tenant, 'user' => $user->id]) }}"
-                                           class="font-semibold text-slate-800 hover:text-indigo-600 hover:underline">
-                                            {{ $user->name }}
-                                        </a>
-                                    </td>
-                                    <td class="px-5 py-3 text-slate-600 font-mono">{{ $user->email }}</td>
-                                    <td class="px-5 py-3">
-                                        <div class="flex flex-wrap gap-1">
-                                            <span class="inline-flex items-center rounded-full bg-indigo-50 border border-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700">
-                                                {{ $user->role }}
-                                            </span>
-                                            {{-- Rôles du pivot, avec leur niveau : c'est ce que
-                                                 wetchah_app applique réellement par module. --}}
-                                            @foreach($user->roles ?? [] as $r)
-                                                <span class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium
-                                                    {{ $r['level'] === 'read' ? 'border-slate-200 bg-slate-50 text-slate-600' : 'border-emerald-200 bg-emerald-50 text-emerald-700' }}"
-                                                    title="{{ $r['module'] }} — {{ $r['level'] === 'read' ? 'lecture seule' : 'lecture/écriture' }}">
-                                                    {{ $r['name'] }}
-                                                    <span class="opacity-60">{{ $r['level'] === 'read' ? 'L' : 'L/É' }}</span>
-                                                </span>
-                                            @endforeach
-                                        </div>
-                                    </td>
-                                    <td class="px-5 py-3">
-                                        <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold {{ $user->is_active ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200' }}">
-                                            <span class="h-1.5 w-1.5 rounded-full {{ $user->is_active ? 'bg-green-500' : 'bg-red-500' }}"></span>
-                                            {{ $user->is_active ? 'Actif' : 'Inactif' }}
-                                        </span>
-                                    </td>
-                                    <td class="px-5 py-3 text-right">
-                                        @include('admin.tenants.partials.user-menu', ['tenant' => $tenant, 'user' => $user])
-                                    </td>
-                                </tr>
-                            @empty
+                <div x-data="{ selectedDept: 'all' }" class="space-y-4">
+                    {{-- Barre de filtre par département --}}
+                    @if(isset($tenantDepartments) && $tenantDepartments->isNotEmpty())
+                        <div class="flex flex-wrap items-center gap-2">
+                            <span class="text-[10px] font-bold tracking-wider text-slate-400 uppercase mr-1">Filtrer par département :</span>
+                            <button type="button" @click="selectedDept = 'all'"
+                                    :class="selectedDept === 'all' ? 'bg-indigo-600 text-white shadow-sm ring-1 ring-indigo-600' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'"
+                                    class="rounded-full px-3 py-1 text-xs font-semibold transition cursor-pointer">
+                                Tous ({{ $tenantUsers->count() }})
+                            </button>
+                            @foreach($tenantDepartments as $dept)
+                                @php
+                                    $countInDept = $tenantUsers->where('department_id', $dept->id)->count();
+                                @endphp
+                                <button type="button" @click="selectedDept = '{{ $dept->id }}'"
+                                        :class="selectedDept === '{{ $dept->id }}' ? 'bg-indigo-600 text-white shadow-sm ring-1 ring-indigo-600' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'"
+                                        class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition cursor-pointer">
+                                    <i data-lucide="{{ $dept->icon ?? 'briefcase' }}" class="h-3.5 w-3.5"></i>
+                                    <span>{{ $dept->name }}</span>
+                                    <span class="text-[10px] opacity-75">({{ $countInDept }})</span>
+                                </button>
+                            @endforeach
+                        </div>
+                    @endif
+
+                    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-slate-50 border-b border-slate-200">
                                 <tr>
-                                    <td colspan="5" class="px-5 py-8 text-center text-sm text-slate-400">
-                                        Aucun utilisateur rattaché à cet établissement.
-                                    </td>
+                                    <th class="px-5 py-3 text-[10px] font-bold tracking-wider text-slate-400 uppercase">Nom</th>
+                                    <th class="px-5 py-3 text-[10px] font-bold tracking-wider text-slate-400 uppercase">Email</th>
+                                    <th class="px-5 py-3 text-[10px] font-bold tracking-wider text-slate-400 uppercase">Département</th>
+                                    <th class="px-5 py-3 text-[10px] font-bold tracking-wider text-slate-400 uppercase">Accès</th>
+                                    <th class="px-5 py-3 text-[10px] font-bold tracking-wider text-slate-400 uppercase">Statut</th>
+                                    <th class="px-5 py-3"><span class="sr-only">Actions</span></th>
                                 </tr>
-                            @endforelse
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100">
+                                @forelse($tenantUsers as $user)
+                                    <tr class="hover:bg-slate-50 transition" x-show="selectedDept === 'all' || selectedDept === '{{ $user->department_id ?? '' }}'">
+                                        <td class="px-5 py-3">
+                                            <a href="{{ route('tech.establishments.users.show', ['tenant' => $tenant, 'user' => $user->id]) }}"
+                                               class="font-semibold text-slate-800 hover:text-indigo-600 hover:underline">
+                                                {{ $user->name }}
+                                            </a>
+                                        </td>
+                                        <td class="px-5 py-3 text-slate-600 font-mono">{{ $user->email }}</td>
+                                        <td class="px-5 py-3">
+                                            @if(!empty($user->department_name))
+                                                <span class="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] font-semibold bg-slate-50 border border-slate-200 text-slate-700">
+                                                    <i data-lucide="{{ $user->department_icon ?? 'briefcase' }}" class="h-3.5 w-3.5 text-indigo-600"></i>
+                                                    <span>{{ $user->department_name }}</span>
+                                                    <span class="text-[9px] font-mono px-1 py-0.2 bg-slate-200/70 text-slate-600 rounded">{{ $user->department_code ?? '' }}</span>
+                                                </span>
+                                            @else
+                                                <span class="text-slate-400 text-xs italic">Non affecté</span>
+                                            @endif
+                                        </td>
+                                        <td class="px-5 py-3">
+                                            <div class="flex flex-wrap gap-1">
+                                                <span class="inline-flex items-center rounded-full bg-indigo-50 border border-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700">
+                                                    {{ $user->role }}
+                                                </span>
+                                                {{-- Rôles du pivot, avec leur niveau : c'est ce que
+                                                     wetchah_app applique réellement par module. --}}
+                                                @foreach($user->roles ?? [] as $r)
+                                                    <span class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium
+                                                        {{ $r['level'] === 'read' ? 'border-slate-200 bg-slate-50 text-slate-600' : 'border-emerald-200 bg-emerald-50 text-emerald-700' }}"
+                                                        title="{{ $r['module'] }} — {{ $r['level'] === 'read' ? 'lecture seule' : 'lecture/écriture' }}">
+                                                        {{ $r['name'] }}
+                                                        <span class="opacity-60">{{ $r['level'] === 'read' ? 'L' : 'L/É' }}</span>
+                                                    </span>
+                                                @endforeach
+                                            </div>
+                                        </td>
+                                        <td class="px-5 py-3">
+                                            <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold {{ $user->is_active ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200' }}">
+                                                <span class="h-1.5 w-1.5 rounded-full {{ $user->is_active ? 'bg-green-500' : 'bg-red-500' }}"></span>
+                                                {{ $user->is_active ? 'Actif' : 'Inactif' }}
+                                            </span>
+                                        </td>
+                                        <td class="px-5 py-3 text-right">
+                                            @include('admin.tenants.partials.user-menu', ['tenant' => $tenant, 'user' => $user])
+                                        </td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="6" class="px-5 py-8 text-center text-sm text-slate-400">
+                                            Aucun utilisateur rattaché à cet établissement.
+                                        </td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
 
-                @include('admin.tenants.partials.user-edit-modal', ['tenant' => $tenant, 'tenantRoles' => $tenantRoles ?? collect()])
+                @include('admin.tenants.partials.user-edit-modal', ['tenant' => $tenant, 'tenantRoles' => $tenantRoles ?? collect(), 'tenantDepartments' => $tenantDepartments ?? collect()])
 
             {{-- ==================== THÈME ==================== --}}
             @elseif($section === 'theme')
@@ -1161,111 +1199,330 @@
                 </form>
 
             {{-- ==================== MODULES ==================== --}}
+            {{-- ==================== SERVICES & MODULES ==================== --}}
             @elseif($section === 'modules')
                 @php
                     $moduleDefs = [
-                        'restaurant'   => ['label' => 'Restaurant', 'desc' => 'Menus, commandes, facturation, portail QR, garde-manger.', 'icon' => 'utensils'],
-                        'shop'         => ['label' => 'Boutique', 'desc' => 'Articles, point de vente, gestion de caisse.', 'icon' => 'store'],
-                        'housekeeping' => ['label' => 'Housekeeping', 'desc' => 'Planification et suivi du nettoyage des chambres.', 'icon' => 'brush-cleaning'],
-                        'discussions'  => ['label' => 'Discussions', 'desc' => 'Messagerie interne entre membres du personnel.', 'icon' => 'message-circle'],
-                        'analytics'    => ['label' => 'Analytics', 'desc' => 'Tour de contrôle : statistiques et tableaux de bord.', 'icon' => 'chart-column'],
-                        'ledger'       => ['label' => 'Comptabilité avancée', 'desc' => 'Grand livre SYSCOHADA : plan de comptes, journaux, balance, clôture, comptes de tiers et lettrage, factures fournisseurs et retenues à la source, analytique. La comptabilité de caisse reste active sans ce module.', 'icon' => 'book-open'],
-                        'api'          => ['label' => 'API d\'intégration', 'desc' => 'Expose des routes API sécurisées pour alimenter le site vitrine, le portail GRC et connecter des applications tierces.', 'icon' => 'plug'],
-                        'website'      => ['label' => 'Site web', 'desc' => 'Site vitrine public (chambres, menu, contenu CMS) — provisionne un 3ᵉ container. Nécessite l\'API d\'intégration active.', 'icon' => 'globe'],
-                        'grc'          => ['label' => 'Contrôle de gestion & GRC', 'desc' => 'Plateforme de Gouvernance, Risques & Conformité (Wetchah_GRC) — provisionne un 4ᵉ container dédié. Nécessite l\'API d\'intégration active.', 'icon' => 'shield-check'],
+                        'analytics'    => [
+                            'label' => 'Analytics & Tour de Contrôle',
+                            'desc' => 'Tableaux de bord consolidés, KPIs de performance et statistiques de rentabilité.',
+                            'icon' => 'chart-column',
+                            'dept' => 'Direction Générale',
+                            'service' => 'Application PMS',
+                            'service_badge' => 'bg-indigo-50 text-indigo-700 border-indigo-200',
+                        ],
+                        'ledger'       => [
+                            'label' => 'Comptabilité avancée (SYSCOHADA)',
+                            'desc' => 'Grand livre SYSCOHADA : plan de comptes, journaux, balance, clôture, lettrage, factures tiers. La comptabilité de caisse reste active sans ce module.',
+                            'icon' => 'book-open',
+                            'dept' => 'Comptabilité & Finance',
+                            'service' => 'Application PMS',
+                            'service_badge' => 'bg-indigo-50 text-indigo-700 border-indigo-200',
+                        ],
+                        'restaurant'   => [
+                            'label' => 'Restauration (F&B)',
+                            'desc' => 'Gestion de salle, commandes, cuisine, facturation restaurant, portail QR et garde-manger.',
+                            'icon' => 'utensils',
+                            'dept' => 'Restauration (F&B)',
+                            'service' => 'Application PMS',
+                            'service_badge' => 'bg-indigo-50 text-indigo-700 border-indigo-200',
+                        ],
+                        'housekeeping' => [
+                            'label' => 'Housekeeping & Entretien',
+                            'desc' => 'Planification du nettoyage des chambres, fiches techniques et suivi des étages.',
+                            'icon' => 'brush-cleaning',
+                            'dept' => 'Hébergement / Housekeeping',
+                            'service' => 'Application PMS',
+                            'service_badge' => 'bg-indigo-50 text-indigo-700 border-indigo-200',
+                        ],
+                        'shop'         => [
+                            'label' => 'Boutique & Point de Vente',
+                            'desc' => 'Catalogue articles, encaissement au comptoir, caisse boutique et stocks dédiés.',
+                            'icon' => 'store',
+                            'dept' => 'Boutique & Commerce',
+                            'service' => 'Application PMS',
+                            'service_badge' => 'bg-indigo-50 text-indigo-700 border-indigo-200',
+                        ],
+                        'grc'          => [
+                            'label' => 'Plateforme Contrôle de Gestion & GRC',
+                            'desc' => 'Gouvernance, Risques & Conformité (Wetchah_GRC) — provisionne un 4ᵉ conteneur dédié. Nécessite l\'API d\'intégration.',
+                            'icon' => 'shield-check',
+                            'dept' => 'Qualité & Contrôle de Gestion',
+                            'service' => 'Plateforme GRC',
+                            'service_badge' => 'bg-teal-50 text-teal-700 border-teal-200',
+                        ],
+                        'website'      => [
+                            'label' => 'Site Web Vitrine & Réservation',
+                            'desc' => 'Portail public responsive (chambres, menus, réservations en ligne, CMS) — provisionne un 3ᵉ conteneur dédié. Nécessite l\'API.',
+                            'icon' => 'globe',
+                            'dept' => 'Réception / Front Office',
+                            'service' => 'Site Web',
+                            'service_badge' => 'bg-rose-50 text-rose-700 border-rose-200',
+                        ],
+                        'api'          => [
+                            'label' => 'API d\'intégration & Passerelles',
+                            'desc' => 'Expose des endpoints sécurisés alimentant le Site Web, le portail GRC et les intégrations tierces.',
+                            'icon' => 'plug',
+                            'dept' => 'Informatique & IT',
+                            'service' => 'Application PMS',
+                            'service_badge' => 'bg-indigo-50 text-indigo-700 border-indigo-200',
+                        ],
+                        'discussions'  => [
+                            'label' => 'Discussions & Messagerie',
+                            'desc' => 'Canaux de communication instantanée et échanges sécurisés entre employés.',
+                            'icon' => 'message-circle',
+                            'dept' => 'Transversal / Inter-départements',
+                            'service' => 'Application PMS',
+                            'service_badge' => 'bg-indigo-50 text-indigo-700 border-indigo-200',
+                        ],
                     ];
                     $tenantModules = $tenant->modules ?? [];
-                    // Établissement jamais passé par ce sélecteur (aucune des clés
-                    // canoniques présente) : tout est actif aujourd'hui côté
-                    // application, on part de cet état plutôt que de tout décocher.
                     $legacyAllEnabled = empty(array_intersect(array_keys($moduleDefs), $tenantModules));
                 @endphp
-                <div class="mb-6">
-                    <h2 class="text-xl font-extrabold text-slate-800 tracking-tight">Modules</h2>
-                    <p class="text-xs text-slate-500 mt-1">Active ou désactive des fonctionnalités métier pour {{ $tenant->name }}. Les modules cœur (Chambres, Réservations, Clients, Utilisateurs) restent toujours actifs.</p>
+
+                <div class="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                        <h2 class="text-xl font-extrabold text-slate-800 tracking-tight">Services & Modules Métier</h2>
+                        <p class="text-xs text-slate-500 mt-1">
+                            Cartographie des services d'infrastructure déployés et des modules métier activés pour {{ $tenant->name }}.
+                        </p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-indigo-50 border border-indigo-200 text-indigo-700">
+                            <span class="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                            <span>3 Services &bull; 9 Départements</span>
+                        </span>
+                    </div>
                 </div>
 
-                <form action="{{ route('tech.establishments.modules', $tenant) }}" method="POST" class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden"
-                    x-data="{
-                        modules: {
-                            @foreach($moduleDefs as $key => $def)
-                            {{ $key }}: {{ ($legacyAllEnabled || in_array($key, $tenantModules)) ? 'true' : 'false' }},
-                            @endforeach
-                        },
-                        toggleModuleDependency(name) {
-                            // Site web ou GRC nécessite l'API d'intégration : l'activer force l'API
-                            if ((name === 'website' && this.modules.website) || (name === 'grc' && this.modules.grc)) {
-                                this.modules.api = true;
-                            }
-                            // Désactiver l'API désactive automatiquement le site web et le GRC
-                            if (name === 'api' && !this.modules.api) {
-                                this.modules.website = false;
-                                this.modules.grc = false;
-                            }
-                        }
-                    }">
-                    @csrf
-                    <div class="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        @foreach($moduleDefs as $key => $def)
-                            <label class="relative flex flex-col gap-3 rounded-xl border p-4 cursor-pointer select-none transition hover:bg-slate-50"
-                                   :class="modules.{{ $key }} ? 'border-indigo-600 ring-2 ring-indigo-50 bg-indigo-50/10' : 'border-slate-200'">
-                                {{-- Case à cocher d'UI uniquement (sans name : elle ne se soumet pas).
-                                     La soumission passe par le champ caché ci-dessous, présent
-                                     seulement quand le module est activé — évite l'ambiguïté d'une
-                                     case liée en x-model, qui empêchait la désactivation de prendre. --}}
-                                <input type="checkbox" hidden
-                                       x-model="modules.{{ $key }}"
-                                       @if(in_array($key, ['api', 'website', 'grc'], true)) @change="toggleModuleDependency('{{ $key }}')" @endif>
-                                <template x-if="modules.{{ $key }}">
-                                    <input type="hidden" name="modules[]" value="{{ $key }}">
-                                </template>
-                                <div class="flex items-start justify-between gap-2">
-                                    <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition"
-                                         :class="modules.{{ $key }} ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'">
-                                        <i data-lucide="{{ $def['icon'] }}" class="h-5 w-5"></i>
-                                    </div>
-                                    <div class="mt-1.5 h-5 w-9 shrink-0 rounded-full transition-colors"
-                                         :class="modules.{{ $key }} ? 'bg-indigo-600' : 'bg-slate-200'">
-                                        <div class="h-4 w-4 mt-0.5 rounded-full bg-white shadow transition-transform"
-                                             :class="modules.{{ $key }} ? 'translate-x-[18px]' : 'translate-x-0.5'"></div>
-                                    </div>
-                                </div>
-                                <div class="space-y-1">
-                                    <span class="text-xs font-bold text-slate-800">{{ $def['label'] }}</span>
-                                    <p class="text-[10px] text-slate-500 leading-relaxed">{{ $def['desc'] }}</p>
+                {{-- ==================== BLOC 1 : SERVICES D'INFRASTRUCTURE DÉPLOYÉS ==================== --}}
+                <div class="mb-8">
+                    <div class="mb-3 flex items-center gap-2">
+                        <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">1. Services d'infrastructure déployés</span>
+                        <span class="text-[10px] text-slate-400 font-normal">(Conteneurs applicatifs autonomes hébergeant les modules métier)</span>
+                    </div>
 
-                                    @if($key === 'grc')
-                                        <template x-if="modules.grc">
-                                            <div class="pt-2" @click.stop>
-                                                <a href="{{ $tenant->grcUrl() }}" target="_blank"
-                                                   class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-teal-50 border border-teal-200 text-[10px] font-bold text-teal-700 hover:bg-teal-100 transition shadow-2xs">
-                                                    <svg class="h-3 w-3 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
-                                                    <span>Ouvrir la plateforme GRC (:{{ $tenant->resolvedGrcPort() }}) ↗</span>
-                                                </a>
-                                            </div>
-                                        </template>
-                                    @elseif($key === 'website' && $tenant->websiteUrl())
-                                        <template x-if="modules.website">
-                                            <div class="pt-2" @click.stop>
-                                                <a href="{{ $tenant->websiteUrl() }}" target="_blank"
-                                                   class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-rose-50 border border-rose-200 text-[10px] font-bold text-rose-700 hover:bg-rose-100 transition shadow-2xs">
-                                                    <svg class="h-3 w-3 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
-                                                    <span>Ouvrir le Site Web ↗</span>
-                                                </a>
-                                            </div>
-                                        </template>
-                                    @endif
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {{-- Service 1 : Application PMS (Cœur) --}}
+                        <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm relative overflow-hidden flex flex-col justify-between">
+                            <div class="absolute top-0 right-0 w-24 h-24 bg-indigo-500/5 rounded-full blur-2xl pointer-events-none"></div>
+                            <div>
+                                <div class="flex items-start justify-between gap-3 mb-3">
+                                    <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-600">
+                                        <i data-lucide="server" class="h-5 w-5"></i>
+                                    </div>
+                                    <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold {{ $tenant->docker_status === 'running' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-600 border border-slate-200' }}">
+                                        <span class="h-1.5 w-1.5 rounded-full {{ $tenant->docker_status === 'running' ? 'bg-emerald-500' : 'bg-slate-400' }}"></span>
+                                        {{ $tenant->docker_status === 'running' ? 'Actif' : 'Inactif' }}
+                                    </span>
                                 </div>
-                            </label>
-                        @endforeach
+                                <h3 class="text-sm font-bold text-slate-800">Application PMS</h3>
+                                <p class="text-[10px] text-indigo-600 font-semibold mb-2">Service Cœur d'Exploitation</p>
+                                <p class="text-xs text-slate-500 leading-relaxed mb-4">
+                                    Moteur opérationnel de l'établissement : hébergement, réservations, caisses, comptabilité et modules métier.
+                                </p>
+                            </div>
+                            <div class="pt-3 border-t border-slate-100 flex items-center justify-between">
+                                <div class="font-mono text-[10px] text-slate-400">
+                                    Port <span class="font-bold text-slate-700">:{{ $tenant->app_port }}</span>
+                                </div>
+                                @if($tenant->appUrl())
+                                    <a href="{{ $tenant->appUrl() }}" target="_blank"
+                                       class="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-800 hover:underline">
+                                        <span>Accéder au PMS</span>
+                                        <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                                    </a>
+                                @endif
+                            </div>
+                        </div>
+
+                        {{-- Service 2 : Site Web Vitrine & Réservation --}}
+                        <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm relative overflow-hidden flex flex-col justify-between">
+                            <div class="absolute top-0 right-0 w-24 h-24 bg-rose-500/5 rounded-full blur-2xl pointer-events-none"></div>
+                            <div>
+                                <div class="flex items-start justify-between gap-3 mb-3">
+                                    <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-50 border border-rose-100 text-rose-600">
+                                        <i data-lucide="globe" class="h-5 w-5"></i>
+                                    </div>
+                                    <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold {{ $tenant->docker_web_container ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-500 border border-slate-200' }}">
+                                        <span class="h-1.5 w-1.5 rounded-full {{ $tenant->docker_web_container ? 'bg-emerald-500' : 'bg-slate-300' }}"></span>
+                                        {{ $tenant->docker_web_container ? 'Déployé' : 'Non activé' }}
+                                    </span>
+                                </div>
+                                <h3 class="text-sm font-bold text-slate-800">Site Web Vitrine</h3>
+                                <p class="text-[10px] text-rose-600 font-semibold mb-2">Service Web Public (SvelteKit)</p>
+                                <p class="text-xs text-slate-500 leading-relaxed mb-4">
+                                    Présentation de l'hôtel, catalogue interactif des chambres, réservation directe et CMS de contenu.
+                                </p>
+                            </div>
+                            <div class="pt-3 border-t border-slate-100 flex items-center justify-between">
+                                <div class="font-mono text-[10px] text-slate-400">
+                                    Port <span class="font-bold text-slate-700">:{{ $tenant->web_port ?? ($tenant->app_port + 1000) }}</span>
+                                </div>
+                                @if($tenant->websiteUrl())
+                                    <a href="{{ $tenant->websiteUrl() }}" target="_blank"
+                                       class="inline-flex items-center gap-1.5 text-xs font-bold text-rose-600 hover:text-rose-800 hover:underline">
+                                        <span>Ouvrir le Site</span>
+                                        <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                                    </a>
+                                @else
+                                    <span class="text-[10px] text-slate-400 italic">Activer le module ci-dessous</span>
+                                @endif
+                            </div>
+                        </div>
+
+                        {{-- Service 3 : Plateforme Contrôle de Gestion & GRC --}}
+                        <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm relative overflow-hidden flex flex-col justify-between">
+                            <div class="absolute top-0 right-0 w-24 h-24 bg-teal-500/5 rounded-full blur-2xl pointer-events-none"></div>
+                            <div>
+                                <div class="flex items-start justify-between gap-3 mb-3">
+                                    <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-teal-50 border border-teal-100 text-teal-600">
+                                        <i data-lucide="shield-check" class="h-5 w-5"></i>
+                                    </div>
+                                    <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold {{ $tenant->hasGrc() ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-500 border border-slate-200' }}">
+                                        <span class="h-1.5 w-1.5 rounded-full {{ $tenant->hasGrc() ? 'bg-emerald-500' : 'bg-slate-300' }}"></span>
+                                        {{ $tenant->hasGrc() ? 'Déployé' : 'Non activé' }}
+                                    </span>
+                                </div>
+                                <h3 class="text-sm font-bold text-slate-800">Wetchah_GRC</h3>
+                                <p class="text-[10px] text-teal-600 font-semibold mb-2">Service Contrôle de Gestion & Audit</p>
+                                <p class="text-xs text-slate-500 leading-relaxed mb-4">
+                                    Plateforme dédiée aux contrôleurs : cartographie des risques 5x5, audits internes, conformité et alertes.
+                                </p>
+                            </div>
+                            <div class="pt-3 border-t border-slate-100 flex items-center justify-between">
+                                <div class="font-mono text-[10px] text-slate-400">
+                                    Port <span class="font-bold text-slate-700">:{{ $tenant->resolvedGrcPort() }}</span>
+                                </div>
+                                @if($tenant->hasGrc())
+                                    <a href="{{ $tenant->grcUrl() }}" target="_blank"
+                                       class="inline-flex items-center gap-1.5 text-xs font-bold text-teal-600 hover:text-teal-800 hover:underline">
+                                        <span>Ouvrir le GRC</span>
+                                        <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                                    </a>
+                                @else
+                                    <span class="text-[10px] text-slate-400 italic">Activer le module ci-dessous</span>
+                                @endif
+                            </div>
+                        </div>
                     </div>
-                    <div class="bg-slate-50 px-6 py-4 border-t border-slate-100 flex items-center justify-between gap-4">
-                        <p class="text-[10px] text-slate-400">Appliquer recrée le container applicatif (même version, base de données intacte) — quelques secondes d'interruption. Activer « Site web » pour la première fois télécharge son image, ce qui peut prendre plus de temps.</p>
-                        <button type="submit" class="shrink-0 rounded-lg bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-sm">
-                            Appliquer les modules
-                        </button>
+                </div>
+
+                {{-- ==================== BLOC 2 : ACTIVATION DES MODULES PAR DÉPARTEMENT ==================== --}}
+                <div>
+                    <div class="mb-3 flex items-center justify-between">
+                        <div>
+                            <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">2. Activation des modules métier</span>
+                            <p class="text-xs text-slate-500">Chaque module est rattaché à son département de référence et hébergé sur son service respectif.</p>
+                        </div>
                     </div>
-                </form>
+
+                    {{-- Modules Cœur toujours actifs --}}
+                    <div class="mb-4 rounded-xl border border-indigo-100 bg-indigo-50/50 p-4">
+                        <div class="flex items-center gap-2 text-xs font-bold text-indigo-900 mb-1">
+                            <i data-lucide="check-circle-2" class="h-4 w-4 text-indigo-600"></i>
+                            <span>Modules Cœur (Toujours actifs sur le Service PMS) :</span>
+                        </div>
+                        <p class="text-[11px] text-indigo-700/80">
+                            Chambres & Hébergement &bull; Réservations & Séjours &bull; Fichier Clients & CRM &bull; Gestion des Utilisateurs & Rôles &bull; Paramètres généraux
+                        </p>
+                    </div>
+
+                    <form action="{{ route('tech.establishments.modules', $tenant) }}" method="POST" class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden"
+                        x-data="{
+                            modules: {
+                                @foreach($moduleDefs as $key => $def)
+                                {{ $key }}: {{ ($legacyAllEnabled || in_array($key, $tenantModules)) ? 'true' : 'false' }},
+                                @endforeach
+                            },
+                            toggleModuleDependency(name) {
+                                if ((name === 'website' && this.modules.website) || (name === 'grc' && this.modules.grc)) {
+                                    this.modules.api = true;
+                                }
+                                if (name === 'api' && !this.modules.api) {
+                                    this.modules.website = false;
+                                    this.modules.grc = false;
+                                }
+                            }
+                        }">
+                        @csrf
+                        <div class="p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                            @foreach($moduleDefs as $key => $def)
+                                <label class="relative flex flex-col justify-between gap-3 rounded-xl border p-4 cursor-pointer select-none transition hover:bg-slate-50"
+                                       :class="modules.{{ $key }} ? 'border-indigo-600 ring-2 ring-indigo-50 bg-indigo-50/10' : 'border-slate-200'">
+                                    <input type="checkbox" hidden
+                                           x-model="modules.{{ $key }}"
+                                           @if(in_array($key, ['api', 'website', 'grc'], true)) @change="toggleModuleDependency('{{ $key }}')" @endif>
+                                    <template x-if="modules.{{ $key }}">
+                                        <input type="hidden" name="modules[]" value="{{ $key }}">
+                                    </template>
+
+                                    <div>
+                                        <div class="flex items-start justify-between gap-2 mb-3">
+                                            <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition"
+                                                 :class="modules.{{ $key }} ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'">
+                                                <i data-lucide="{{ $def['icon'] }}" class="h-5 w-5"></i>
+                                            </div>
+                                            <div class="mt-1.5 h-5 w-9 shrink-0 rounded-full transition-colors"
+                                                 :class="modules.{{ $key }} ? 'bg-indigo-600' : 'bg-slate-200'">
+                                                <div class="h-4 w-4 mt-0.5 rounded-full bg-white shadow transition-transform"
+                                                     :class="modules.{{ $key }} ? 'translate-x-[18px]' : 'translate-x-0.5'"></div>
+                                            </div>
+                                        </div>
+
+                                        <div class="space-y-1">
+                                            <div class="flex flex-wrap items-center gap-1.5">
+                                                <span class="text-xs font-bold text-slate-800">{{ $def['label'] }}</span>
+                                            </div>
+                                            <div class="flex flex-wrap items-center gap-1 my-1">
+                                                <span class="inline-flex items-center rounded px-1.5 py-0.5 text-[9px] font-semibold border {{ $def['service_badge'] }}">
+                                                    {{ $def['service'] }}
+                                                </span>
+                                                <span class="inline-flex items-center rounded px-1.5 py-0.5 text-[9px] font-medium bg-slate-100 text-slate-600">
+                                                    {{ $def['dept'] }}
+                                                </span>
+                                            </div>
+                                            <p class="text-[10px] text-slate-500 leading-relaxed">{{ $def['desc'] }}</p>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        @if($key === 'grc')
+                                            <template x-if="modules.grc">
+                                                <div class="pt-2" @click.stop>
+                                                    <a href="{{ $tenant->grcUrl() }}" target="_blank"
+                                                       class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-teal-50 border border-teal-200 text-[10px] font-bold text-teal-700 hover:bg-teal-100 transition shadow-2xs">
+                                                        <svg class="h-3 w-3 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
+                                                        <span>Portail GRC (:{{ $tenant->resolvedGrcPort() }}) ↗</span>
+                                                    </a>
+                                                </div>
+                                            </template>
+                                        @elseif($key === 'website' && $tenant->websiteUrl())
+                                            <template x-if="modules.website">
+                                                <div class="pt-2" @click.stop>
+                                                    <a href="{{ $tenant->websiteUrl() }}" target="_blank"
+                                                       class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-rose-50 border border-rose-200 text-[10px] font-bold text-rose-700 hover:bg-rose-100 transition shadow-2xs">
+                                                        <svg class="h-3 w-3 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
+                                                        <span>Site Web ↗</span>
+                                                    </a>
+                                                </div>
+                                            </template>
+                                        @endif
+                                    </div>
+                                </label>
+                            @endforeach
+                        </div>
+                        <div class="bg-slate-50 px-6 py-4 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <p class="text-[10px] text-slate-400 leading-relaxed">
+                                L'application recrée le conteneur applicatif (même version, base de données préservée).
+                                Activer « Site Web » ou « GRC » pour la première fois provisionne son conteneur dédié respectif.
+                            </p>
+                            <button type="submit" class="shrink-0 rounded-lg bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-indigo-700 transition shadow-sm cursor-pointer">
+                                Appliquer les modifications
+                            </button>
+                        </div>
+                    </form>
+                </div>
 
             {{-- ==================== CONTENU DU SITE (CMS) ==================== --}}
             @elseif($section === 'site-content')
