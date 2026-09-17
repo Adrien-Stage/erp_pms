@@ -247,25 +247,27 @@ class AdminAuditController extends Controller
         $section = request('section', 'overview');
         $tenantUsers = collect();
         // Rôles proposés à l'affectation, lus dans la base de l'établissement :
-        // chaque établissement a son propre référentiel de rôles.
+        // chaque établissement a son propre référentiel de rôles et de départements.
         $tenantRoles = collect();
+        $tenantDepartments = collect();
 
-        if ($section === 'users') {
+        if ($section === 'users' || $section === 'modules') {
             try {
                 $tenantDb = app(\App\Services\TenantDatabase::class);
 
-                $tenantUsers = collect($tenantDb->users($tenant));
-                $tenantRoles = collect($tenantDb->assignableRoles($tenant));
+                if ($section === 'users') {
+                    $tenantUsers = collect($tenantDb->users($tenant));
+                    $tenantRoles = collect($tenantDb->assignableRoles($tenant));
 
-                // users_count est un compteur dénormalisé (incrémenté à la création
-                // d'un manager) — il peut dériver si un utilisateur est supprimé
-                // directement dans la base du tenant. On le resynchronise ici,
-                // le seul endroit où on a déjà une lecture live de cette table.
-                if ($tenant->users_count !== $tenantUsers->count()) {
-                    $tenant->update(['users_count' => $tenantUsers->count()]);
+                    // users_count est un compteur dénormalisé
+                    if ($tenant->users_count !== $tenantUsers->count()) {
+                        $tenant->update(['users_count' => $tenantUsers->count()]);
+                    }
                 }
+
+                $tenantDepartments = collect($tenantDb->departments($tenant));
             } catch (\Exception $e) {
-                \Illuminate\Support\Facades\Log::warning("Could not fetch tenant users for {$tenant->name}: " . $e->getMessage());
+                \Illuminate\Support\Facades\Log::warning("Could not fetch tenant users/departments for {$tenant->name}: " . $e->getMessage());
                 session()->now('error', "Impossible de se connecter à la base de données de l'établissement : " . $e->getMessage());
             }
         }
@@ -276,7 +278,7 @@ class AdminAuditController extends Controller
             && app(\App\Services\DemoDataService::class)->estInstalle($tenant);
 
         return view('admin.tenants.show', compact(
-            'tenant', 'tenantUsers', 'tenantRoles', 'section', 'demoDataInstalled'
+            'tenant', 'tenantUsers', 'tenantRoles', 'tenantDepartments', 'section', 'demoDataInstalled'
         ));
     }
 

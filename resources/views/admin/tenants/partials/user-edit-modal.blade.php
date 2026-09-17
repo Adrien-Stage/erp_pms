@@ -56,17 +56,29 @@
                     </div>
                 </div>
 
-                <div>
-                    <label for="tu-role" class="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">Rôle principal</label>
-                    <input type="text" id="tu-role" name="role" list="tu-role-list"
-                           class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
-                    <datalist id="tu-role-list">
-                        @foreach($tenantRoles as $r)<option value="{{ $r->slug }}">{{ $r->name }}</option>@endforeach
-                    </datalist>
-                    <p class="mt-1 text-[11px] text-slate-400">
-                        Rôle historique de l'employé. Les accès détaillés ci-dessous le complètent module par module.
-                    </p>
+                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div>
+                        <label for="tu-department" class="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">Département</label>
+                        <select id="tu-department" name="department_id"
+                                class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-white">
+                            <option value="">-- Aucun département --</option>
+                            @foreach($tenantDepartments ?? [] as $dept)
+                                <option value="{{ $dept->id }}">{{ $dept->name }} ({{ $dept->code }})</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div>
+                        <label for="tu-role" class="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">Rôle principal</label>
+                        <input type="text" id="tu-role" name="role" list="tu-role-list"
+                               class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                        <datalist id="tu-role-list">
+                            @foreach($tenantRoles as $r)<option value="{{ $r->slug }}">{{ $r->name }}</option>@endforeach
+                        </datalist>
+                    </div>
                 </div>
+                <p class="mt-1 text-[11px] text-slate-400">
+                    L'affectation au département détermine les accès métier standards. Le rôle historique reste lu en fallback.
+                </p>
 
                 <div class="border-t border-slate-200 pt-5">
                     <h4 class="text-[11px] font-bold uppercase tracking-wide text-slate-500">Accès par module</h4>
@@ -140,6 +152,8 @@
             document.getElementById('tu-email').value = d.email || '';
             document.getElementById('tu-phone').value = d.phone || '';
             document.getElementById('tu-role').value  = d.role  || '';
+            const deptEl = document.getElementById('tu-department');
+            if (deptEl) { deptEl.value = d.departmentId || ''; }
             document.getElementById('tu-password').value = '';
 
             // Rôles cochés et niveaux repositionnés à chaque ouverture : sans

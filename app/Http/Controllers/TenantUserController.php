@@ -87,6 +87,9 @@ class TenantUserController extends Controller
 
             $rolesAssignables = collect($this->tenantDb->assignableRoles($tenant));
             $managersActifs   = $this->tenantDb->activeManagerCount($tenant);
+            $departments      = collect($this->tenantDb->departments($tenant));
+            $services         = \App\Support\ServiceCatalog::all();
+            $groupedModules   = \App\Support\ModuleCatalog::groupedByDepartment();
         } catch (\Throwable $e) {
             return $this->retour($tenant)->with('error', $this->messageErreur($e));
         }
@@ -96,7 +99,10 @@ class TenantUserController extends Controller
         // plutôt qu'après.
         $dernierManager = $employe->role === 'manager' && $managersActifs <= 1;
 
-        return view('admin.tenants.user', compact('tenant', 'employe', 'rolesAssignables', 'dernierManager'));
+        return view('admin.tenants.user', compact(
+            'tenant', 'employe', 'rolesAssignables', 'dernierManager',
+            'departments', 'services', 'groupedModules'
+        ));
     }
 
     /** Activation / désactivation d'un employé. */
@@ -173,15 +179,17 @@ class TenantUserController extends Controller
         $this->authorizeTenant($tenant);
 
         $validated = $request->validate([
-            'name'          => ['required', 'string', 'max:255'],
-            'email'         => ['required', 'email', 'max:255'],
-            'phone'         => ['nullable', 'string', 'max:30'],
-            'password'      => ['nullable', 'string', 'min:4'],
-            'role'          => ['nullable', 'string', 'max:50'],
-            'roles'         => ['nullable', 'array'],
-            'roles.*'       => ['integer'],
-            'levels'        => ['nullable', 'array'],
-            'levels.*'      => ['in:read,write'],
+            'name'               => ['required', 'string', 'max:255'],
+            'email'              => ['required', 'email', 'max:255'],
+            'phone'              => ['nullable', 'string', 'max:30'],
+            'password'           => ['nullable', 'string', 'min:4'],
+            'role'               => ['nullable', 'string', 'max:50'],
+            'department_id'      => ['nullable', 'integer'],
+            'module_permissions' => ['nullable', 'array'],
+            'roles'              => ['nullable', 'array'],
+            'roles.*'            => ['integer'],
+            'levels'             => ['nullable', 'array'],
+            'levels.*'           => ['in:read,write'],
         ]);
 
         try {
@@ -224,6 +232,11 @@ class TenantUserController extends Controller
             $this->remplacerRoles($pdo, $user, $validated['roles'] ?? [], $validated['levels'] ?? []);
 
             $pdo->commit();
+
+            // Enregistrement du département et de la matrice des surcharges modulaires
+            $departmentId = !empty($validated['department_id']) ? (int) $validated['department_id'] : null;
+            $modulePermissions = (array) $request->input('module_permissions', []);
+            $this->tenantDb->syncUserPermissions($tenant, $user, $departmentId, $modulePermissions);
         } catch (\Throwable $e) {
             if (isset($pdo) && $pdo->inTransaction()) {
                 $pdo->rollBack();

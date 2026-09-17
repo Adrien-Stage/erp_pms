@@ -57,6 +57,7 @@
                 data-email="{{ $user->email }}"
                 data-phone="{{ $user->phone }}"
                 data-role="{{ $user->role }}"
+                data-department-id="{{ $user->department_id }}"
                 data-roles="{{ json_encode($rolesActuels) }}"
                 data-levels="{{ json_encode($niveauxActuels) }}"
                 data-action="{{ route('tech.establishments.users.update', ['tenant' => $tenant, 'user' => $user->id]) }}"

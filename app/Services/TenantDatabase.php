@@ -62,13 +62,24 @@ class TenantDatabase
         return $connexion;
     }
 
-    /** Employés de l'établissement, avec leurs rôles et niveaux d'accès. */
+    /** Employés de l'établissement, avec leurs départements, rôles et niveaux d'accès. */
     public function users(Tenant $tenant): array
     {
         $pdo = $this->connect($tenant);
 
-        $users = $pdo->query('SELECT id, name, email, phone, role, is_active FROM users ORDER BY name')
-            ->fetchAll(PDO::FETCH_ASSOC);
+        try {
+            $users = $pdo->query('
+                SELECT u.id, u.name, u.email, u.phone, u.role, u.is_active, u.department_id,
+                       d.name AS department_name, d.code AS department_code, d.slug AS department_slug,
+                       d.icon AS department_icon, d.accent AS department_accent
+                FROM users u
+                LEFT JOIN departments d ON d.id = u.department_id
+                ORDER BY u.name
+            ')->fetchAll(PDO::FETCH_ASSOC);
+        } catch (PDOException $e) {
+            $users = $pdo->query('SELECT id, name, email, phone, role, is_active FROM users ORDER BY name')
+                ->fetchAll(PDO::FETCH_ASSOC);
+        }
 
         if (empty($users)) {
             return [];
@@ -88,12 +99,27 @@ class TenantDatabase
                 $pivot[$row['user_id']][] = $row;
             }
         } catch (PDOException $e) {
-            // Établissement sur une version antérieure au multi-rôles : on
-            // retombe sur la colonne « role », toujours présente.
+            // Établissement sur une version antérieure au multi-rôles
         }
 
-        return array_map(function (array $user) use ($pivot) {
+        // Surcharges de permissions modulaires
+        $permissionsByUser = [];
+        try {
+            $permRows = $pdo->query('
+                SELECT user_id, module_key, access_level
+                FROM user_module_permissions
+            ')->fetchAll(PDO::FETCH_ASSOC);
+
+            foreach ($permRows as $p) {
+                $permissionsByUser[$p['user_id']][$p['module_key']] = $p['access_level'];
+            }
+        } catch (PDOException $e) {
+            // Table non présente sur les bases non migrées
+        }
+
+        return array_map(function (array $user) use ($pivot, $permissionsByUser) {
             $user['roles'] = $pivot[$user['id']] ?? [];
+            $user['module_permissions'] = $permissionsByUser[$user['id']] ?? [];
 
             return (object) $user;
         }, $users);
@@ -103,24 +129,24 @@ class TenantDatabase
     public function findUser(Tenant $tenant, int $userId): ?object
     {
         $stmt = $this->connect($tenant)->prepare(
-            'SELECT id, name, email, phone, role, is_active FROM users WHERE id = ?'
+            'SELECT id, name, email, phone, role, is_active, department_id FROM users WHERE id = ?'
         );
-        $stmt->execute([$userId]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        try {
+            $stmt->execute([$userId]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        } catch (PDOException $e) {
+            $stmt = $this->connect($tenant)->prepare(
+                'SELECT id, name, email, phone, role, is_active FROM users WHERE id = ?'
+            );
+            $stmt->execute([$userId]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        }
 
         return $row ? (object) $row : null;
     }
 
     /**
-     * Fiche complète d'un employé : toutes ses colonnes et ses rôles détaillés.
-     *
-     * Distincte de findUser(), qui ne lit que le strict nécessaire aux actions.
-     * Ici on veut de quoi remplir un écran — d'où les dates et les rôles.
-     *
-     * Les colonnes ajoutées par wetchah_app (rôle, téléphone, activation,
-     * dernière connexion) peuvent manquer sur un établissement resté sur une
-     * version antérieure : on retombe alors sur le socle Laravel plutôt que de
-     * laisser l'écran en erreur.
+     * Fiche complète d'un employé : identité, département, rôles et permissions modulaires.
      */
     public function userDetail(Tenant $tenant, int $userId): ?object
     {
@@ -128,16 +154,30 @@ class TenantDatabase
 
         try {
             $stmt = $pdo->prepare(
-                'SELECT id, name, email, phone, role, is_active, last_login_at,
-                        email_verified_at, created_at, updated_at
-                 FROM users WHERE id = ?'
+                'SELECT u.id, u.name, u.email, u.phone, u.role, u.is_active, u.department_id,
+                        u.last_login_at, u.email_verified_at, u.created_at, u.updated_at,
+                        d.name AS department_name, d.code AS department_code, d.slug AS department_slug,
+                        d.icon AS department_icon, d.accent AS department_accent
+                 FROM users u
+                 LEFT JOIN departments d ON d.id = u.department_id
+                 WHERE u.id = ?'
             );
             $stmt->execute([$userId]);
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
         } catch (PDOException $e) {
-            $stmt = $pdo->prepare('SELECT id, name, email, created_at, updated_at FROM users WHERE id = ?');
-            $stmt->execute([$userId]);
-            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            try {
+                $stmt = $pdo->prepare(
+                    'SELECT id, name, email, phone, role, is_active, last_login_at,
+                            email_verified_at, created_at, updated_at
+                     FROM users WHERE id = ?'
+                );
+                $stmt->execute([$userId]);
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            } catch (PDOException $e2) {
+                $stmt = $pdo->prepare('SELECT id, name, email, created_at, updated_at FROM users WHERE id = ?');
+                $stmt->execute([$userId]);
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            }
         }
 
         if (!$row) {
@@ -145,10 +185,9 @@ class TenantDatabase
         }
 
         $row += ['phone' => null, 'role' => null, 'is_active' => true,
-                 'last_login_at' => null, 'email_verified_at' => null];
+                 'last_login_at' => null, 'email_verified_at' => null, 'department_id' => null];
 
         $row['roles'] = [];
-
         try {
             $stmt = $pdo->prepare('
                 SELECT r.id, r.slug, r.name, r.module, r.description, ru.level
@@ -160,11 +199,107 @@ class TenantDatabase
             $stmt->execute([$userId]);
             $row['roles'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (PDOException $e) {
-            // Établissement antérieur au multi-rôles : la colonne « role »
-            // reste sa seule source d'autorisation.
+            // Établissement antérieur au multi-rôles
+        }
+
+        // Surcharges de permissions modulaires
+        $row['module_permissions'] = [];
+        try {
+            $stmt = $pdo->prepare('SELECT module_key, access_level FROM user_module_permissions WHERE user_id = ?');
+            $stmt->execute([$userId]);
+            $row['module_permissions'] = $stmt->fetchAll(PDO::FETCH_KEY_PAIR) ?: [];
+        } catch (PDOException $e) {
+            // Table non existante
         }
 
         return (object) $row;
+    }
+
+    /**
+     * Liste des départements d'un établissement avec leurs modules attachés.
+     */
+    public function departments(Tenant $tenant): array
+    {
+        $pdo = $this->connect($tenant);
+
+        try {
+            $depts = $pdo->query('
+                SELECT id, name, slug, code, description, icon, accent, sort_order, is_active
+                FROM departments
+                WHERE is_active = true
+                ORDER BY sort_order, name
+            ')->fetchAll(PDO::FETCH_ASSOC);
+
+            if (empty($depts)) {
+                return [];
+            }
+
+            $modRows = $pdo->query('
+                SELECT department_id, module_key, default_level
+                FROM department_module
+            ')->fetchAll(PDO::FETCH_ASSOC);
+
+            $modsByDept = [];
+            foreach ($modRows as $m) {
+                $modsByDept[$m['department_id']][] = [
+                    'key'   => $m['module_key'],
+                    'level' => $m['default_level'],
+                ];
+            }
+
+            return array_map(function ($d) use ($modsByDept) {
+                $d['modules'] = $modsByDept[$d['id']] ?? [];
+                return (object) $d;
+            }, $depts);
+        } catch (PDOException $e) {
+            return [];
+        }
+    }
+
+    /**
+     * Enregistre le département et les surcharges de permissions par module d'un employé.
+     *
+     * @param Tenant   $tenant
+     * @param int      $userId
+     * @param int|null $departmentId
+     * @param array<string, string> $modulePermissions [module_key => inherit|write|read|none]
+     */
+    public function syncUserPermissions(Tenant $tenant, int $userId, ?int $departmentId, array $modulePermissions): void
+    {
+        $pdo = $this->connect($tenant);
+
+        // 1. Mise à jour du département
+        try {
+            $stmt = $pdo->prepare('UPDATE users SET department_id = ?, updated_at = NOW() WHERE id = ?');
+            $stmt->execute([$departmentId, $userId]);
+        } catch (PDOException $e) {
+            // Colonne department_id absente sur ancien schéma
+        }
+
+        // 2. Synchronisation des surcharges modulaires
+        try {
+            $pdo->prepare('DELETE FROM user_module_permissions WHERE user_id = ?')->execute([$userId]);
+
+            if (!empty($modulePermissions)) {
+                $insert = $pdo->prepare(
+                    'INSERT INTO user_module_permissions (user_id, module_key, access_level, created_at, updated_at)
+                     VALUES (?, ?, ?, NOW(), NOW())'
+                );
+
+                foreach ($modulePermissions as $moduleKey => $level) {
+                    $level = trim(strtolower((string) $level));
+                    // 'inherit' signifie "suit la règle du département", aucune ligne de surcharge stockée
+                    if ($level === 'inherit' || empty($level)) {
+                        continue;
+                    }
+                    if (in_array($level, ['write', 'read', 'none'], true)) {
+                        $insert->execute([$userId, $moduleKey, $level]);
+                    }
+                }
+            }
+        } catch (PDOException $e) {
+            // Table non présente sur ancien schéma
+        }
     }
 
     /** Nombre de managers actifs — un établissement doit en garder au moins un. */
