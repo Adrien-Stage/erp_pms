@@ -7,6 +7,7 @@ use App\Http\Controllers\ModuleCatalogController;
 use App\Http\Controllers\OwnerController;
 use App\Http\Controllers\SiteEditorController;
 use App\Http\Controllers\SupportTicketController;
+use App\Http\Controllers\TenantDepartmentController;
 use App\Http\Controllers\TenantUserController;
 
 // ==========================================
@@ -93,9 +94,16 @@ Route::middleware(['auth', 'role:tech_admin'])->prefix('tech')->name('tech.')->g
     // Employés de l'établissement : ils vivent dans la base du tenant, donc
     // toute modification faite ici est immédiatement effective dans wetchah_app.
     Route::get('/establishments/{tenant}/users/{user}', [TenantUserController::class, 'show'])->whereNumber('user')->name('establishments.users.show');
+    Route::post('/establishments/{tenant}/users', [TenantUserController::class, 'store'])->name('establishments.users.store');
     Route::post('/establishments/{tenant}/users/{user}', [TenantUserController::class, 'update'])->name('establishments.users.update');
     Route::post('/establishments/{tenant}/users/{user}/toggle-active', [TenantUserController::class, 'toggleActive'])->name('establishments.users.toggle-active');
     Route::delete('/establishments/{tenant}/users/{user}', [TenantUserController::class, 'destroy'])->name('establishments.users.destroy');
+
+    // Départements de l'établissement
+    Route::post('/establishments/{tenant}/departments', [TenantDepartmentController::class, 'store'])->name('establishments.departments.store');
+    Route::put('/establishments/{tenant}/departments/{department}', [TenantDepartmentController::class, 'update'])->name('establishments.departments.update');
+    Route::post('/establishments/{tenant}/departments/{department}', [TenantDepartmentController::class, 'update'])->name('establishments.departments.update.post');
+    Route::delete('/establishments/{tenant}/departments/{department}', [TenantDepartmentController::class, 'destroy'])->name('establishments.departments.destroy');
 
     // Comptes éditeurs du site de l'établissement. Ils vivent dans la base de
     // l'ERP (contrairement aux employés), mais restent bornés à ce site.

@@ -2,14 +2,31 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AssistanceSession;
 use App\Models\AuditLog;
+use App\Models\BackupSchedule;
 use App\Models\Tenant;
+use App\Models\TenantBackup;
 use App\Models\User;
+use App\Services\BusinessReportExporter;
+use App\Services\BusinessReportingClient;
+use App\Services\DemoDataService;
+use App\Services\GrcAccountSync;
+use App\Services\TenantBackupService;
+use App\Services\TenantDatabase;
+use App\Services\TenantProvisioningService;
+use App\Support\SiteContentSchema;
+use App\Support\TenantRoles;
+use Barryvdh\DomPDF\Facade\Pdf;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class AdminAuditController extends Controller
 {
@@ -19,8 +36,8 @@ class AdminAuditController extends Controller
     public function index(Request $request)
     {
         $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) {
-            abort(403, "Accès interdit - Rôle TECH_ADMIN requis.");
+        if (! $user || ! $user->isTechAdmin()) {
+            abort(403, 'Accès interdit - Rôle TECH_ADMIN requis.');
         }
 
         $activeTab = $request->input('tab', 'dashboard');
@@ -28,7 +45,7 @@ class AdminAuditController extends Controller
 
         // Logs d'audit (SQLite)
         $logsQuery = AuditLog::with(['user'])->latest();
-        
+
         if ($request->filled('user_id')) {
             $logsQuery->where('user_id', $request->user_id);
         }
@@ -47,8 +64,8 @@ class AdminAuditController extends Controller
             $search = trim((string) $request->user_search);
             $usersQuery->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('email', 'like', "%{$search}%")
-                  ->orWhere('role', 'like', "%{$search}%");
+                    ->orWhere('email', 'like', "%{$search}%")
+                    ->orWhere('role', 'like', "%{$search}%");
             });
         }
         $users = $usersQuery->orderBy('name')->paginate(10, ['*'], 'users_page')->withQueryString();
@@ -86,20 +103,25 @@ class AdminAuditController extends Controller
     public function createTenant()
     {
         $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) { abort(403); }
+        if (! $user || ! $user->isTechAdmin()) {
+            abort(403);
+        }
         $owners = User::where('role', User::ROLE_OWNER)->orderBy('name')->get();
+
         return view('admin.tenants.create', compact('owners'));
     }
 
     public function storeTenant(Request $request)
     {
         $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) { abort(403); }
-        
+        if (! $user || ! $user->isTechAdmin()) {
+            abort(403);
+        }
+
         // 1. Initial Validation
         $rules = [
             'owner_type' => ['required', 'in:new,existing'],
-            
+
             // If new owner
             'owner_name' => ['required_if:owner_type,new', 'nullable', 'string', 'max:255'],
             'owner_email' => ['required_if:owner_type,new', 'nullable', 'email', 'max:255', 'unique:users,email'],
@@ -122,7 +144,6 @@ class AdminAuditController extends Controller
 
             // Source du template applicatif (toujours GitHub)
 
-
             // Step 3: Establishment Info
             'name' => ['required', 'string', 'max:255'],
             'slug' => ['required', 'string', 'max:255', 'unique:tenants,slug'],
@@ -133,7 +154,7 @@ class AdminAuditController extends Controller
             'phone' => ['nullable', 'string', 'max:30'],
             'email' => ['nullable', 'email', 'max:255'],
             'logo' => ['nullable', 'image', 'max:2048'],
-            
+
             // Theme Colors
             'theme' => ['nullable', 'array'],
             'theme.primary' => ['nullable', 'string', 'regex:/^#[0-9A-Fa-f]{6}$/'],
@@ -202,27 +223,27 @@ class AdminAuditController extends Controller
 
         // 5. Créer le Tenant en base (statut 'creating' — le provisioning Docker suit via SSE)
         $tenant = Tenant::create([
-            'name'                 => $request->name,
-            'slug'                 => $request->slug,
-            'address'              => $request->address,
-            'phone'                => $request->phone,
-            'email'                => $request->email,
-            'currency'             => $request->currency,
-            'owner_id'             => $ownerId,
-            'db_name'              => $request->db_name,
-            'db_username'          => $request->db_username ?? 'pms',
-            'db_password'          => $request->db_password ?? 'secret',
-            'app_port'             => $request->app_port,
-            'db_port'              => $request->db_port ?? 5434,
-            'docker_app_container' => 'meka-erp-' . $request->slug . '-app',
-            'docker_db_container'  => 'meka-erp-' . $request->slug . '-db',
-            'docker_status'        => 'creating',
-            'is_active'            => true,
-            'settings'             => $settings,
-            'modules'              => $modules,
-            'api_enabled'          => in_array('api', $modules, true),
-            'website_enabled'      => in_array('website', $modules, true),
-            'grc_enabled'          => in_array('grc', $modules, true),
+            'name' => $request->name,
+            'slug' => $request->slug,
+            'address' => $request->address,
+            'phone' => $request->phone,
+            'email' => $request->email,
+            'currency' => $request->currency,
+            'owner_id' => $ownerId,
+            'db_name' => $request->db_name,
+            'db_username' => $request->db_username ?? 'pms',
+            'db_password' => $request->db_password ?? 'secret',
+            'app_port' => $request->app_port,
+            'db_port' => $request->db_port ?? 5434,
+            'docker_app_container' => 'meka-erp-'.$request->slug.'-app',
+            'docker_db_container' => 'meka-erp-'.$request->slug.'-db',
+            'docker_status' => 'creating',
+            'is_active' => true,
+            'settings' => $settings,
+            'modules' => $modules,
+            'api_enabled' => in_array('api', $modules, true),
+            'website_enabled' => in_array('website', $modules, true),
+            'grc_enabled' => in_array('grc', $modules, true),
         ]);
 
         AuditLog::record(
@@ -242,7 +263,9 @@ class AdminAuditController extends Controller
     public function showTenant(Tenant $tenant)
     {
         $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) { abort(403); }
+        if (! $user || ! $user->isTechAdmin()) {
+            abort(403);
+        }
 
         $section = request('section', 'overview');
         $tenantUsers = collect();
@@ -251,11 +274,11 @@ class AdminAuditController extends Controller
         $tenantRoles = collect();
         $tenantDepartments = collect();
 
-        if ($section === 'users' || $section === 'modules') {
+        if ($section === 'users' || $section === 'modules' || $section === 'departments') {
             try {
-                $tenantDb = app(\App\Services\TenantDatabase::class);
+                $tenantDb = app(TenantDatabase::class);
 
-                if ($section === 'users') {
+                if ($section === 'users' || $section === 'departments') {
                     $tenantUsers = collect($tenantDb->users($tenant));
                     $tenantRoles = collect($tenantDb->assignableRoles($tenant));
 
@@ -267,15 +290,15 @@ class AdminAuditController extends Controller
 
                 $tenantDepartments = collect($tenantDb->departments($tenant));
             } catch (\Exception $e) {
-                \Illuminate\Support\Facades\Log::warning("Could not fetch tenant users/departments for {$tenant->name}: " . $e->getMessage());
-                session()->now('error', "Impossible de se connecter à la base de données de l'établissement : " . $e->getMessage());
+                Log::warning("Could not fetch tenant users/departments for {$tenant->name}: ".$e->getMessage());
+                session()->now('error', "Impossible de se connecter à la base de données de l'établissement : ".$e->getMessage());
             }
         }
 
         // Uniquement pour l'onglet qui l'affiche : la sonde ouvre une connexion
         // à la base de l'établissement, inutile sur les autres écrans.
         $demoDataInstalled = $section === 'settings'
-            && app(\App\Services\DemoDataService::class)->estInstalle($tenant);
+            && app(DemoDataService::class)->estInstalle($tenant);
 
         return view('admin.tenants.show', compact(
             'tenant', 'tenantUsers', 'tenantRoles', 'tenantDepartments', 'section', 'demoDataInstalled'
@@ -296,7 +319,7 @@ class AdminAuditController extends Controller
         $safeDbName = preg_replace('/[^a-zA-Z0-9_]/', '', $tenant->db_name);
         $dbUser = $tenant->db_username ?? 'pms';
         $dbPass = $tenant->db_password ?? 'secret';
-        $dbContainer = $tenant->docker_db_container ?: ('meka-erp-' . $tenant->slug . '-db');
+        $dbContainer = $tenant->docker_db_container ?: ('meka-erp-'.$tenant->slug.'-db');
 
         $options = [
             \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
@@ -322,18 +345,20 @@ class AdminAuditController extends Controller
     public function updateTenant(Request $request, Tenant $tenant)
     {
         $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) { abort(403); }
-        
+        if (! $user || ! $user->isTechAdmin()) {
+            abort(403);
+        }
+
         $validated = $request->validate([
-            'name'     => ['required', 'string', 'max:255'],
-            'address'  => ['nullable', 'string', 'max:255'],
-            'phone'    => ['nullable', 'string', 'max:30'],
-            'email'    => ['nullable', 'email', 'max:255'],
-            'country'  => ['nullable', 'string', 'max:100'],
+            'name' => ['required', 'string', 'max:255'],
+            'address' => ['nullable', 'string', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:30'],
+            'email' => ['nullable', 'email', 'max:255'],
+            'country' => ['nullable', 'string', 'max:100'],
             'currency' => ['nullable', 'string', 'size:3'],
-            'logo'     => ['nullable', 'image', 'mimes:png,jpg,jpeg,gif,webp', 'max:2048'],
-            'theme'    => ['nullable', 'array'],
-            'theme.*'  => ['nullable', 'string', 'regex:/^#[0-9A-Fa-f]{6}$/'],
+            'logo' => ['nullable', 'image', 'mimes:png,jpg,jpeg,gif,webp', 'max:2048'],
+            'theme' => ['nullable', 'array'],
+            'theme.*' => ['nullable', 'string', 'regex:/^#[0-9A-Fa-f]{6}$/'],
         ], [
             'theme.*.regex' => 'Chaque couleur doit être une valeur hexadécimale de la forme #RRGGBB.',
         ]);
@@ -365,8 +390,8 @@ class AdminAuditController extends Controller
         if ($request->hasFile('logo')) {
             // L'ancien fichier part avec le nouveau : sans cela, chaque
             // remplacement laisse un orphelin sur le disque.
-            if (!empty($settings['logo'])) {
-                \Illuminate\Support\Facades\Storage::disk('public')->delete($settings['logo']);
+            if (! empty($settings['logo'])) {
+                Storage::disk('public')->delete($settings['logo']);
             }
             $settings['logo'] = $request->file('logo')->store('logos', 'public');
         }
@@ -390,10 +415,12 @@ class AdminAuditController extends Controller
      * provisionné : régénère le docker-compose (même image) et recrée le
      * container applicatif pour que TENANT_MODULES soit repris en compte.
      */
-    public function updateModules(Request $request, Tenant $tenant, \App\Services\TenantProvisioningService $provisioner)
+    public function updateModules(Request $request, Tenant $tenant, TenantProvisioningService $provisioner)
     {
         $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) { abort(403); }
+        if (! $user || ! $user->isTechAdmin()) {
+            abort(403);
+        }
 
         $request->validate(['modules' => ['nullable', 'array']]);
 
@@ -406,10 +433,10 @@ class AdminAuditController extends Controller
 
         $modules = $this->applyModuleDependencies($modules);
         $tenant->update([
-            'modules'         => $modules,
-            'api_enabled'     => in_array('api', $modules, true),
+            'modules' => $modules,
+            'api_enabled' => in_array('api', $modules, true),
             'website_enabled' => in_array('website', $modules, true),
-            'grc_enabled'     => in_array('grc', $modules, true),
+            'grc_enabled' => in_array('grc', $modules, true),
         ]);
 
         if (empty($tenant->docker_image_tag)) {
@@ -417,7 +444,7 @@ class AdminAuditController extends Controller
         }
 
         $logs = [];
-        $log  = function (string $step, string $message, string $level = 'info') use (&$logs) {
+        $log = function (string $step, string $message, string $level = 'info') use (&$logs) {
             $logs[] = "[{$level}] {$message}";
         };
 
@@ -427,14 +454,14 @@ class AdminAuditController extends Controller
             AuditLog::record(
                 $user->id,
                 'update_modules',
-                "Modules mis à jour pour l'établissement {$tenant->name} : " . implode(', ', $tenant->modules ?: ['aucun']),
+                "Modules mis à jour pour l'établissement {$tenant->name} : ".implode(', ', $tenant->modules ?: ['aucun']),
                 'tech_admin',
                 ['logs' => $logs]
             );
 
             return back()->with('success', 'Modules appliqués avec succès.');
         } catch (\RuntimeException $e) {
-            return back()->with('error', "Échec de l'application des modules : " . $e->getMessage());
+            return back()->with('error', "Échec de l'application des modules : ".$e->getMessage());
         }
     }
 
@@ -443,20 +470,22 @@ class AdminAuditController extends Controller
      * registre (tag "latest"). Synchrone, comme updateModules — l'image du
      * site est légère, pas besoin du flux SSE utilisé pour l'application.
      */
-    public function updateTenantWebsite(Tenant $tenant, \App\Services\TenantProvisioningService $provisioner)
+    public function updateTenantWebsite(Tenant $tenant, TenantProvisioningService $provisioner)
     {
         $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) { abort(403); }
+        if (! $user || ! $user->isTechAdmin()) {
+            abort(403);
+        }
 
         $logs = [];
-        $log  = function (string $step, string $message, string $level = 'info') use (&$logs) {
+        $log = function (string $step, string $message, string $level = 'info') use (&$logs) {
             $logs[] = "[{$level}] {$message}";
         };
 
         try {
             $updated = $provisioner->updateWeb($tenant, $log);
 
-            if (!$updated) {
+            if (! $updated) {
                 return back()->with('success', 'Le site est déjà à la dernière version.');
             }
 
@@ -470,7 +499,7 @@ class AdminAuditController extends Controller
 
             return back()->with('success', 'Site vitrine mis à jour avec succès.');
         } catch (\RuntimeException $e) {
-            return back()->with('error', "Échec de la mise à jour du site : " . $e->getMessage());
+            return back()->with('error', 'Échec de la mise à jour du site : '.$e->getMessage());
         }
     }
 
@@ -479,10 +508,12 @@ class AdminAuditController extends Controller
      * (tag « latest »), en temps réel — même visualisation que la mise à jour
      * applicative. updateWeb() renvoie false quand le site est déjà à jour.
      */
-    public function updateTenantWebsiteStream(Tenant $tenant, Request $request, \App\Services\TenantProvisioningService $provisioner)
+    public function updateTenantWebsiteStream(Tenant $tenant, Request $request, TenantProvisioningService $provisioner)
     {
         $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) { abort(403); }
+        if (! $user || ! $user->isTechAdmin()) {
+            abort(403);
+        }
 
         set_time_limit(600);
         ini_set('max_execution_time', '600');
@@ -501,13 +532,13 @@ class AdminAuditController extends Controller
                 set_time_limit(300);
 
                 if (mb_strlen($message) > 3000) {
-                    $message = mb_substr($message, 0, 3000) . '…';
+                    $message = mb_substr($message, 0, 3000).'…';
                 }
                 $payload = json_encode([
-                    'step'    => $step,
+                    'step' => $step,
                     'message' => $message,
-                    'level'   => $level,
-                    'time'    => now()->format('H:i:s'),
+                    'level' => $level,
+                    'time' => now()->format('H:i:s'),
                 ]);
                 echo "data: {$payload}\n\n";
                 if (ob_get_level()) {
@@ -519,8 +550,9 @@ class AdminAuditController extends Controller
             try {
                 $updated = $provisioner->updateWeb($tenant, $send);
 
-                if (!$updated) {
+                if (! $updated) {
                     $send('finished', 'Le site est déjà à la dernière version.', 'success');
+
                     return;
                 }
 
@@ -539,13 +571,13 @@ class AdminAuditController extends Controller
                 AuditLog::record(
                     Auth::id(),
                     'update_tenant_website_error',
-                    "Échec de la mise à jour du site de {$tenant->name} : " . $e->getMessage(),
+                    "Échec de la mise à jour du site de {$tenant->name} : ".$e->getMessage(),
                     'tech_admin'
                 );
             }
         }, 200, [
-            'Content-Type'      => 'text/event-stream',
-            'Cache-Control'     => 'no-cache',
+            'Content-Type' => 'text/event-stream',
+            'Cache-Control' => 'no-cache',
             'X-Accel-Buffering' => 'no',
         ]);
     }
@@ -555,20 +587,22 @@ class AdminAuditController extends Controller
      * (tag « latest »). Synchrone, comme updateTenantWebsite — le flux SSE
      * ci-dessous reste le chemin utilisé par l'interface.
      */
-    public function updateTenantGrc(Tenant $tenant, \App\Services\TenantProvisioningService $provisioner)
+    public function updateTenantGrc(Tenant $tenant, TenantProvisioningService $provisioner)
     {
         $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) { abort(403); }
+        if (! $user || ! $user->isTechAdmin()) {
+            abort(403);
+        }
 
         $logs = [];
-        $log  = function (string $step, string $message, string $level = 'info') use (&$logs) {
+        $log = function (string $step, string $message, string $level = 'info') use (&$logs) {
             $logs[] = "[{$level}] {$message}";
         };
 
         try {
             $updated = $provisioner->updateGrc($tenant, $log);
 
-            if (!$updated) {
+            if (! $updated) {
                 return back()->with('success', 'Le module GRC est déjà à la dernière version.');
             }
 
@@ -582,7 +616,7 @@ class AdminAuditController extends Controller
 
             return back()->with('success', 'Module GRC mis à jour avec succès.');
         } catch (\RuntimeException $e) {
-            return back()->with('error', "Échec de la mise à jour du GRC : " . $e->getMessage());
+            return back()->with('error', 'Échec de la mise à jour du GRC : '.$e->getMessage());
         }
     }
 
@@ -592,10 +626,12 @@ class AdminAuditController extends Controller
      * jour applicative et du site. updateGrc() renvoie false quand le module
      * est déjà à jour.
      */
-    public function updateTenantGrcStream(Tenant $tenant, Request $request, \App\Services\TenantProvisioningService $provisioner)
+    public function updateTenantGrcStream(Tenant $tenant, Request $request, TenantProvisioningService $provisioner)
     {
         $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) { abort(403); }
+        if (! $user || ! $user->isTechAdmin()) {
+            abort(403);
+        }
 
         set_time_limit(600);
         ini_set('max_execution_time', '600');
@@ -613,13 +649,13 @@ class AdminAuditController extends Controller
                 set_time_limit(300);
 
                 if (mb_strlen($message) > 3000) {
-                    $message = mb_substr($message, 0, 3000) . '…';
+                    $message = mb_substr($message, 0, 3000).'…';
                 }
                 $payload = json_encode([
-                    'step'    => $step,
+                    'step' => $step,
                     'message' => $message,
-                    'level'   => $level,
-                    'time'    => now()->format('H:i:s'),
+                    'level' => $level,
+                    'time' => now()->format('H:i:s'),
                 ]);
                 echo "data: {$payload}\n\n";
                 if (ob_get_level()) {
@@ -631,8 +667,9 @@ class AdminAuditController extends Controller
             try {
                 $updated = $provisioner->updateGrc($tenant, $send);
 
-                if (!$updated) {
+                if (! $updated) {
                     $send('finished', 'Le module GRC est déjà à la dernière version.', 'success');
+
                     return;
                 }
 
@@ -651,13 +688,13 @@ class AdminAuditController extends Controller
                 AuditLog::record(
                     Auth::id(),
                     'update_tenant_grc_error',
-                    "Échec de la mise à jour du GRC de {$tenant->name} : " . $e->getMessage(),
+                    "Échec de la mise à jour du GRC de {$tenant->name} : ".$e->getMessage(),
                     'tech_admin'
                 );
             }
         }, 200, [
-            'Content-Type'      => 'text/event-stream',
-            'Cache-Control'     => 'no-cache',
+            'Content-Type' => 'text/event-stream',
+            'Cache-Control' => 'no-cache',
             'X-Accel-Buffering' => 'no',
         ]);
     }
@@ -672,7 +709,7 @@ class AdminAuditController extends Controller
     private function applyModuleDependencies(array $modules): array
     {
         // Activer le site web OU le module GRC active automatiquement le module API
-        if ((in_array('website', $modules, true) || in_array('grc', $modules, true)) && !in_array('api', $modules, true)) {
+        if ((in_array('website', $modules, true) || in_array('grc', $modules, true)) && ! in_array('api', $modules, true)) {
             $modules[] = 'api';
         }
 
@@ -688,7 +725,9 @@ class AdminAuditController extends Controller
     public function updateSiteContent(Request $request, Tenant $tenant)
     {
         $user = Auth::user();
-        if (!$user) { abort(401); }
+        if (! $user) {
+            abort(401);
+        }
 
         // Trois profils peuvent éditer ce contenu : l'administrateur technique,
         // le propriétaire de l'établissement, et l'éditeur qui y est rattaché.
@@ -698,7 +737,9 @@ class AdminAuditController extends Controller
             || $tenant->owner_id === $user->id
             || ($user->isSiteEditor() && $user->tenant_id === $tenant->id);
 
-        if (!$autorise) { abort(403, "Vous n'avez pas l'autorisation de modifier le contenu de ce site."); }
+        if (! $autorise) {
+            abort(403, "Vous n'avez pas l'autorisation de modifier le contenu de ce site.");
+        }
 
         // Règles de validation dérivées du schéma (une entrée par champ)
         $rules = [
@@ -711,11 +752,11 @@ class AdminAuditController extends Controller
             'identity_email' => ['nullable', 'email', 'max:255'],
             'identity_address' => ['nullable', 'string', 'max:255'],
         ];
-        foreach (\App\Support\SiteContentSchema::pages() as $pageKey => $page) {
+        foreach (SiteContentSchema::pages() as $pageKey => $page) {
             foreach ($page['sections'] as $sectionKey => $section) {
                 foreach ($section['fields'] as $fieldKey => $field) {
                     $input = "pages.{$pageKey}.{$sectionKey}.{$fieldKey}";
-                    $file  = "pages_files.{$pageKey}.{$sectionKey}.{$fieldKey}";
+                    $file = "pages_files.{$pageKey}.{$sectionKey}.{$fieldKey}";
                     switch ($field['type']) {
                         case 'text':
                             $rules[$input] = ['nullable', 'string', 'max:255'];
@@ -737,16 +778,16 @@ class AdminAuditController extends Controller
         }
         $request->validate($rules);
 
-        $content  = $tenant->site_content ?? [];
-        $existing = \App\Support\SiteContentSchema::hydrate($content);
-        $storage  = \Illuminate\Support\Facades\Storage::disk('public');
-        $pages    = [];
+        $content = $tenant->site_content ?? [];
+        $existing = SiteContentSchema::hydrate($content);
+        $storage = Storage::disk('public');
+        $pages = [];
 
-        foreach (\App\Support\SiteContentSchema::pages() as $pageKey => $page) {
+        foreach (SiteContentSchema::pages() as $pageKey => $page) {
             foreach ($page['sections'] as $sectionKey => $section) {
-                $in  = (array) $request->input("pages.{$pageKey}.{$sectionKey}", []);
+                $in = (array) $request->input("pages.{$pageKey}.{$sectionKey}", []);
                 $cur = $existing[$pageKey][$sectionKey];
-                $out = ['enabled' => !empty($in['enabled'])];
+                $out = ['enabled' => ! empty($in['enabled'])];
 
                 foreach ($section['fields'] as $fieldKey => $field) {
                     switch ($field['type']) {
@@ -757,27 +798,31 @@ class AdminAuditController extends Controller
                             break;
 
                         case 'items':
-                            $out[$fieldKey] = \App\Support\SiteContentSchema::parseItems($in[$fieldKey] ?? null, $field['keys']);
+                            $out[$fieldKey] = SiteContentSchema::parseItems($in[$fieldKey] ?? null, $field['keys']);
                             break;
 
                         case 'image':
                             $path = $cur[$fieldKey];
-                            if (!empty($in["remove_{$fieldKey}"]) && $path) {
+                            if (! empty($in["remove_{$fieldKey}"]) && $path) {
                                 $storage->delete($path);
                                 $path = null;
                             }
                             if ($file = $request->file("pages_files.{$pageKey}.{$sectionKey}.{$fieldKey}")) {
-                                if ($path) { $storage->delete($path); }
+                                if ($path) {
+                                    $storage->delete($path);
+                                }
                                 $path = $file->store('site', 'public');
                             }
                             $out[$fieldKey] = $path;
                             break;
 
                         case 'images':
-                            $paths  = $cur[$fieldKey];
+                            $paths = $cur[$fieldKey];
                             $remove = array_filter((array) ($in["remove_{$fieldKey}"] ?? []));
                             if ($remove) {
-                                foreach ($remove as $p) { $storage->delete($p); }
+                                foreach ($remove as $p) {
+                                    $storage->delete($p);
+                                }
                                 $paths = array_values(array_diff($paths, $remove));
                             }
                             foreach ((array) $request->file("pages_files.{$pageKey}.{$sectionKey}.{$fieldKey}", []) as $file) {
@@ -822,13 +867,13 @@ class AdminAuditController extends Controller
         // pas dans site_content — une seule source de vérité.
         $settings = $tenant->settings ?? [];
 
-        if ($request->boolean('identity_remove_logo') && !empty($settings['logo'])) {
+        if ($request->boolean('identity_remove_logo') && ! empty($settings['logo'])) {
             $storage->delete($settings['logo']);
             $settings['logo'] = null;
         }
 
         if ($file = $request->file('identity_logo')) {
-            if (!empty($settings['logo'])) {
+            if (! empty($settings['logo'])) {
                 $storage->delete($settings['logo']);
             }
             $settings['logo'] = $file->store('logos', 'public');
@@ -836,10 +881,10 @@ class AdminAuditController extends Controller
 
         $tenant->update([
             'site_content' => $content,
-            'settings'     => $settings,
-            'phone'        => $request->input('identity_phone') ?: null,
-            'email'        => $request->input('identity_email') ?: null,
-            'address'      => $request->input('identity_address') ?: null,
+            'settings' => $settings,
+            'phone' => $request->input('identity_phone') ?: null,
+            'email' => $request->input('identity_email') ?: null,
+            'address' => $request->input('identity_address') ?: null,
         ]);
 
         AuditLog::record($user->id, 'update_site_content', "Contenu du site mis à jour pour l'établissement {$tenant->name}", 'tech_admin');
@@ -856,13 +901,13 @@ class AdminAuditController extends Controller
     {
         $content = $tenant->site_content ?? [];
         $absolute = fn (?string $path) => $path
-            ? rtrim(config('app.url'), '/') . '/storage/' . ltrim($path, '/')
+            ? rtrim(config('app.url'), '/').'/storage/'.ltrim($path, '/')
             : null;
 
         // Structure par pages/sections (nouveau format à onglets), images
         // résolues en URLs absolues via le schéma.
-        $pages = \App\Support\SiteContentSchema::hydrate($content);
-        foreach (\App\Support\SiteContentSchema::pages() as $pageKey => $page) {
+        $pages = SiteContentSchema::hydrate($content);
+        foreach (SiteContentSchema::pages() as $pageKey => $page) {
             foreach ($page['sections'] as $sectionKey => $section) {
                 foreach ($section['fields'] as $fieldKey => $field) {
                     if ($field['type'] === 'image') {
@@ -906,13 +951,15 @@ class AdminAuditController extends Controller
         ]);
     }
 
-    public function destroyTenant(Tenant $tenant, \App\Services\TenantProvisioningService $provisioner)
+    public function destroyTenant(Tenant $tenant, TenantProvisioningService $provisioner)
     {
         $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) { abort(403); }
+        if (! $user || ! $user->isTechAdmin()) {
+            abort(403);
+        }
 
         $logs = [];
-        $log  = function (string $step, string $message, string $level = 'info') use (&$logs) {
+        $log = function (string $step, string $message, string $level = 'info') use (&$logs) {
             $logs[] = "[{$level}] {$message}";
         };
 
@@ -940,8 +987,9 @@ class AdminAuditController extends Controller
                 ->with('success', "L'établissement « {$tenantName} » a été supprimé définitivement avec toutes ses ressources Docker.");
 
         } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::error("Failed to delete tenant {$tenant->name}: " . $e->getMessage());
-            return back()->with('error', "Une erreur est survenue lors de la suppression : " . $e->getMessage());
+            Log::error("Failed to delete tenant {$tenant->name}: ".$e->getMessage());
+
+            return back()->with('error', 'Une erreur est survenue lors de la suppression : '.$e->getMessage());
         }
     }
 
@@ -953,10 +1001,12 @@ class AdminAuditController extends Controller
      * SSE endpoint : provisionne un tenant en temps réel.
      * Le client JS se connecte à cette route après la création du tenant.
      */
-    public function provisionTenantStream(Tenant $tenant, \App\Services\TenantProvisioningService $provisioner)
+    public function provisionTenantStream(Tenant $tenant, TenantProvisioningService $provisioner)
     {
         $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) { abort(403); }
+        if (! $user || ! $user->isTechAdmin()) {
+            abort(403);
+        }
 
         // Augmenter le temps d'exécution max pour le provisioning (10 min)
         set_time_limit(600);
@@ -972,13 +1022,13 @@ class AdminAuditController extends Controller
             $send = function (string $step, string $message, string $level = 'info') {
                 // Tronquer les messages très longs pour éviter le débordement du cadre de logs
                 if (mb_strlen($message) > 3000) {
-                    $message = mb_substr($message, 0, 3000) . '…';
+                    $message = mb_substr($message, 0, 3000).'…';
                 }
                 $payload = json_encode([
-                    'step'    => $step,
+                    'step' => $step,
                     'message' => $message,
-                    'level'   => $level,
-                    'time'    => now()->format('H:i:s'),
+                    'level' => $level,
+                    'time' => now()->format('H:i:s'),
                 ]);
                 echo "data: {$payload}\n\n";
                 if (ob_get_level()) {
@@ -1003,7 +1053,7 @@ class AdminAuditController extends Controller
                 // provisioning — l'établissement reste utilisable, vide.
                 if (($tenant->settings['seed_demo_data'] ?? false) === true) {
                     try {
-                        $resultat = app(\App\Services\DemoDataService::class)->install($tenant, $send);
+                        $resultat = app(DemoDataService::class)->install($tenant, $send);
 
                         AuditLog::record(
                             Auth::id(),
@@ -1031,13 +1081,13 @@ class AdminAuditController extends Controller
                 AuditLog::record(
                     Auth::id(),
                     'provision_error',
-                    "Échec du provisioning pour {$tenant->name} : " . $e->getMessage(),
+                    "Échec du provisioning pour {$tenant->name} : ".$e->getMessage(),
                     'tech_admin'
                 );
             }
         }, 200, [
-            'Content-Type'      => 'text/event-stream',
-            'Cache-Control'     => 'no-cache',
+            'Content-Type' => 'text/event-stream',
+            'Cache-Control' => 'no-cache',
             'X-Accel-Buffering' => 'no',
         ]);
     }
@@ -1046,14 +1096,16 @@ class AdminAuditController extends Controller
      * Liste les versions (tags) disponibles sur le registre GHCR, pour le
      * sélecteur de mise à jour côté UI TECH.
      */
-    public function availableVersions(Tenant $tenant, \App\Services\TenantProvisioningService $provisioner)
+    public function availableVersions(Tenant $tenant, TenantProvisioningService $provisioner)
     {
         $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) { abort(403); }
+        if (! $user || ! $user->isTechAdmin()) {
+            abort(403);
+        }
 
         return response()->json([
             'current' => $tenant->docker_image_tag,
-            'tags'    => $provisioner->listAvailableVersions(),
+            'tags' => $provisioner->listAvailableVersions(),
         ]);
     }
 
@@ -1061,13 +1113,17 @@ class AdminAuditController extends Controller
      * SSE endpoint : met à jour un établissement déjà provisionné vers le
      * tag choisi (?tag=...), en temps réel.
      */
-    public function updateTenantVersionStream(Tenant $tenant, Request $request, \App\Services\TenantProvisioningService $provisioner)
+    public function updateTenantVersionStream(Tenant $tenant, Request $request, TenantProvisioningService $provisioner)
     {
         $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) { abort(403); }
+        if (! $user || ! $user->isTechAdmin()) {
+            abort(403);
+        }
 
         $tag = $request->query('tag');
-        if (!$tag) { abort(422, 'Le paramètre "tag" est requis.'); }
+        if (! $tag) {
+            abort(422, 'Le paramètre "tag" est requis.');
+        }
 
         set_time_limit(600);
         ini_set('max_execution_time', '600');
@@ -1086,13 +1142,13 @@ class AdminAuditController extends Controller
                 set_time_limit(300);
 
                 if (mb_strlen($message) > 3000) {
-                    $message = mb_substr($message, 0, 3000) . '…';
+                    $message = mb_substr($message, 0, 3000).'…';
                 }
                 $payload = json_encode([
-                    'step'    => $step,
+                    'step' => $step,
                     'message' => $message,
-                    'level'   => $level,
-                    'time'    => now()->format('H:i:s'),
+                    'level' => $level,
+                    'time' => now()->format('H:i:s'),
                 ]);
                 echo "data: {$payload}\n\n";
                 if (ob_get_level()) {
@@ -1120,24 +1176,26 @@ class AdminAuditController extends Controller
                 AuditLog::record(
                     Auth::id(),
                     'update_tenant_version_error',
-                    "Échec de la mise à jour de {$tenant->name} vers « {$tag} » : " . $e->getMessage(),
+                    "Échec de la mise à jour de {$tenant->name} vers « {$tag} » : ".$e->getMessage(),
                     'tech_admin'
                 );
             }
         }, 200, [
-            'Content-Type'      => 'text/event-stream',
-            'Cache-Control'     => 'no-cache',
+            'Content-Type' => 'text/event-stream',
+            'Cache-Control' => 'no-cache',
             'X-Accel-Buffering' => 'no',
         ]);
     }
 
-    public function startTenant(Tenant $tenant, \App\Services\TenantProvisioningService $provisioner)
+    public function startTenant(Tenant $tenant, TenantProvisioningService $provisioner)
     {
         $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) { abort(403); }
+        if (! $user || ! $user->isTechAdmin()) {
+            abort(403);
+        }
 
         $logs = [];
-        $log  = function (string $step, string $message, string $level = 'info') use (&$logs) {
+        $log = function (string $step, string $message, string $level = 'info') use (&$logs) {
             $logs[] = "[{$level}] {$message}";
         };
 
@@ -1152,16 +1210,19 @@ class AdminAuditController extends Controller
 
         } catch (\Throwable $e) {
             $tenant->update(['docker_status' => 'error']);
-            return back()->with('error', "Erreur au démarrage : " . $e->getMessage());
+
+            return back()->with('error', 'Erreur au démarrage : '.$e->getMessage());
         }
     }
 
-    public function stopTenant(Tenant $tenant, \App\Services\TenantProvisioningService $provisioner)
+    public function stopTenant(Tenant $tenant, TenantProvisioningService $provisioner)
     {
         $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) { abort(403); }
+        if (! $user || ! $user->isTechAdmin()) {
+            abort(403);
+        }
 
-        $log = fn() => null;
+        $log = fn () => null;
         $provisioner->stop($tenant, $log);
         $tenant->update(['docker_status' => 'stopped']);
 
@@ -1171,12 +1232,14 @@ class AdminAuditController extends Controller
         return back()->with('success', "Container de « {$tenant->name} » arrêté.");
     }
 
-    public function restartTenant(Tenant $tenant, \App\Services\TenantProvisioningService $provisioner)
+    public function restartTenant(Tenant $tenant, TenantProvisioningService $provisioner)
     {
         $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) { abort(403); }
+        if (! $user || ! $user->isTechAdmin()) {
+            abort(403);
+        }
 
-        $log = fn() => null;
+        $log = fn () => null;
         $provisioner->restart($tenant, $log);
         $tenant->update(['docker_status' => 'running']);
 
@@ -1193,10 +1256,12 @@ class AdminAuditController extends Controller
      * qui permet de relancer l'action après avoir activé un nouveau module, pour
      * ne peupler que celui-ci.
      */
-    public function seedDemoData(Tenant $tenant, \App\Services\DemoDataService $demo)
+    public function seedDemoData(Tenant $tenant, DemoDataService $demo)
     {
         $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) { abort(403); }
+        if (! $user || ! $user->isTechAdmin()) {
+            abort(403);
+        }
 
         if ($tenant->docker_status !== 'running') {
             return back()->with('error', "Le container de « {$tenant->name} » doit être démarré pour installer les données.");
@@ -1226,7 +1291,7 @@ class AdminAuditController extends Controller
             AuditLog::record(
                 Auth::id(),
                 'seed_demo_error',
-                "Échec de l'installation des données de démonstration pour {$tenant->name} : " . $e->getMessage(),
+                "Échec de l'installation des données de démonstration pour {$tenant->name} : ".$e->getMessage(),
                 'tech_admin'
             );
 
@@ -1241,10 +1306,12 @@ class AdminAuditController extends Controller
      * marqueur d'installation sont éligibles, et le catalogue encore utilisé
      * par des données réelles est conservé (voir Demo\Purger).
      */
-    public function purgeDemoData(Tenant $tenant, \App\Services\DemoDataService $demo)
+    public function purgeDemoData(Tenant $tenant, DemoDataService $demo)
     {
         $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) { abort(403); }
+        if (! $user || ! $user->isTechAdmin()) {
+            abort(403);
+        }
 
         if ($tenant->docker_status !== 'running') {
             return back()->with('error', "Le container de « {$tenant->name} » doit être démarré pour retirer les données.");
@@ -1273,7 +1340,7 @@ class AdminAuditController extends Controller
             // Ce qui a été épargné se dit à l'écran : sans cela, l'utilisateur
             // croit la purge incomplète en retrouvant des chambres fictives.
             if ($resultat['kept'] !== []) {
-                $message .= ' Conservé — ' . implode(' ', $resultat['kept']);
+                $message .= ' Conservé — '.implode(' ', $resultat['kept']);
             }
 
             return back()->with('success', $message);
@@ -1282,7 +1349,7 @@ class AdminAuditController extends Controller
             AuditLog::record(
                 Auth::id(),
                 'purge_demo_error',
-                "Échec du retrait des données de démonstration pour {$tenant->name} : " . $e->getMessage(),
+                "Échec du retrait des données de démonstration pour {$tenant->name} : ".$e->getMessage(),
                 'tech_admin'
             );
 
@@ -1293,7 +1360,9 @@ class AdminAuditController extends Controller
     public function provisionTenant(Tenant $tenant)
     {
         $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) { abort(403); }
+        if (! $user || ! $user->isTechAdmin()) {
+            abort(403);
+        }
 
         // Relance (ex: après un échec) : repasse en 'creating' pour que la
         // page affiche à nouveau le widget SSE, comme à la création initiale.
@@ -1304,7 +1373,7 @@ class AdminAuditController extends Controller
             ->with('start_provisioning', true);
     }
 
-    public function healthCheckTenant(Tenant $tenant, \App\Services\TenantProvisioningService $provisioner)
+    public function healthCheckTenant(Tenant $tenant, TenantProvisioningService $provisioner)
     {
         $health = $provisioner->health($tenant);
 
@@ -1321,51 +1390,53 @@ class AdminAuditController extends Controller
      * écrire dans sa base. Consommé en AJAX quand un établissement est
      * sélectionné dans l'onglet Support.
      */
-    public function supportDiagnostic(Tenant $tenant, \App\Services\TenantProvisioningService $provisioner)
+    public function supportDiagnostic(Tenant $tenant, TenantProvisioningService $provisioner)
     {
         $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) { abort(403); }
+        if (! $user || ! $user->isTechAdmin()) {
+            abort(403);
+        }
 
         $health = $provisioner->health($tenant);
 
         $diagnostic = [
-            'name'          => $tenant->name,
-            'slug'          => $tenant->slug,
-            'is_active'     => (bool) $tenant->is_active,
-            'provisioned'   => (bool) $tenant->provisioned_at,
+            'name' => $tenant->name,
+            'slug' => $tenant->slug,
+            'is_active' => (bool) $tenant->is_active,
+            'provisioned' => (bool) $tenant->provisioned_at,
             'provisioned_at' => $tenant->provisioned_at?->format('d/m/Y H:i'),
             'docker_status' => $tenant->docker_status,
-            'app_status'    => $health['app_status'],
-            'db_status'     => $health['db_status'],
-            'web_status'    => $health['web_status'] ?? null,
-            'grc_status'    => $health['grc_status'] ?? null,
-            'has_website'   => in_array('website', $tenant->modules ?? [], true),
-            'has_grc'       => in_array('grc', $tenant->modules ?? [], true),
-            'modules'       => $tenant->modules ?? [],
-            'app_url'       => $tenant->app_port ? 'http://localhost:' . $tenant->app_port : null,
-            'grc_url'       => $tenant->grc_port ? 'http://localhost:' . $tenant->grc_port : null,
-            'image_tag'     => $tenant->docker_image_tag,
+            'app_status' => $health['app_status'],
+            'db_status' => $health['db_status'],
+            'web_status' => $health['web_status'] ?? null,
+            'grc_status' => $health['grc_status'] ?? null,
+            'has_website' => in_array('website', $tenant->modules ?? [], true),
+            'has_grc' => in_array('grc', $tenant->modules ?? [], true),
+            'modules' => $tenant->modules ?? [],
+            'app_url' => $tenant->app_port ? 'http://localhost:'.$tenant->app_port : null,
+            'grc_url' => $tenant->grc_port ? 'http://localhost:'.$tenant->grc_port : null,
+            'image_tag' => $tenant->docker_image_tag,
             'web_image_tag' => $tenant->web_image_tag,
             'grc_image_tag' => $tenant->grc_image_tag,
-            'last_health'   => $tenant->last_health_check?->diffForHumans(),
-            'reachable'     => false,
-            'users'         => null,
-            'active_users'  => null,
+            'last_health' => $tenant->last_health_check?->diffForHumans(),
+            'reachable' => false,
+            'users' => null,
+            'active_users' => null,
             'bookings_total' => null,
             'bookings_today' => null,
-            'last_booking'  => null,
+            'last_booking' => null,
         ];
 
         if ($tenant->provisioned_at && $health['db_status'] === 'running') {
             try {
                 $pdo = $this->connectToTenantDatabase($tenant);
-                $diagnostic['reachable']      = true;
-                $diagnostic['users']          = (int) $pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();
-                $diagnostic['active_users']   = (int) $pdo->query("SELECT COUNT(*) FROM users WHERE is_active = true")->fetchColumn();
-                $diagnostic['bookings_total'] = (int) $pdo->query("SELECT COUNT(*) FROM bookings")->fetchColumn();
-                $diagnostic['bookings_today'] = (int) $pdo->query("SELECT COUNT(*) FROM bookings WHERE created_at::date = CURRENT_DATE")->fetchColumn();
-                $last = $pdo->query("SELECT created_at FROM bookings ORDER BY created_at DESC LIMIT 1")->fetchColumn();
-                $diagnostic['last_booking'] = $last ? \Carbon\Carbon::parse($last)->diffForHumans() : null;
+                $diagnostic['reachable'] = true;
+                $diagnostic['users'] = (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
+                $diagnostic['active_users'] = (int) $pdo->query('SELECT COUNT(*) FROM users WHERE is_active = true')->fetchColumn();
+                $diagnostic['bookings_total'] = (int) $pdo->query('SELECT COUNT(*) FROM bookings')->fetchColumn();
+                $diagnostic['bookings_today'] = (int) $pdo->query('SELECT COUNT(*) FROM bookings WHERE created_at::date = CURRENT_DATE')->fetchColumn();
+                $last = $pdo->query('SELECT created_at FROM bookings ORDER BY created_at DESC LIMIT 1')->fetchColumn();
+                $diagnostic['last_booking'] = $last ? Carbon::parse($last)->diffForHumans() : null;
             } catch (\Exception $e) {
                 $diagnostic['reachable'] = false;
             }
@@ -1387,11 +1458,13 @@ class AdminAuditController extends Controller
     public function assistanceOpen(Request $request)
     {
         $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) { abort(403); }
+        if (! $user || ! $user->isTechAdmin()) {
+            abort(403);
+        }
 
         $validated = $request->validate([
             'tenant_id' => ['required', 'exists:tenants,id'],
-            'reason'    => ['required', 'string', 'min:10', 'max:1000'],
+            'reason' => ['required', 'string', 'min:10', 'max:1000'],
         ]);
 
         $tenant = Tenant::findOrFail($validated['tenant_id']);
@@ -1400,19 +1473,19 @@ class AdminAuditController extends Controller
             return back()->with('error', "Le secret d'assistance (ASSISTANCE_SECRET) n'est pas configuré côté pms.");
         }
 
-        if (!$tenant->provisioned_at) {
+        if (! $tenant->provisioned_at) {
             return back()->with('error', "Cet établissement n'est pas encore provisionné.");
         }
 
-        $ttl     = (int) config('assistance.ttl_minutes', 30);
+        $ttl = (int) config('assistance.ttl_minutes', 30);
         $expires = now()->addMinutes($ttl);
 
-        $session = \App\Models\AssistanceSession::create([
-            'tenant_id'  => $tenant->id,
-            'user_id'    => $user->id,
-            'reason'     => $validated['reason'],
-            'token'      => \Illuminate\Support\Str::random(48),
-            'status'     => 'active',
+        $session = AssistanceSession::create([
+            'tenant_id' => $tenant->id,
+            'user_id' => $user->id,
+            'reason' => $validated['reason'],
+            'token' => Str::random(48),
+            'status' => 'active',
             'expires_at' => $expires,
         ]);
 
@@ -1435,30 +1508,33 @@ class AdminAuditController extends Controller
     public function assistanceList()
     {
         $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) { abort(403); }
+        if (! $user || ! $user->isTechAdmin()) {
+            abort(403);
+        }
 
-        \App\Models\AssistanceSession::where('status', 'active')
+        AssistanceSession::where('status', 'active')
             ->where('expires_at', '<', now())
             ->update(['status' => 'expired']);
 
-        $sessions = \App\Models\AssistanceSession::with(['tenant', 'user'])
+        $sessions = AssistanceSession::with(['tenant', 'user'])
             ->latest()
             ->limit(50)
             ->get()
-            ->map(function (\App\Models\AssistanceSession $s) {
+            ->map(function (AssistanceSession $s) {
                 $live = $s->isLive();
+
                 return [
-                    'id'         => $s->id,
-                    'tenant'     => $s->tenant?->name ?? '—',
-                    'slug'       => $s->tenant?->slug,
-                    'admin'      => $s->user?->name ?? '—',
-                    'reason'     => $s->reason,
-                    'status'     => $s->status,
-                    'live'       => $live,
+                    'id' => $s->id,
+                    'tenant' => $s->tenant?->name ?? '—',
+                    'slug' => $s->tenant?->slug,
+                    'admin' => $s->user?->name ?? '—',
+                    'reason' => $s->reason,
+                    'status' => $s->status,
+                    'live' => $live,
                     'expires_at' => $s->expires_at?->format('d/m/Y H:i'),
                     'expires_in' => $live ? $s->expires_at->diffForHumans() : null,
-                    'opened_at'  => $s->created_at?->format('d/m/Y H:i'),
-                    'entry_url'  => $s->entryUrl(),
+                    'opened_at' => $s->created_at?->format('d/m/Y H:i'),
+                    'entry_url' => $s->entryUrl(),
                 ];
             });
 
@@ -1468,10 +1544,12 @@ class AdminAuditController extends Controller
     /**
      * Support — clôture (révocation) manuelle d'une session d'assistance.
      */
-    public function assistanceRevoke(\App\Models\AssistanceSession $session)
+    public function assistanceRevoke(AssistanceSession $session)
     {
         $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) { abort(403); }
+        if (! $user || ! $user->isTechAdmin()) {
+            abort(403);
+        }
 
         if ($session->status === 'active') {
             $session->update(['status' => 'revoked', 'closed_at' => now()]);
@@ -1498,7 +1576,9 @@ class AdminAuditController extends Controller
     public function supportAppLogs(Request $request)
     {
         $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) { abort(403); }
+        if (! $user || ! $user->isTechAdmin()) {
+            abort(403);
+        }
 
         $tenantsQuery = Tenant::query()->whereNotNull('provisioned_at')->orderBy('name');
         if ($request->filled('slug')) {
@@ -1506,34 +1586,34 @@ class AdminAuditController extends Controller
         }
         $tenants = $tenantsQuery->get();
 
-        $perTenant  = max(20, (int) ceil(120 / max(1, $tenants->count())));
-        $logs       = [];
+        $perTenant = max(20, (int) ceil(120 / max(1, $tenants->count())));
+        $logs = [];
         $unreachable = [];
 
         foreach ($tenants as $tenant) {
             try {
                 $pdo = $this->connectToTenantDatabase($tenant);
                 $stmt = $pdo->prepare(
-                    "SELECT a.id, a.event_type, a.action, a.module, a.ip_address, a.created_at, u.name AS user_name, u.role AS user_role
+                    'SELECT a.id, a.event_type, a.action, a.module, a.ip_address, a.created_at, u.name AS user_name, u.role AS user_role
                      FROM audit_logs a LEFT JOIN users u ON u.id = a.user_id
-                     ORDER BY a.created_at DESC LIMIT :lim"
+                     ORDER BY a.created_at DESC LIMIT :lim'
                 );
                 $stmt->bindValue(':lim', $perTenant, \PDO::PARAM_INT);
                 $stmt->execute();
 
                 foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
                     $logs[] = [
-                        'tenant'      => $tenant->name,
-                        'slug'        => $tenant->slug,
-                        'event_type'  => $r['event_type'],
-                        'action'      => $r['action'],
-                        'module'      => $r['module'],
-                        'ip'          => $r['ip_address'],
-                        'user'        => $r['user_name'] ?? 'Système / anonyme',
-                        'role'        => $r['user_role'],
-                        'at'          => \Carbon\Carbon::parse($r['created_at'])->format('d/m/Y H:i:s'),
-                        'ts'          => \Carbon\Carbon::parse($r['created_at'])->timestamp,
-                        'ago'         => \Carbon\Carbon::parse($r['created_at'])->diffForHumans(),
+                        'tenant' => $tenant->name,
+                        'slug' => $tenant->slug,
+                        'event_type' => $r['event_type'],
+                        'action' => $r['action'],
+                        'module' => $r['module'],
+                        'ip' => $r['ip_address'],
+                        'user' => $r['user_name'] ?? 'Système / anonyme',
+                        'role' => $r['user_role'],
+                        'at' => Carbon::parse($r['created_at'])->format('d/m/Y H:i:s'),
+                        'ts' => Carbon::parse($r['created_at'])->timestamp,
+                        'ago' => Carbon::parse($r['created_at'])->diffForHumans(),
                     ];
                 }
             } catch (\Exception $e) {
@@ -1546,9 +1626,9 @@ class AdminAuditController extends Controller
         $logs = array_slice($logs, 0, 200);
 
         return response()->json([
-            'logs'        => $logs,
+            'logs' => $logs,
             'unreachable' => $unreachable,
-            'count'       => count($logs),
+            'count' => count($logs),
             'generated_at' => now()->format('H:i:s'),
         ]);
     }
@@ -1562,7 +1642,9 @@ class AdminAuditController extends Controller
     public function supportInterventions(Request $request)
     {
         $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) { abort(403); }
+        if (! $user || ! $user->isTechAdmin()) {
+            abort(403);
+        }
 
         // Actions considérées comme des interventions (vs simple navigation)
         $interventionEvents = [
@@ -1580,18 +1662,18 @@ class AdminAuditController extends Controller
         if ($request->filled('slug')) {
             $slug = $request->string('slug');
             $query->where(function ($q) use ($slug) {
-                $q->where('description', 'like', '%' . $slug . '%')
-                  ->orWhere('payload', 'like', '%"' . $slug . '"%');
+                $q->where('description', 'like', '%'.$slug.'%')
+                    ->orWhere('payload', 'like', '%"'.$slug.'"%');
             });
         }
 
         $logs = $query->limit(80)->get()->map(fn (AuditLog $log) => [
-            'id'          => $log->id,
-            'event_type'  => $log->event_type,
+            'id' => $log->id,
+            'event_type' => $log->event_type,
             'description' => $log->description,
-            'actor'       => $log->user?->name ?? 'Système',
-            'at'          => $log->created_at?->format('d/m/Y H:i'),
-            'ago'         => $log->created_at?->diffForHumans(),
+            'actor' => $log->user?->name ?? 'Système',
+            'at' => $log->created_at?->format('d/m/Y H:i'),
+            'ago' => $log->created_at?->diffForHumans(),
         ]);
 
         return response()->json(['interventions' => $logs]);
@@ -1605,32 +1687,34 @@ class AdminAuditController extends Controller
     public function rolesDistribution()
     {
         $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) { abort(403); }
+        if (! $user || ! $user->isTechAdmin()) {
+            abort(403);
+        }
 
-        $catalogKeys = array_keys(\App\Support\TenantRoles::catalog());
-        $rows        = [];
-        $totals      = array_fill_keys($catalogKeys, 0);
+        $catalogKeys = array_keys(TenantRoles::catalog());
+        $rows = [];
+        $totals = array_fill_keys($catalogKeys, 0);
         $unknownTotal = 0;
 
         foreach (Tenant::orderBy('name')->get() as $tenant) {
             $row = [
-                'id'        => $tenant->id,
-                'name'      => $tenant->name,
-                'slug'      => $tenant->slug,
-                'url'       => route('tech.establishments.show', ['tenant' => $tenant, 'section' => 'users']),
+                'id' => $tenant->id,
+                'name' => $tenant->name,
+                'slug' => $tenant->slug,
+                'url' => route('tech.establishments.show', ['tenant' => $tenant, 'section' => 'users']),
                 'reachable' => false,
-                'roles'     => [],
-                'unknown'   => 0,
-                'total'     => 0,
+                'roles' => [],
+                'unknown' => 0,
+                'total' => 0,
             ];
 
             if ($tenant->provisioned_at) {
                 try {
                     $pdo = $this->connectToTenantDatabase($tenant);
-                    $stmt = $pdo->query("SELECT role, COUNT(*) AS n FROM users GROUP BY role");
+                    $stmt = $pdo->query('SELECT role, COUNT(*) AS n FROM users GROUP BY role');
 
                     foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
-                        $role  = (string) $r['role'];
+                        $role = (string) $r['role'];
                         $count = (int) $r['n'];
                         $row['total'] += $count;
 
@@ -1654,9 +1738,9 @@ class AdminAuditController extends Controller
 
         return response()->json([
             'establishments' => $rows,
-            'totals'         => $totals,
-            'unknown_total'  => $unknownTotal,
-            'generated_at'   => now()->format('H:i:s'),
+            'totals' => $totals,
+            'unknown_total' => $unknownTotal,
+            'generated_at' => now()->format('H:i:s'),
         ]);
     }
 
@@ -1668,40 +1752,42 @@ class AdminAuditController extends Controller
      * les connexions PDO ont un timeout court (3s) et échouent en alerte
      * plutôt qu'en erreur.
      */
-    public function supervisionStats(\App\Services\TenantProvisioningService $provisioner)
+    public function supervisionStats(TenantProvisioningService $provisioner)
     {
         $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) { abort(403); }
+        if (! $user || ! $user->isTechAdmin()) {
+            abort(403);
+        }
 
         $establishments = [];
-        $alerts         = [];
-        $usersTotal     = 0;
-        $bookingsToday  = 0;
-        $arrivalsToday  = 0;
-        $runningCount   = 0;
+        $alerts = [];
+        $usersTotal = 0;
+        $bookingsToday = 0;
+        $arrivalsToday = 0;
+        $runningCount = 0;
 
         foreach (Tenant::orderBy('name')->get() as $tenant) {
             $health = $provisioner->health($tenant);
 
             $row = [
-                'id'            => $tenant->id,
-                'name'          => $tenant->name,
-                'slug'          => $tenant->slug,
-                'is_active'     => (bool) $tenant->is_active,
-                'app_status'    => $health['app_status'],
-                'db_status'     => $health['db_status'],
-                'web_status'    => $health['web_status'] ?? null,
-                'grc_status'    => $health['grc_status'] ?? null,
-                'has_website'   => in_array('website', $tenant->modules ?? [], true),
-                'has_grc'       => in_array('grc', $tenant->modules ?? [], true),
-                'app_port'      => $tenant->app_port,
-                'web_port'      => $tenant->web_port ?? ($tenant->app_port ? $tenant->app_port + 1000 : null),
-                'grc_port'      => $tenant->grc_port ?? ($tenant->app_port ? $tenant->app_port + 2000 : null),
-                'users_count'   => (int) ($tenant->users_count ?? 0),
+                'id' => $tenant->id,
+                'name' => $tenant->name,
+                'slug' => $tenant->slug,
+                'is_active' => (bool) $tenant->is_active,
+                'app_status' => $health['app_status'],
+                'db_status' => $health['db_status'],
+                'web_status' => $health['web_status'] ?? null,
+                'grc_status' => $health['grc_status'] ?? null,
+                'has_website' => in_array('website', $tenant->modules ?? [], true),
+                'has_grc' => in_array('grc', $tenant->modules ?? [], true),
+                'app_port' => $tenant->app_port,
+                'web_port' => $tenant->web_port ?? ($tenant->app_port ? $tenant->app_port + 1000 : null),
+                'grc_port' => $tenant->grc_port ?? ($tenant->app_port ? $tenant->app_port + 2000 : null),
+                'users_count' => (int) ($tenant->users_count ?? 0),
                 'bookings_today' => null,
                 'arrivals_today' => null,
-                'url'           => route('tech.establishments.show', $tenant),
-                'provisioned'   => (bool) $tenant->provisioned_at,
+                'url' => route('tech.establishments.show', $tenant),
+                'provisioned' => (bool) $tenant->provisioned_at,
             ];
 
             $usersTotal += $row['users_count'];
@@ -1711,11 +1797,11 @@ class AdminAuditController extends Controller
             }
 
             // ── Alertes ──────────────────────────────────────────────────
-            if (!$tenant->provisioned_at) {
-                $alerts[] = ['level' => 'warning', 'tenant' => $tenant->name, 'message' => "Jamais provisionné — aucun container en place."];
+            if (! $tenant->provisioned_at) {
+                $alerts[] = ['level' => 'warning', 'tenant' => $tenant->name, 'message' => 'Jamais provisionné — aucun container en place.'];
             } else {
                 if ($tenant->docker_status === 'error') {
-                    $alerts[] = ['level' => 'critical', 'tenant' => $tenant->name, 'message' => "Dernier provisioning ou mise à jour en erreur."];
+                    $alerts[] = ['level' => 'critical', 'tenant' => $tenant->name, 'message' => 'Dernier provisioning ou mise à jour en erreur.'];
                 }
                 if ($tenant->is_active && $health['app_status'] !== 'running') {
                     $alerts[] = ['level' => 'critical', 'tenant' => $tenant->name, 'message' => "Container applicatif « {$health['app_status']} » alors que l'établissement est actif."];
@@ -1726,14 +1812,14 @@ class AdminAuditController extends Controller
                 if ($row['has_website'] && $tenant->docker_web_container && ($health['web_status'] ?? 'absent') !== 'running') {
                     $alerts[] = ['level' => 'warning', 'tenant' => $tenant->name, 'message' => "Site vitrine « {$health['web_status']} » — le site public est indisponible."];
                 }
-                if ($row['has_website'] && !$tenant->docker_web_container) {
-                    $alerts[] = ['level' => 'warning', 'tenant' => $tenant->name, 'message' => "Module Site web actif mais aucun container web provisionné — réappliquer les modules."];
+                if ($row['has_website'] && ! $tenant->docker_web_container) {
+                    $alerts[] = ['level' => 'warning', 'tenant' => $tenant->name, 'message' => 'Module Site web actif mais aucun container web provisionné — réappliquer les modules.'];
                 }
                 if ($row['has_grc'] && $tenant->docker_grc_container && ($health['grc_status'] ?? 'absent') !== 'running') {
                     $alerts[] = ['level' => 'warning', 'tenant' => $tenant->name, 'message' => "Module GRC « {$health['grc_status']} » — la plateforme de contrôle de gestion est indisponible."];
                 }
-                if ($row['has_grc'] && !$tenant->docker_grc_container) {
-                    $alerts[] = ['level' => 'warning', 'tenant' => $tenant->name, 'message' => "Module GRC actif mais aucun container GRC provisionné — réappliquer les modules."];
+                if ($row['has_grc'] && ! $tenant->docker_grc_container) {
+                    $alerts[] = ['level' => 'warning', 'tenant' => $tenant->name, 'message' => 'Module GRC actif mais aucun container GRC provisionné — réappliquer les modules.'];
                 }
             }
 
@@ -1743,7 +1829,7 @@ class AdminAuditController extends Controller
                     $pdo = $this->connectToTenantDatabase($tenant);
 
                     $row['bookings_today'] = (int) $pdo->query(
-                        "SELECT COUNT(*) FROM bookings WHERE created_at::date = CURRENT_DATE"
+                        'SELECT COUNT(*) FROM bookings WHERE created_at::date = CURRENT_DATE'
                     )->fetchColumn();
 
                     $row['arrivals_today'] = (int) $pdo->query(
@@ -1753,7 +1839,7 @@ class AdminAuditController extends Controller
                     $bookingsToday += $row['bookings_today'];
                     $arrivalsToday += $row['arrivals_today'];
                 } catch (\Exception $e) {
-                    $alerts[] = ['level' => 'warning', 'tenant' => $tenant->name, 'message' => "Base injoignable pour la lecture des réservations."];
+                    $alerts[] = ['level' => 'warning', 'tenant' => $tenant->name, 'message' => 'Base injoignable pour la lecture des réservations.'];
                 }
             }
 
@@ -1762,28 +1848,30 @@ class AdminAuditController extends Controller
 
         return response()->json([
             'counts' => [
-                'establishments_total'   => count($establishments),
+                'establishments_total' => count($establishments),
                 'establishments_running' => $runningCount,
-                'users_total'            => $usersTotal,
-                'bookings_today'         => $bookingsToday,
-                'arrivals_today'         => $arrivalsToday,
-                'alerts'                 => count($alerts),
+                'users_total' => $usersTotal,
+                'bookings_today' => $bookingsToday,
+                'arrivals_today' => $arrivalsToday,
+                'alerts' => count($alerts),
             ],
-            'alerts'         => $alerts,
+            'alerts' => $alerts,
             'establishments' => $establishments,
-            'generated_at'   => now()->format('H:i:s'),
+            'generated_at' => now()->format('H:i:s'),
         ]);
     }
-
-
 
     public function toggleUserActive(User $user)
     {
         $admin = Auth::user();
-        if (!$admin || !$admin->isTechAdmin()) { abort(403); }
-        if ($user->id === $admin->id) { return back()->with('error', 'Auto-désactivation impossible.'); }
+        if (! $admin || ! $admin->isTechAdmin()) {
+            abort(403);
+        }
+        if ($user->id === $admin->id) {
+            return back()->with('error', 'Auto-désactivation impossible.');
+        }
 
-        $user->update(['is_active' => !$user->is_active]);
+        $user->update(['is_active' => ! $user->is_active]);
 
         AuditLog::record(
             $admin->id,
@@ -1804,7 +1892,9 @@ class AdminAuditController extends Controller
     public function forcePasswordReset(User $user)
     {
         $admin = Auth::user();
-        if (!$admin || !$admin->isTechAdmin()) { abort(403); }
+        if (! $admin || ! $admin->isTechAdmin()) {
+            abort(403);
+        }
         $tempPassword = Str::random(10);
         $user->update(['password' => Hash::make($tempPassword)]);
 
@@ -1830,7 +1920,9 @@ class AdminAuditController extends Controller
     public function exportSupervision()
     {
         $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) { abort(403); }
+        if (! $user || ! $user->isTechAdmin()) {
+            abort(403);
+        }
 
         $tenants = Tenant::with('owner')->orderBy('name')->get();
 
@@ -1847,9 +1939,9 @@ class AdminAuditController extends Controller
 
             if ($tenant->provisioned_at) {
                 try {
-                    $pdo      = $this->connectToTenantDatabase($tenant);
-                    $users    = (int) $pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();
-                    $bookings = (int) $pdo->query("SELECT COUNT(*) FROM bookings")->fetchColumn();
+                    $pdo = $this->connectToTenantDatabase($tenant);
+                    $users = (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
+                    $bookings = (int) $pdo->query('SELECT COUNT(*) FROM bookings')->fetchColumn();
                 } catch (\Exception $e) {
                     // Base injoignable : compteurs N/D, la ligne reste exportée
                 }
@@ -1879,7 +1971,7 @@ class AdminAuditController extends Controller
         AuditLog::record($user->id, 'export_supervision',
             "Export CSV du rapport de supervision ({$tenants->count()} établissement(s))", 'tech_admin');
 
-        $filename = 'supervision_etablissements_' . now()->format('Ymd_His') . '.csv';
+        $filename = 'supervision_etablissements_'.now()->format('Ymd_His').'.csv';
 
         return response()->streamDownload(function () use ($columns, $rows) {
             $out = fopen('php://output', 'w');
@@ -1901,37 +1993,39 @@ class AdminAuditController extends Controller
     public function backupsIndex(Request $request)
     {
         $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) { abort(403); }
+        if (! $user || ! $user->isTechAdmin()) {
+            abort(403);
+        }
 
-        $backupsQuery = \App\Models\TenantBackup::with('tenant')->latest();
+        $backupsQuery = TenantBackup::with('tenant')->latest();
         if ($request->filled('slug')) {
             $backupsQuery->whereHas('tenant', fn ($q) => $q->where('slug', $request->string('slug')));
         }
 
-        $backups = $backupsQuery->limit(100)->get()->map(fn (\App\Models\TenantBackup $b) => [
-            'id'       => $b->id,
-            'tenant'   => $b->tenant?->name ?? '—',
-            'slug'     => $b->tenant?->slug,
+        $backups = $backupsQuery->limit(100)->get()->map(fn (TenantBackup $b) => [
+            'id' => $b->id,
+            'tenant' => $b->tenant?->name ?? '—',
+            'slug' => $b->tenant?->slug,
             'filename' => $b->filename,
-            'size'     => $b->humanSize(),
-            'status'   => $b->status,
-            'trigger'  => $b->trigger,
-            'error'    => $b->error,
-            'at'       => $b->created_at?->format('d/m/Y H:i'),
-            'ago'      => $b->created_at?->diffForHumans(),
+            'size' => $b->humanSize(),
+            'status' => $b->status,
+            'trigger' => $b->trigger,
+            'error' => $b->error,
+            'at' => $b->created_at?->format('d/m/Y H:i'),
+            'ago' => $b->created_at?->diffForHumans(),
         ]);
 
-        $schedules = \App\Models\BackupSchedule::with('tenant')->get()->keyBy('tenant_id')->map(fn ($s) => [
-            'enabled'     => $s->enabled,
-            'frequency'   => $s->frequency,
-            'label'       => $s->frequencyLabel(),
-            'retention'   => $s->retention,
+        $schedules = BackupSchedule::with('tenant')->get()->keyBy('tenant_id')->map(fn ($s) => [
+            'enabled' => $s->enabled,
+            'frequency' => $s->frequency,
+            'label' => $s->frequencyLabel(),
+            'retention' => $s->retention,
             'next_run_at' => $s->next_run_at?->format('d/m/Y H:i'),
             'last_run_at' => $s->last_run_at?->format('d/m/Y H:i'),
         ]);
 
         return response()->json([
-            'backups'   => $backups,
+            'backups' => $backups,
             'schedules' => $schedules,
         ]);
     }
@@ -1939,10 +2033,12 @@ class AdminAuditController extends Controller
     /**
      * Sauvegarde manuelle immédiate d'un établissement.
      */
-    public function backupCreate(Tenant $tenant, \App\Services\TenantBackupService $service)
+    public function backupCreate(Tenant $tenant, TenantBackupService $service)
     {
         $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) { abort(403); }
+        if (! $user || ! $user->isTechAdmin()) {
+            abort(403);
+        }
 
         $backup = $service->backup($tenant, 'manual');
 
@@ -1960,13 +2056,16 @@ class AdminAuditController extends Controller
     /**
      * Sauvegarde manuelle de tous les établissements provisionnés.
      */
-    public function backupAll(\App\Services\TenantBackupService $service)
+    public function backupAll(TenantBackupService $service)
     {
         $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) { abort(403); }
+        if (! $user || ! $user->isTechAdmin()) {
+            abort(403);
+        }
 
         $tenants = Tenant::whereNotNull('provisioned_at')->get();
-        $ok = 0; $failed = 0;
+        $ok = 0;
+        $failed = 0;
 
         foreach ($tenants as $tenant) {
             $backup = $service->backup($tenant, 'manual');
@@ -1976,7 +2075,8 @@ class AdminAuditController extends Controller
         AuditLog::record($user->id, 'backup_create',
             "Sauvegarde manuelle globale : {$ok} réussie(s), {$failed} échec(s)", 'tech_admin');
 
-        $msg = "{$ok} sauvegarde(s) créée(s)" . ($failed ? ", {$failed} échec(s)" : '') . " — dossier : {$service->displayDir()}";
+        $msg = "{$ok} sauvegarde(s) créée(s)".($failed ? ", {$failed} échec(s)" : '')." — dossier : {$service->displayDir()}";
+
         return $failed ? back()->with('warning', $msg) : back()->with('success', $msg);
     }
 
@@ -1986,13 +2086,15 @@ class AdminAuditController extends Controller
      * dump (--clean --if-exists). Volontairement limité au tenant d'origine
      * de la sauvegarde — pas de restauration croisée entre établissements.
      */
-    public function backupRestore(\App\Models\TenantBackup $backup, \App\Services\TenantBackupService $service)
+    public function backupRestore(TenantBackup $backup, TenantBackupService $service)
     {
         $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) { abort(403); }
+        if (! $user || ! $user->isTechAdmin()) {
+            abort(403);
+        }
 
         $tenant = $backup->tenant;
-        if (!$tenant) {
+        if (! $tenant) {
             return back()->with('error', 'Établissement de cette sauvegarde introuvable.');
         }
 
@@ -2003,10 +2105,10 @@ class AdminAuditController extends Controller
         [$ok, $error] = $service->restore($tenant, $backup->path);
 
         AuditLog::record($user->id, 'backup_restore',
-            "Restauration de la sauvegarde {$backup->filename} dans l'établissement {$tenant->name} (" . ($ok ? 'réussie' : 'échec') . ")",
+            "Restauration de la sauvegarde {$backup->filename} dans l'établissement {$tenant->name} (".($ok ? 'réussie' : 'échec').')',
             'tech_admin', ['slug' => $tenant->slug, 'filename' => $backup->filename]);
 
-        if (!$ok) {
+        if (! $ok) {
             return back()->with('error', "Échec de la restauration sur « {$tenant->name} » : {$error}");
         }
 
@@ -2018,10 +2120,12 @@ class AdminAuditController extends Controller
      * restaure dans l'établissement sélectionné. Le fichier est d'abord
      * archivé dans le dossier backups (trigger « imported ») puis rejoué.
      */
-    public function backupImport(Request $request, Tenant $tenant, \App\Services\TenantBackupService $service)
+    public function backupImport(Request $request, Tenant $tenant, TenantBackupService $service)
     {
         $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) { abort(403); }
+        if (! $user || ! $user->isTechAdmin()) {
+            abort(403);
+        }
 
         $request->validate([
             'backup_file' => ['required', 'file', 'max:512000'], // 500 Mo
@@ -2030,59 +2134,63 @@ class AdminAuditController extends Controller
         $file = $request->file('backup_file');
         $original = strtolower($file->getClientOriginalName());
 
-        if (!str_ends_with($original, '.sql.gz') && !str_ends_with($original, '.sql')) {
+        if (! str_ends_with($original, '.sql.gz') && ! str_ends_with($original, '.sql')) {
             return back()->with('error', 'Format non pris en charge — importez un fichier .sql.gz (généré par cet outil) ou .sql.');
         }
 
-        $ext      = str_ends_with($original, '.sql.gz') ? 'sql.gz' : 'sql';
+        $ext = str_ends_with($original, '.sql.gz') ? 'sql.gz' : 'sql';
         $filename = sprintf('%s_imported_%s.%s', $tenant->slug, now()->format('Ymd_His'), $ext);
-        $relPath  = \App\Services\TenantBackupService::DIR . '/' . $filename;
+        $relPath = TenantBackupService::DIR.'/'.$filename;
 
-        \Illuminate\Support\Facades\Storage::disk('local')->putFileAs(
-            \App\Services\TenantBackupService::DIR, $file, $filename
+        Storage::disk('local')->putFileAs(
+            TenantBackupService::DIR, $file, $filename
         );
 
-        $backup = \App\Models\TenantBackup::create([
-            'tenant_id'  => $tenant->id,
-            'filename'   => $filename,
-            'path'       => $relPath,
-            'size_bytes' => (int) \Illuminate\Support\Facades\Storage::disk('local')->size($relPath),
-            'status'     => 'completed',
-            'trigger'    => 'imported',
+        $backup = TenantBackup::create([
+            'tenant_id' => $tenant->id,
+            'filename' => $filename,
+            'path' => $relPath,
+            'size_bytes' => (int) Storage::disk('local')->size($relPath),
+            'status' => 'completed',
+            'trigger' => 'imported',
         ]);
 
         [$ok, $error] = $service->restore($tenant, $relPath);
 
         AuditLog::record($user->id, 'backup_import',
-            "Import du fichier {$original} et restauration dans {$tenant->name} (" . ($ok ? 'réussie' : 'échec') . ")",
+            "Import du fichier {$original} et restauration dans {$tenant->name} (".($ok ? 'réussie' : 'échec').')',
             'tech_admin', ['slug' => $tenant->slug, 'filename' => $filename]);
 
-        if (!$ok) {
+        if (! $ok) {
             return back()->with('error', "Fichier importé et archivé, mais échec de la restauration sur « {$tenant->name} » : {$error}");
         }
 
         return back()->with('success', "Fichier « {$original} » importé et restauré dans « {$tenant->name} » — archive conservée : {$service->displayPath($backup)}");
     }
 
-    public function backupDownload(\App\Models\TenantBackup $backup)
+    public function backupDownload(TenantBackup $backup)
     {
         $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) { abort(403); }
+        if (! $user || ! $user->isTechAdmin()) {
+            abort(403);
+        }
 
-        if ($backup->status !== 'completed' || !\Illuminate\Support\Facades\Storage::disk('local')->exists($backup->path)) {
+        if ($backup->status !== 'completed' || ! Storage::disk('local')->exists($backup->path)) {
             abort(404, 'Fichier de sauvegarde introuvable.');
         }
 
         AuditLog::record($user->id, 'backup_download',
             "Téléchargement du backup {$backup->filename}", 'tech_admin', ['slug' => $backup->tenant?->slug]);
 
-        return \Illuminate\Support\Facades\Storage::disk('local')->download($backup->path, $backup->filename);
+        return Storage::disk('local')->download($backup->path, $backup->filename);
     }
 
-    public function backupDelete(\App\Models\TenantBackup $backup, \App\Services\TenantBackupService $service)
+    public function backupDelete(TenantBackup $backup, TenantBackupService $service)
     {
         $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) { abort(403); }
+        if (! $user || ! $user->isTechAdmin()) {
+            abort(403);
+        }
 
         $name = $backup->filename;
         $service->delete($backup);
@@ -2098,33 +2206,35 @@ class AdminAuditController extends Controller
     public function backupSchedule(Request $request, Tenant $tenant)
     {
         $user = Auth::user();
-        if (!$user || !$user->isTechAdmin()) { abort(403); }
+        if (! $user || ! $user->isTechAdmin()) {
+            abort(403);
+        }
 
         $validated = $request->validate([
-            'enabled'      => ['nullable', 'boolean'],
-            'frequency'    => ['required', Rule::in(['daily', 'weekly', 'monthly'])],
-            'hour'         => ['required', 'integer', 'between:0,23'],
-            'minute'       => ['required', 'integer', 'between:0,59'],
-            'day_of_week'  => ['nullable', 'integer', 'between:0,6'],
+            'enabled' => ['nullable', 'boolean'],
+            'frequency' => ['required', Rule::in(['daily', 'weekly', 'monthly'])],
+            'hour' => ['required', 'integer', 'between:0,23'],
+            'minute' => ['required', 'integer', 'between:0,59'],
+            'day_of_week' => ['nullable', 'integer', 'between:0,6'],
             'day_of_month' => ['nullable', 'integer', 'between:1,28'],
-            'retention'    => ['required', 'integer', 'between:1,365'],
+            'retention' => ['required', 'integer', 'between:1,365'],
         ]);
 
-        $schedule = \App\Models\BackupSchedule::firstOrNew(['tenant_id' => $tenant->id]);
+        $schedule = BackupSchedule::firstOrNew(['tenant_id' => $tenant->id]);
         $schedule->fill([
-            'enabled'      => $request->boolean('enabled'),
-            'frequency'    => $validated['frequency'],
-            'hour'         => $validated['hour'],
-            'minute'       => $validated['minute'],
-            'day_of_week'  => $validated['frequency'] === 'weekly' ? ($validated['day_of_week'] ?? 1) : null,
+            'enabled' => $request->boolean('enabled'),
+            'frequency' => $validated['frequency'],
+            'hour' => $validated['hour'],
+            'minute' => $validated['minute'],
+            'day_of_week' => $validated['frequency'] === 'weekly' ? ($validated['day_of_week'] ?? 1) : null,
             'day_of_month' => $validated['frequency'] === 'monthly' ? ($validated['day_of_month'] ?? 1) : null,
-            'retention'    => $validated['retention'],
+            'retention' => $validated['retention'],
         ]);
         $schedule->next_run_at = $schedule->enabled ? $schedule->computeNextRun() : null;
         $schedule->save();
 
         AuditLog::record($user->id, 'backup_schedule',
-            "Planification de backup " . ($schedule->enabled ? 'activée' : 'désactivée') . " pour {$tenant->name} ({$schedule->frequencyLabel()})",
+            'Planification de backup '.($schedule->enabled ? 'activée' : 'désactivée')." pour {$tenant->name} ({$schedule->frequencyLabel()})",
             'tech_admin', ['slug' => $tenant->slug]);
 
         return back()->with('success', "Planification de sauvegarde enregistrée pour « {$tenant->name} ».");
@@ -2134,12 +2244,14 @@ class AdminAuditController extends Controller
     public function businessDashboard(Request $request)
     {
         $user = Auth::user();
-        if (!$user || !$user->isOwner()) { abort(403); }
+        if (! $user || ! $user->isOwner()) {
+            abort(403);
+        }
 
         $segment = $request->segment(2); // business/{segment}
         $activeTab = $request->input('tab', $segment ?: 'dashboard');
 
-        if (!in_array($activeTab, ['dashboard', 'establishments', 'analytics', 'clients', 'employees', 'revenue'])) {
+        if (! in_array($activeTab, ['dashboard', 'establishments', 'analytics', 'clients', 'employees', 'revenue'])) {
             $activeTab = 'dashboard';
         }
 
@@ -2157,13 +2269,15 @@ class AdminAuditController extends Controller
     public function businessShowTenant(Request $request, Tenant $tenant)
     {
         $user = Auth::user();
-        if (!$user || !$user->isOwner()) { abort(403); }
+        if (! $user || ! $user->isOwner()) {
+            abort(403);
+        }
         if ($tenant->owner_id !== $user->id) {
-            abort(403, "Cet établissement ne vous appartient pas.");
+            abort(403, 'Cet établissement ne vous appartient pas.');
         }
 
         $section = $request->query('section', 'finance');
-        if (!in_array($section, ['finance', 'info', 'users'], true)) {
+        if (! in_array($section, ['finance', 'info', 'users'], true)) {
             $section = 'finance';
         }
 
@@ -2171,7 +2285,7 @@ class AdminAuditController extends Controller
         if ($section === 'users') {
             try {
                 $pdo = $this->connectToTenantDatabase($tenant);
-                $rows = $pdo->query("SELECT id, name, email, phone, role, is_active FROM users ORDER BY name")
+                $rows = $pdo->query('SELECT id, name, email, phone, role, is_active FROM users ORDER BY name')
                     ->fetchAll(\PDO::FETCH_ASSOC);
                 $tenantUsers = collect($rows)->map(fn ($r) => (object) $r);
 
@@ -2179,7 +2293,7 @@ class AdminAuditController extends Controller
                     $tenant->update(['users_count' => $tenantUsers->count()]);
                 }
             } catch (\Exception $e) {
-                session()->now('error', "Impossible de se connecter à l'établissement : " . $e->getMessage());
+                session()->now('error', "Impossible de se connecter à l'établissement : ".$e->getMessage());
             }
         }
 
@@ -2190,11 +2304,15 @@ class AdminAuditController extends Controller
      * Données financières d'UN établissement du propriétaire (AJAX) : résumé
      * + série de revenus, via l'API reporting du tenant.
      */
-    public function businessEstablishmentFinance(Request $request, Tenant $tenant, \App\Services\BusinessReportingClient $client)
+    public function businessEstablishmentFinance(Request $request, Tenant $tenant, BusinessReportingClient $client)
     {
         $user = Auth::user();
-        if (!$user || !$user->isOwner()) { abort(403); }
-        if ($tenant->owner_id !== $user->id) { abort(403); }
+        if (! $user || ! $user->isOwner()) {
+            abort(403);
+        }
+        if ($tenant->owner_id !== $user->id) {
+            abort(403);
+        }
 
         $period = in_array($request->query('period'), ['today', 'week', 'month', 'year'], true)
             ? $request->query('period') : 'month';
@@ -2205,14 +2323,14 @@ class AdminAuditController extends Controller
         }
 
         $revenue = $client->fetch($tenant, 'revenue', ['period' => $period]);
-        $alerts  = $client->fetch($tenant, 'alerts', ['period' => $period]);
+        $alerts = $client->fetch($tenant, 'alerts', ['period' => $period]);
 
         return response()->json([
             'reachable' => true,
-            'period'    => $period,
-            'summary'   => $summary,
-            'series'    => $revenue['series'] ?? null,
-            'alerts'    => $alerts['alerts'] ?? [],
+            'period' => $period,
+            'summary' => $summary,
+            'series' => $revenue['series'] ?? null,
+            'alerts' => $alerts['alerts'] ?? [],
         ]);
     }
 
@@ -2220,10 +2338,12 @@ class AdminAuditController extends Controller
      * Vue d'ensemble 360° (AJAX) : données financières consolidées des
      * établissements du propriétaire, via l'API reporting de chaque tenant.
      */
-    public function businessOverviewData(Request $request, \App\Services\BusinessReportingClient $client)
+    public function businessOverviewData(Request $request, BusinessReportingClient $client)
     {
         $user = Auth::user();
-        if (!$user || !$user->isOwner()) { abort(403); }
+        if (! $user || ! $user->isOwner()) {
+            abort(403);
+        }
 
         $period = in_array($request->query('period'), ['today', 'week', 'month', 'year'], true)
             ? $request->query('period') : 'month';
@@ -2238,10 +2358,12 @@ class AdminAuditController extends Controller
      * caisse, factures et résultat net de tous les établissements du
      * propriétaire. Page « Rapport ».
      */
-    public function businessReportData(Request $request, \App\Services\BusinessReportingClient $client)
+    public function businessReportData(Request $request, BusinessReportingClient $client)
     {
         $user = Auth::user();
-        if (!$user || !$user->isOwner()) { abort(403); }
+        if (! $user || ! $user->isOwner()) {
+            abort(403);
+        }
 
         $period = $this->businessPeriod($request);
         $tenants = $user->tenants()->whereNotNull('provisioned_at')->orderBy('name')->get();
@@ -2250,10 +2372,12 @@ class AdminAuditController extends Controller
     }
 
     /** Export Excel (avec graphes) du rapport financier consolidé. */
-    public function businessReportExcel(Request $request, \App\Services\BusinessReportingClient $client, \App\Services\BusinessReportExporter $exporter)
+    public function businessReportExcel(Request $request, BusinessReportingClient $client, BusinessReportExporter $exporter)
     {
         $user = Auth::user();
-        if (!$user || !$user->isOwner()) { abort(403); }
+        if (! $user || ! $user->isOwner()) {
+            abort(403);
+        }
 
         $period = $this->businessPeriod($request);
         $tenants = $user->tenants()->whereNotNull('provisioned_at')->orderBy('name')->get();
@@ -2262,10 +2386,10 @@ class AdminAuditController extends Controller
         AuditLog::record($user->id, 'business_report_export', "Export Excel du rapport financier ({$period})", 'business');
 
         $spreadsheet = $exporter->excel($report);
-        $filename = 'rapport_financier_' . $period . '_' . now()->format('Ymd_His') . '.xlsx';
+        $filename = 'rapport_financier_'.$period.'_'.now()->format('Ymd_His').'.xlsx';
 
         return response()->streamDownload(function () use ($spreadsheet) {
-            $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+            $writer = new Xlsx($spreadsheet);
             $writer->setIncludeCharts(true);
             $writer->save('php://output');
         }, $filename, [
@@ -2274,10 +2398,12 @@ class AdminAuditController extends Controller
     }
 
     /** Export PDF du rapport financier consolidé. */
-    public function businessReportPdf(Request $request, \App\Services\BusinessReportingClient $client)
+    public function businessReportPdf(Request $request, BusinessReportingClient $client)
     {
         $user = Auth::user();
-        if (!$user || !$user->isOwner()) { abort(403); }
+        if (! $user || ! $user->isOwner()) {
+            abort(403);
+        }
 
         $period = $this->businessPeriod($request);
         $tenants = $user->tenants()->whereNotNull('provisioned_at')->orderBy('name')->get();
@@ -2285,12 +2411,12 @@ class AdminAuditController extends Controller
 
         AuditLog::record($user->id, 'business_report_export', "Export PDF du rapport financier ({$period})", 'business');
 
-        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('admin.business.report-pdf', [
-            'report'    => $report,
+        $pdf = Pdf::loadView('admin.business.report-pdf', [
+            'report' => $report,
             'ownerName' => $user->name,
         ])->setPaper('a4', 'portrait');
 
-        return $pdf->download('rapport_financier_' . $period . '_' . now()->format('Ymd_His') . '.pdf');
+        return $pdf->download('rapport_financier_'.$period.'_'.now()->format('Ymd_His').'.pdf');
     }
 
     private function businessPeriod(Request $request): string
@@ -2308,7 +2434,9 @@ class AdminAuditController extends Controller
     public function businessEmployeesData(Request $request)
     {
         $user = Auth::user();
-        if (!$user || !$user->isOwner()) { abort(403); }
+        if (! $user || ! $user->isOwner()) {
+            abort(403);
+        }
 
         $query = $user->tenants()->whereNotNull('provisioned_at')->orderBy('name');
         if ($request->filled('slug')) {
@@ -2316,26 +2444,26 @@ class AdminAuditController extends Controller
         }
         $tenants = $query->get();
 
-        $employees   = [];
+        $employees = [];
         $unreachable = [];
 
         foreach ($tenants as $tenant) {
             try {
                 $pdo = $this->connectToTenantDatabase($tenant);
-                $rows = $pdo->query("SELECT name, email, phone, role, is_active, created_at FROM users ORDER BY name")
+                $rows = $pdo->query('SELECT name, email, phone, role, is_active, created_at FROM users ORDER BY name')
                     ->fetchAll(\PDO::FETCH_ASSOC);
 
                 foreach ($rows as $r) {
                     $employees[] = [
-                        'name'          => $r['name'],
-                        'email'         => $r['email'],
-                        'phone'         => $r['phone'] ?: '—',
-                        'role'          => $r['role'],
-                        'is_active'     => (bool) $r['is_active'],
+                        'name' => $r['name'],
+                        'email' => $r['email'],
+                        'phone' => $r['phone'] ?: '—',
+                        'role' => $r['role'],
+                        'is_active' => (bool) $r['is_active'],
                         'establishment' => $tenant->name,
-                        'slug'          => $tenant->slug,
-                        'created_at'    => $r['created_at'] ? \Carbon\Carbon::parse($r['created_at'])->format('d/m/Y') : '—',
-                        'created_ts'    => $r['created_at'] ? \Carbon\Carbon::parse($r['created_at'])->timestamp : 0,
+                        'slug' => $tenant->slug,
+                        'created_at' => $r['created_at'] ? Carbon::parse($r['created_at'])->format('d/m/Y') : '—',
+                        'created_ts' => $r['created_at'] ? Carbon::parse($r['created_at'])->timestamp : 0,
                     ];
                 }
             } catch (\Exception $e) {
@@ -2347,8 +2475,8 @@ class AdminAuditController extends Controller
         usort($employees, fn ($a, $b) => $b['created_ts'] <=> $a['created_ts']);
 
         return response()->json([
-            'employees'   => $employees,
-            'total'       => count($employees),
+            'employees' => $employees,
+            'total' => count($employees),
             'unreachable' => $unreachable,
             'generated_at' => now()->format('H:i:s'),
         ]);
@@ -2358,10 +2486,12 @@ class AdminAuditController extends Controller
      * Statistiques comparatives (AJAX) : performance et évolution comparées
      * des établissements du propriétaire. Page « Statistiques ».
      */
-    public function businessStatsData(Request $request, \App\Services\BusinessReportingClient $client)
+    public function businessStatsData(Request $request, BusinessReportingClient $client)
     {
         $user = Auth::user();
-        if (!$user || !$user->isOwner()) { abort(403); }
+        if (! $user || ! $user->isOwner()) {
+            abort(403);
+        }
 
         $period = in_array($request->query('period'), ['today', 'week', 'month', 'year'], true)
             ? $request->query('period') : 'month';
@@ -2375,10 +2505,12 @@ class AdminAuditController extends Controller
      * Analytique de la clientèle consolidée (page « Clients ») : meilleurs
      * clients, rentabilité, segmentation RFM et marchés émetteurs.
      */
-    public function businessClientsData(Request $request, \App\Services\BusinessReportingClient $client)
+    public function businessClientsData(Request $request, BusinessReportingClient $client)
     {
         $user = Auth::user();
-        if (!$user || !$user->isOwner()) { abort(403); }
+        if (! $user || ! $user->isOwner()) {
+            abort(403);
+        }
 
         $period = in_array($request->query('period'), ['today', 'week', 'month', 'year'], true)
             ? $request->query('period') : 'month';
@@ -2392,10 +2524,12 @@ class AdminAuditController extends Controller
      * Séries de revenus consolidées (graphe d'évolution) : additionne les
      * séries de chaque établissement point par point.
      */
-    public function businessRevenueData(Request $request, \App\Services\BusinessReportingClient $client)
+    public function businessRevenueData(Request $request, BusinessReportingClient $client)
     {
         $user = Auth::user();
-        if (!$user || !$user->isOwner()) { abort(403); }
+        if (! $user || ! $user->isOwner()) {
+            abort(403);
+        }
 
         $period = in_array($request->query('period'), ['today', 'week', 'month', 'year'], true)
             ? $request->query('period') : 'month';
@@ -2410,7 +2544,7 @@ class AdminAuditController extends Controller
         foreach ($tenants as $tenant) {
             $data = $client->fetch($tenant, 'revenue', ['period' => $period]);
             $series = $data['series'] ?? null;
-            if (!$series) {
+            if (! $series) {
                 continue;
             }
 
@@ -2422,9 +2556,15 @@ class AdminAuditController extends Controller
                 $restaurant = $series['restaurant'] ?? [];
                 $shop = $series['shop'] ?? [];
             } else {
-                foreach (($series['hotel'] ?? []) as $i => $v) { $hotel[$i] = ($hotel[$i] ?? 0) + $v; }
-                foreach (($series['restaurant'] ?? []) as $i => $v) { $restaurant[$i] = ($restaurant[$i] ?? 0) + $v; }
-                foreach (($series['shop'] ?? []) as $i => $v) { $shop[$i] = ($shop[$i] ?? 0) + $v; }
+                foreach (($series['hotel'] ?? []) as $i => $v) {
+                    $hotel[$i] = ($hotel[$i] ?? 0) + $v;
+                }
+                foreach (($series['restaurant'] ?? []) as $i => $v) {
+                    $restaurant[$i] = ($restaurant[$i] ?? 0) + $v;
+                }
+                foreach (($series['shop'] ?? []) as $i => $v) {
+                    $shop[$i] = ($shop[$i] ?? 0) + $v;
+                }
             }
         }
 
@@ -2440,8 +2580,10 @@ class AdminAuditController extends Controller
     public function createTenantManager(Request $request, Tenant $tenant)
     {
         $user = Auth::user();
-        if (!$user) { abort(401); }
-        if (!$user->isTechAdmin() && ($tenant->owner_id !== $user->id)) {
+        if (! $user) {
+            abort(401);
+        }
+        if (! $user->isTechAdmin() && ($tenant->owner_id !== $user->id)) {
             abort(403, "Vous n'avez pas l'autorisation de gérer cet établissement.");
         }
 
@@ -2463,28 +2605,28 @@ class AdminAuditController extends Controller
         try {
             $pdo = $this->connectToTenantDatabase($tenant);
 
-            $stmt = $pdo->prepare("SELECT 1 FROM users WHERE email = ?");
+            $stmt = $pdo->prepare('SELECT 1 FROM users WHERE email = ?');
             $stmt->execute([$validated['email']]);
             if ($stmt->fetch()) {
                 return response()->json([
-                    'message' => "Un utilisateur avec cet email existe déjà dans cet établissement."
+                    'message' => 'Un utilisateur avec cet email existe déjà dans cet établissement.',
                 ], 422);
             }
 
             $hashedPassword = Hash::make($validated['password']);
 
-            $stmt = $pdo->prepare("
+            $stmt = $pdo->prepare('
                 INSERT INTO users (name, email, phone, password, role, is_active, created_at, updated_at) 
                 VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())
-            ");
-            
+            ');
+
             $stmt->execute([
                 $validated['name'],
                 $validated['email'],
                 $validated['phone'] ?? null,
                 $hashedPassword,
                 'manager',
-                true
+                true,
             ]);
 
             $tenant->increment('users_count');
@@ -2498,14 +2640,15 @@ class AdminAuditController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => "Manager créé avec succès.",
+                'message' => 'Manager créé avec succès.',
                 'generated_password' => $generatedPassword,
             ], 201);
 
         } catch (\PDOException $e) {
-            \Illuminate\Support\Facades\Log::error("Failed to connect or insert manager in tenant database {$tenant->db_name}: " . $e->getMessage());
+            Log::error("Failed to connect or insert manager in tenant database {$tenant->db_name}: ".$e->getMessage());
+
             return response()->json([
-                'message' => "Impossible de se connecter à la base de données de l'établissement: " . $e->getMessage()
+                'message' => "Impossible de se connecter à la base de données de l'établissement: ".$e->getMessage(),
             ], 500);
         }
     }
@@ -2513,8 +2656,10 @@ class AdminAuditController extends Controller
     public function createTenantController(Request $request, Tenant $tenant)
     {
         $user = Auth::user();
-        if (!$user) { abort(401); }
-        if (!$user->isTechAdmin() && ($tenant->owner_id !== $user->id)) {
+        if (! $user) {
+            abort(401);
+        }
+        if (! $user->isTechAdmin() && ($tenant->owner_id !== $user->id)) {
             abort(403, "Vous n'avez pas l'autorisation de gérer cet établissement.");
         }
 
@@ -2534,28 +2679,28 @@ class AdminAuditController extends Controller
         try {
             $pdo = $this->connectToTenantDatabase($tenant);
 
-            $stmt = $pdo->prepare("SELECT 1 FROM users WHERE email = ?");
+            $stmt = $pdo->prepare('SELECT 1 FROM users WHERE email = ?');
             $stmt->execute([$validated['email']]);
             if ($stmt->fetch()) {
                 return response()->json([
-                    'message' => "Un utilisateur avec cet email existe déjà dans cet établissement."
+                    'message' => 'Un utilisateur avec cet email existe déjà dans cet établissement.',
                 ], 422);
             }
 
             $hashedPassword = Hash::make($validated['password']);
 
-            $stmt = $pdo->prepare("
+            $stmt = $pdo->prepare('
                 INSERT INTO users (name, email, phone, password, role, is_active, created_at, updated_at) 
                 VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())
-            ");
-            
+            ');
+
             $stmt->execute([
                 $validated['name'],
                 $validated['email'],
                 $validated['phone'] ?? null,
                 $hashedPassword,
                 'controller',
-                true
+                true,
             ]);
 
             $tenant->increment('users_count');
@@ -2563,11 +2708,11 @@ class AdminAuditController extends Controller
             // Report du compte vers le conteneur GRC (voir GrcAccountSync :
             // la logique est partagée avec la modification d'un employé, pour
             // que les deux chemins ne divergent plus).
-            $grcSynchronise = app(\App\Services\GrcAccountSync::class)->push($tenant, [
-                'email'     => $validated['email'],
-                'password'  => $validated['password'],
+            $grcSynchronise = app(GrcAccountSync::class)->push($tenant, [
+                'email' => $validated['email'],
+                'password' => $validated['password'],
                 'full_name' => $validated['name'],
-                'phone'     => $validated['phone'] ?? null,
+                'phone' => $validated['phone'] ?? null,
             ]);
 
             AuditLog::record(
@@ -2577,10 +2722,10 @@ class AdminAuditController extends Controller
                 $user->role
             );
 
-            $message = "Contrôleur de gestion créé avec succès.";
+            $message = 'Contrôleur de gestion créé avec succès.';
             if ($grcSynchronise === false) {
                 $message .= " Attention : le compte n'a pas pu être reporté dans le module GRC —"
-                    . " il faudra relancer l'opération une fois le conteneur joignable.";
+                    ." il faudra relancer l'opération une fois le conteneur joignable.";
             }
 
             return response()->json([
@@ -2591,9 +2736,10 @@ class AdminAuditController extends Controller
             ], 201);
 
         } catch (\PDOException $e) {
-            \Illuminate\Support\Facades\Log::error("Failed to connect or insert controller in tenant database {$tenant->db_name}: " . $e->getMessage());
+            Log::error("Failed to connect or insert controller in tenant database {$tenant->db_name}: ".$e->getMessage());
+
             return response()->json([
-                'message' => "Impossible de se connecter à la base de données de l'établissement: " . $e->getMessage()
+                'message' => "Impossible de se connecter à la base de données de l'établissement: ".$e->getMessage(),
             ], 500);
         }
     }
