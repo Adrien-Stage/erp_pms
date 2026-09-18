@@ -32,7 +32,9 @@ class DepartmentCatalog
                 'accent'      => 'indigo',
                 'sort_order'  => 1,
                 'default_modules' => [
-                    'analytics', 'clients', 'parametres', 'utilisateurs',
+                    'hebergement', 'reservations', 'clients', 'housekeeping',
+                    'restaurant', 'shop', 'economat', 'comptabilite',
+                    'analytics', 'parametres', 'utilisateurs',
                     'discussions', 'ai', 'website', 'grc',
                 ],
             ],

@@ -203,9 +203,10 @@
             const dept = deptCatalog[deptId];
             const badge = document.getElementById('create-tu-dept-badge');
             
-            if (!dept || !dept.modules || Object.keys(dept.modules).length === 0) {
+            if (!dept) {
                 if (badge) badge.classList.add('hidden');
                 document.querySelectorAll('.module-match-pill').forEach(p => p.classList.add('hidden'));
+                document.querySelectorAll('.create-tu-role-check').forEach(chk => chk.checked = false);
                 return;
             }
 
@@ -214,26 +215,67 @@
                 badge.classList.remove('hidden');
             }
 
-            const deptModuleKeys = Object.keys(dept.modules);
+            const deptCode = (dept.code || '').toUpperCase();
+            const isDirection = deptCode === 'DIR' || (dept.name || '').toLowerCase().includes('direction');
+            const deptModuleKeys = Object.keys(dept.modules || {});
+
+            const moduleAliases = {
+                'boutique': ['boutique', 'shop'],
+                'shop': ['shop', 'boutique'],
+                'comptabilite': ['comptabilite', 'accounting', 'ledger'],
+                'accounting': ['accounting', 'comptabilite', 'ledger'],
+                'ledger': ['ledger', 'comptabilite', 'accounting'],
+                'hebergement': ['hebergement', 'reservations', 'clients'],
+                'reservations': ['reservations', 'hebergement', 'clients'],
+                'clients': ['clients', 'hebergement', 'reservations'],
+                'rh': ['rh', 'utilisateurs'],
+                'utilisateurs': ['utilisateurs', 'rh'],
+                'it': ['it', 'parametres', 'api', 'pwa'],
+                'parametres': ['parametres', 'it'],
+                'qualite': ['qualite', 'grc'],
+                'grc': ['grc', 'qualite']
+            };
+
+            const canonicalDeptModules = {
+                'REC': ['hebergement'],
+                'HSK': ['housekeeping'],
+                'FNB': ['restaurant'],
+                'BTQ': ['boutique', 'shop'],
+                'FIN': ['comptabilite'],
+                'RH':  ['rh', 'utilisateurs'],
+                'IT':  ['it', 'parametres'],
+                'QLT': ['qualite', 'grc']
+            };
 
             // Met à jour les conteneurs de modules
             document.querySelectorAll('[data-module-container]').forEach(container => {
                 const mod = container.dataset.moduleContainer;
                 const pill = container.querySelector('.module-match-pill');
-                if (deptModuleKeys.includes(mod)) {
-                    if (pill) pill.classList.remove('hidden');
-                } else {
-                    if (pill) pill.classList.add('hidden');
+                const aliases = moduleAliases[mod] || [mod];
+                const isMatch = isDirection || deptModuleKeys.includes(mod) || aliases.some(a => deptModuleKeys.includes(a)) || (canonicalDeptModules[deptCode] && canonicalDeptModules[deptCode].includes(mod));
+                if (pill) {
+                    if (isMatch) {
+                        pill.classList.remove('hidden');
+                    } else {
+                        pill.classList.add('hidden');
+                    }
                 }
             });
 
             // Met à jour les checkboxes de rôles et leurs niveaux
             document.querySelectorAll('.create-tu-role-check').forEach(chk => {
                 const roleModule = chk.dataset.module;
-                const isMatch = deptModuleKeys.includes(roleModule);
+                const aliases = moduleAliases[roleModule] || [roleModule];
+                const isMatch = isDirection || (canonicalDeptModules[deptCode] && canonicalDeptModules[deptCode].includes(roleModule)) || aliases.some(a => deptModuleKeys.includes(a));
                 chk.checked = isMatch;
                 if (isMatch) {
-                    const defaultLevel = dept.modules[roleModule] || 'write';
+                    let defaultLevel = 'write';
+                    for (const a of aliases) {
+                        if (dept.modules && dept.modules[a]) {
+                            defaultLevel = dept.modules[a];
+                            break;
+                        }
+                    }
                     const levelSel = document.querySelector(`.create-tu-role-level[data-slug="${chk.dataset.slug}"]`);
                     if (levelSel) {
                         levelSel.value = defaultLevel;
