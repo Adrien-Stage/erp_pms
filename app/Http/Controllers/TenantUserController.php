@@ -4,11 +4,15 @@ namespace App\Http\Controllers;
 
 use App\Models\AuditLog;
 use App\Models\Tenant;
+use App\Services\GrcAccountSync;
 use App\Services\TenantDatabase;
+use App\Support\ModuleCatalog;
+use App\Support\ServiceCatalog;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use PDO;
 
 /**
@@ -25,9 +29,7 @@ use PDO;
  */
 class TenantUserController extends Controller
 {
-    public function __construct(private TenantDatabase $tenantDb)
-    {
-    }
+    public function __construct(private TenantDatabase $tenantDb) {}
 
     /**
      * L'administrateur technique gère tout ; un propriétaire uniquement ses
@@ -56,7 +58,7 @@ class TenantUserController extends Controller
             && Auth::user()->isTechAdmin()) {
             return redirect()->route('tech.establishments.users.show', [
                 'tenant' => $tenant,
-                'user'   => $userId,
+                'user' => $userId,
             ]);
         }
 
@@ -64,6 +66,60 @@ class TenantUserController extends Controller
             Auth::user()->isTechAdmin() ? 'tech.establishments.show' : 'business.establishments.show',
             ['tenant' => $tenant, 'section' => 'users']
         );
+    }
+
+    /**
+     * Création d'un nouvel employé pour l'établissement.
+     */
+    public function store(Request $request, Tenant $tenant): RedirectResponse
+    {
+        $this->authorizeTenant($tenant);
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:30'],
+            'password' => ['required', 'string', 'min:4'],
+            'role' => ['nullable', 'string', 'max:50'],
+            'department_id' => ['nullable', 'integer'],
+            'roles' => ['nullable', 'array'],
+            'levels' => ['nullable', 'array'],
+            'is_active' => ['nullable'],
+        ]);
+
+        $validated['is_active'] = $request->boolean('is_active', true);
+
+        try {
+            $pdo = $this->tenantDb->connect($tenant);
+            $stmt = $pdo->prepare('SELECT 1 FROM users WHERE email = ?');
+            $stmt->execute([strtolower($validated['email'])]);
+            if ($stmt->fetch()) {
+                return $this->retour($tenant)->with('error', 'Cette adresse email est déjà utilisée par un employé de cet établissement.');
+            }
+
+            $departmentId = ! empty($validated['department_id']) ? (int) $validated['department_id'] : null;
+            $userId = $this->tenantDb->createUser(
+                $tenant,
+                $validated,
+                $validated['roles'] ?? [],
+                $validated['levels'] ?? [],
+                $departmentId
+            );
+
+            // Synchroniser les permissions modulaires si fournies
+            $modulePermissions = (array) $request->input('module_permissions', []);
+            if (! empty($modulePermissions)) {
+                $this->tenantDb->syncUserPermissions($tenant, $userId, $departmentId, $modulePermissions);
+            }
+
+            AuditLog::record(Auth::id(), 'tenant_user_create',
+                "Employé {$validated['name']} ({$validated['email']}) créé dans {$tenant->name}", 'tenant_users',
+                ['user_id' => $userId, 'department_id' => $departmentId]);
+
+            return $this->retour($tenant)->with('success', "L'employé {$validated['name']} a été créé avec succès.");
+        } catch (\Throwable $e) {
+            return $this->retour($tenant)->with('error', "Erreur lors de la création de l'employé : ".$e->getMessage());
+        }
     }
 
     /**
@@ -81,15 +137,15 @@ class TenantUserController extends Controller
         try {
             $employe = $this->tenantDb->userDetail($tenant, $user);
 
-            if (!$employe) {
+            if (! $employe) {
                 return $this->retour($tenant)->with('error', 'Cet employé est introuvable dans cet établissement.');
             }
 
             $rolesAssignables = collect($this->tenantDb->assignableRoles($tenant));
-            $managersActifs   = $this->tenantDb->activeManagerCount($tenant);
-            $departments      = collect($this->tenantDb->departments($tenant));
-            $services         = \App\Support\ServiceCatalog::all();
-            $groupedModules   = \App\Support\ModuleCatalog::groupedByDepartment();
+            $managersActifs = $this->tenantDb->activeManagerCount($tenant);
+            $departments = collect($this->tenantDb->departments($tenant));
+            $services = ServiceCatalog::all();
+            $groupedModules = ModuleCatalog::groupedByDepartment();
         } catch (\Throwable $e) {
             return $this->retour($tenant)->with('error', $this->messageErreur($e));
         }
@@ -113,11 +169,11 @@ class TenantUserController extends Controller
         try {
             $employe = $this->tenantDb->findUser($tenant, $user);
 
-            if (!$employe) {
+            if (! $employe) {
                 return $this->retour($tenant)->with('error', 'Cet employé est introuvable dans cet établissement.');
             }
 
-            $nouvelEtat = !$employe->is_active;
+            $nouvelEtat = ! $employe->is_active;
 
             $stmt = $this->tenantDb->connect($tenant)
                 ->prepare('UPDATE users SET is_active = ?, updated_at = NOW() WHERE id = ?');
@@ -141,7 +197,7 @@ class TenantUserController extends Controller
         try {
             $employe = $this->tenantDb->findUser($tenant, $user);
 
-            if (!$employe) {
+            if (! $employe) {
                 return $this->retour($tenant)->with('error', 'Cet employé est introuvable dans cet établissement.');
             }
 
@@ -150,7 +206,7 @@ class TenantUserController extends Controller
             if ($employe->role === 'manager' && $this->compteManagers($tenant) <= 1) {
                 return $this->retour($tenant, $user)->with('error',
                     "Impossible de supprimer {$employe->name} : c'est le dernier manager de l'établissement. "
-                    . 'Créez-en un autre avant de le retirer.');
+                    .'Créez-en un autre avant de le retirer.');
             }
 
             $pdo = $this->tenantDb->connect($tenant);
@@ -179,23 +235,23 @@ class TenantUserController extends Controller
         $this->authorizeTenant($tenant);
 
         $validated = $request->validate([
-            'name'               => ['required', 'string', 'max:255'],
-            'email'              => ['required', 'email', 'max:255'],
-            'phone'              => ['nullable', 'string', 'max:30'],
-            'password'           => ['nullable', 'string', 'min:4'],
-            'role'               => ['nullable', 'string', 'max:50'],
-            'department_id'      => ['nullable', 'integer'],
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:30'],
+            'password' => ['nullable', 'string', 'min:4'],
+            'role' => ['nullable', 'string', 'max:50'],
+            'department_id' => ['nullable', 'integer'],
             'module_permissions' => ['nullable', 'array'],
-            'roles'              => ['nullable', 'array'],
-            'roles.*'            => ['integer'],
-            'levels'             => ['nullable', 'array'],
-            'levels.*'           => ['in:read,write'],
+            'roles' => ['nullable', 'array'],
+            'roles.*' => ['integer'],
+            'levels' => ['nullable', 'array'],
+            'levels.*' => ['in:read,write'],
         ]);
 
         try {
             $employe = $this->tenantDb->findUser($tenant, $user);
 
-            if (!$employe) {
+            if (! $employe) {
                 return $this->retour($tenant)->with('error', 'Cet employé est introuvable dans cet établissement.');
             }
 
@@ -211,7 +267,7 @@ class TenantUserController extends Controller
 
             $pdo->beginTransaction();
 
-            if (!empty($validated['password'])) {
+            if (! empty($validated['password'])) {
                 $stmt = $pdo->prepare('UPDATE users SET name = ?, email = ?, phone = ?, password = ?, updated_at = NOW() WHERE id = ?');
                 $stmt->execute([
                     $validated['name'], $validated['email'], $validated['phone'] ?? null,
@@ -224,7 +280,7 @@ class TenantUserController extends Controller
 
             // Rôle principal : colonne historique, encore lue par wetchah_app
             // pour les utilisateurs sans entrée dans le pivot.
-            if (!empty($validated['role'])) {
+            if (! empty($validated['role'])) {
                 $pdo->prepare('UPDATE users SET role = ? WHERE id = ?')
                     ->execute([$validated['role'], $user]);
             }
@@ -234,7 +290,7 @@ class TenantUserController extends Controller
             $pdo->commit();
 
             // Enregistrement du département et de la matrice des surcharges modulaires
-            $departmentId = !empty($validated['department_id']) ? (int) $validated['department_id'] : null;
+            $departmentId = ! empty($validated['department_id']) ? (int) $validated['department_id'] : null;
             $modulePermissions = (array) $request->input('module_permissions', []);
             $this->tenantDb->syncUserPermissions($tenant, $user, $departmentId, $modulePermissions);
         } catch (\Throwable $e) {
@@ -261,19 +317,19 @@ class TenantUserController extends Controller
         $estControleur = ($validated['role'] ?? $employe->role ?? null) === 'controller';
 
         if ($estControleur && $tenant->hasGrc()) {
-            $sync = app(\App\Services\GrcAccountSync::class);
+            $sync = app(GrcAccountSync::class);
 
-            if (!empty($validated['password'])) {
+            if (! empty($validated['password'])) {
                 $message .= $sync->message($sync->push($tenant, [
-                    'email'          => $validated['email'],
-                    'password'       => $validated['password'],
-                    'full_name'      => $validated['name'],
-                    'phone'          => $validated['phone'] ?? null,
+                    'email' => $validated['email'],
+                    'password' => $validated['password'],
+                    'full_name' => $validated['name'],
+                    'phone' => $validated['phone'] ?? null,
                     'previous_email' => $employe->email ?? null,
                 ]));
             } else {
-                $message .= " Le module GRC conserve le mot de passe précédent :"
-                    . " saisissez-en un nouveau pour y reporter ce compte.";
+                $message .= ' Le module GRC conserve le mot de passe précédent :'
+                    .' saisissez-en un nouveau pour y reporter ce compte.';
             }
         }
 
@@ -283,8 +339,8 @@ class TenantUserController extends Controller
     /**
      * Remplace les rôles de l'employé par ceux transmis, avec leur niveau.
      *
-     * @param  array<int, int>     $roleIds
-     * @param  array<int, string>  $levels   niveau par identifiant de rôle
+     * @param  array<int, int>  $roleIds
+     * @param  array<int, string>  $levels  niveau par identifiant de rôle
      */
     private function remplacerRoles(PDO $pdo, int $userId, array $roleIds, array $levels): void
     {
@@ -323,9 +379,9 @@ class TenantUserController extends Controller
     /** Message lisible : l'échec vient presque toujours du conteneur arrêté. */
     private function messageErreur(\Throwable $e): string
     {
-        \Illuminate\Support\Facades\Log::warning('Écriture base tenant échouée : ' . $e->getMessage());
+        Log::warning('Écriture base tenant échouée : '.$e->getMessage());
 
         return "Impossible de joindre la base de l'établissement. "
-            . 'Vérifiez que ses conteneurs sont démarrés, puis réessayez.';
+            .'Vérifiez que ses conteneurs sont démarrés, puis réessayez.';
     }
 }
