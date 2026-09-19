@@ -201,3 +201,39 @@ test('une portée inconnue est refusée avant même de partir', function () {
 
     Http::assertNothingSent();
 });
+
+test("chaque module se replie, et annonce ses écarts sans être ouvert", function () {
+    Http::fake(['*/api/permissions/matrice' => Http::response(array_merge(matriceFeinte([
+        ['subject_type' => 'role', 'subject_id' => 'accountant',
+         'permission' => 'economat.items.creer', 'effect' => 'deny', 'scope' => null, 'reason' => null],
+    ])), 200)]);
+
+    $tenant = etablissementProvisionne();
+
+    $this->actingAs(User::find($tenant->owner_id))
+        ->get(route('business.establishments.permissions', $tenant))
+        ->assertOk()
+        // Replié par défaut, sauf s'il porte un écart : on sait où regarder
+        // sans tout déplier.
+        ->assertSee('<details class="module group', false)
+        ->assertSee('écart(s)')
+        ->assertSee('Tout déplier')
+        ->assertSee('Tout replier');
+});
+
+test("les en-têtes de la matrice ne défilent pas avec la grille", function () {
+    Http::fake(['*/api/permissions/matrice' => Http::response(matriceFeinte(), 200)]);
+
+    $tenant = etablissementProvisionne();
+
+    $page = $this->actingAs(User::find($tenant->owner_id))
+        ->get(route('business.establishments.permissions', $tenant))->getContent();
+
+    // Une matrice de dix rôles sur cinquante droits se lit en devinant à quelle
+    // colonne et à quelle ligne appartient la case cochée, si les deux sortent
+    // du cadre.
+    expect($page)->toContain('sticky left-0 top-0 z-30')   // le coin
+        ->and($page)->toContain('sticky top-0 z-20')        // les rôles
+        ->and($page)->toContain('sticky left-0 z-10')       // les droits
+        ->and($page)->toContain('overflow-auto');           // seul le cadre défile
+});

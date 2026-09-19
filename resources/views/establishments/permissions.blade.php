@@ -98,26 +98,81 @@
                 @csrf
                 @method('PUT')
 
-                @foreach($parModule as $module => $droits)
-                    <section class="mb-5 overflow-hidden rounded-xl border border-slate-200 bg-white">
-                        <header class="border-b border-slate-100 bg-slate-50 px-4 py-2.5">
-                            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700">{{ $module }}</h3>
-                        </header>
+                <div class="mb-3 flex items-center justify-end gap-2">
+                    <button type="button" data-plier="ouvrir"
+                            class="rounded-lg border border-slate-300 px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50">
+                        Tout déplier
+                    </button>
+                    <button type="button" data-plier="fermer"
+                            class="rounded-lg border border-slate-300 px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50">
+                        Tout replier
+                    </button>
+                </div>
 
-                        <div class="overflow-x-auto">
-                            <table class="w-full text-xs">
+                @foreach($parModule as $module => $droits)
+                    @php
+                        // Combien de droits ce module compte-t-il d'écarts au
+                        // gabarit ? Affiché sur l'en-tête replié, pour qu'on
+                        // sache où regarder sans tout déplier.
+                        $ecartsDuModule = 0;
+                        foreach ($droits as $droit => $rolesDuGabarit) {
+                            foreach ($rolesAssignables as $role) {
+                                if (isset($enVigueur[$role['slug'] . '|' . $droit])) {
+                                    $ecartsDuModule++;
+                                }
+                            }
+                        }
+                    @endphp
+
+                    {{-- Chaque module se replie : la matrice complète fait plus
+                         de deux cents lignes, et on n'en règle qu'une à la fois.
+                         Les cases d'un module replié restent dans le document,
+                         donc une modification faite puis repliée part quand même
+                         à l'enregistrement. --}}
+                    <details class="module group mb-4 overflow-hidden rounded-xl border border-slate-200 bg-white"
+                             @if($ecartsDuModule > 0) open @endif>
+                        <summary class="flex cursor-pointer select-none items-center justify-between gap-3 border-b border-slate-100 bg-slate-50 px-4 py-2.5 hover:bg-slate-100">
+                            <div class="flex items-center gap-2">
+                                <svg class="h-3.5 w-3.5 text-slate-400 transition-transform group-open:rotate-90"
+                                     fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                                </svg>
+                                <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700">{{ $module }}</h3>
+                                <span class="text-[11px] font-normal text-slate-400">{{ count($droits) }} droit(s)</span>
+                            </div>
+
+                            <span class="badge-ecarts rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800 {{ $ecartsDuModule > 0 ? '' : 'hidden' }}">
+                                <span class="compte">{{ $ecartsDuModule }}</span> écart(s)
+                            </span>
+                        </summary>
+
+                        {{-- Le cadre défile ; les en-têtes n'en sortent pas. Sans
+                             cela, une matrice de dix rôles sur cinquante droits
+                             se lit en devinant à quelle colonne et à quelle ligne
+                             appartient la case qu'on coche. --}}
+                        <div class="matrice max-h-[65vh] overflow-auto">
+                            <table class="w-full border-separate border-spacing-0 text-xs">
                                 <thead>
-                                    <tr class="border-b border-slate-100">
-                                        <th class="px-4 py-2 text-left font-semibold text-slate-500">Droit</th>
+                                    <tr>
+                                        {{-- Coin : figé dans les deux sens, donc au-dessus des deux. --}}
+                                        <th class="sticky left-0 top-0 z-30 min-w-[16rem] border-b border-r border-slate-200 bg-slate-50 px-4 py-2 text-left font-semibold text-slate-500">
+                                            Droit
+                                        </th>
                                         @foreach($rolesAssignables as $role)
-                                            <th class="px-2 py-2 text-center font-semibold text-slate-500 whitespace-nowrap">{{ $role['slug'] }}</th>
+                                            <th class="sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-2 py-2 text-center font-semibold text-slate-500 whitespace-nowrap"
+                                                title="{{ $role['name'] }}">
+                                                {{ $role['slug'] }}
+                                            </th>
                                         @endforeach
                                     </tr>
                                 </thead>
-                                <tbody class="divide-y divide-slate-50">
+                                <tbody>
                                     @foreach($droits as $droit => $rolesDuGabarit)
-                                        <tr>
-                                            <td class="px-4 py-1.5 font-mono text-[11px] text-slate-700">{{ $droit }}</td>
+                                        <tr class="group">
+                                            <th scope="row"
+                                                class="sticky left-0 z-10 border-b border-r border-slate-100 bg-white px-4 py-1.5 text-left font-mono text-[11px] font-normal text-slate-700 group-hover:bg-slate-50">
+                                                {{ $droit }}
+                                            </th>
                                             @foreach($rolesAssignables as $role)
                                                 @php
                                                     $cle      = $role['slug'] . '|' . $droit;
@@ -126,7 +181,7 @@
                                                     $coche    = $ecart ? $ecart['effect'] === 'allow' : $gabarit;
                                                     $lecture  = str_ends_with($droit, '.voir') || str_ends_with($droit, '.export');
                                                 @endphp
-                                                <td class="px-2 py-1.5 text-center">
+                                                <td class="border-b border-slate-100 px-2 py-1.5 text-center group-hover:bg-slate-50">
                                                     <input type="checkbox"
                                                            data-gabarit="{{ $gabarit ? '1' : '0' }}"
                                                            data-role="{{ $role['slug'] }}"
@@ -155,7 +210,7 @@
                                 </tbody>
                             </table>
                         </div>
-                    </section>
+                    </details>
                 @endforeach
 
                 <div class="sticky bottom-0 flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-lg">
@@ -214,7 +269,37 @@
                         });
 
                         compteur.textContent = n;
+                        rafraichirBadges();
                     }
+
+                    // Le badge de chaque module compte ses propres écarts : on
+                    // voit qu'un module replié contient des modifications en
+                    // attente, sans avoir à le rouvrir.
+                    function rafraichirBadges() {
+                        document.querySelectorAll('.module').forEach((module) => {
+                            let n = 0;
+
+                            module.querySelectorAll('.case-droit').forEach((c) => {
+                                const gabarit = c.dataset.gabarit === '1';
+                                const portee  = module.querySelector(
+                                    `[data-portee-de="${c.dataset.role}|${c.dataset.droit}"]`
+                                );
+                                const restreinte = c.checked && portee && portee.value !== 'etablissement';
+                                if (c.checked !== gabarit || restreinte) n++;
+                            });
+
+                            const badge = module.querySelector('.badge-ecarts');
+                            badge.querySelector('.compte').textContent = n;
+                            badge.classList.toggle('hidden', n === 0);
+                        });
+                    }
+
+                    document.querySelectorAll('[data-plier]').forEach((b) => {
+                        b.addEventListener('click', () => {
+                            const ouvrir = b.dataset.plier === 'ouvrir';
+                            document.querySelectorAll('.module').forEach((m) => (m.open = ouvrir));
+                        });
+                    });
 
                     // Une portée modifiée sur une case cochée conforme au gabarit
                     // reste un écart : elle doit être envoyée.
