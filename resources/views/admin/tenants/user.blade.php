@@ -33,6 +33,7 @@
 <html lang="fr">
 <head>
     <meta charset="utf-8">
+    <x-favicon />
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ $employe->name }} — {{ $tenant->name }}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -45,6 +46,11 @@
 <header class="sticky top-0 z-30 w-full bg-[#0f172a] border-b border-slate-800 text-white shadow-md">
     <div class="mx-auto px-5 lg:px-8 flex items-center justify-between h-14">
         <div class="flex items-center gap-4">
+            <a href="{{ route(auth()->user()?->isTechAdmin() ? 'tech.dashboard' : 'business.dashboard') }}"
+               class="shrink-0" title="Wetchah ERP">
+                <x-brand variant="mark" class="h-7" />
+            </a>
+            <div class="h-5 w-px bg-slate-700"></div>
             <a href="{{ route('tech.establishments.show', ['tenant' => $tenant, 'section' => 'users']) }}"
                class="flex items-center gap-2 text-slate-400 hover:text-white transition text-xs font-semibold">
                 <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">

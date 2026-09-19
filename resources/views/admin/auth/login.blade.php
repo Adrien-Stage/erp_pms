@@ -2,16 +2,17 @@
 <html lang="fr">
 <head>
     <meta charset="utf-8">
+    <x-favicon />
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Administration</title>
+    <title>Wetchah ERP — Administration</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="min-h-screen bg-neutral-50 text-neutral-950 antialiased">
     <main class="flex min-h-screen items-center justify-center px-6">
         <section class="w-full max-w-sm">
             <div class="mb-8 text-center">
-                <p class="mb-3 text-xs font-semibold uppercase tracking-[0.22em] text-neutral-400">Admin global</p>
-                <h1 class="text-2xl font-semibold tracking-tight text-neutral-950">WeTchah ERP</h1>
+                <x-brand class="mx-auto mb-4 h-16" />
+                <p class="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-400">Admin global</p>
                 <p class="mt-2 text-sm leading-6 text-neutral-500">Accès administration plateforme.</p>
             </div>
 

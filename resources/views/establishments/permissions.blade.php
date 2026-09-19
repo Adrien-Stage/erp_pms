@@ -2,8 +2,9 @@
 <html lang="fr">
 <head>
     <meta charset="utf-8">
+    <x-favicon />
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Matrice des droits — {{ $tenant->name }}</title>
+    <title>Wetchah ERP — Matrice des droits · {{ $tenant->name }}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -13,9 +14,12 @@
 
     <header class="bg-white shadow">
         <div class="max-w-7xl mx-auto flex items-center justify-between gap-4 px-4 py-5 sm:px-6 lg:px-8">
-            <div>
-                <h1 class="text-xl font-semibold leading-tight text-gray-800">Matrice des droits</h1>
-                <p class="mt-0.5 text-xs text-gray-500">{{ $tenant->name }}</p>
+            <div class="flex items-center gap-3">
+                <x-brand variant="mark" class="h-9 shrink-0" />
+                <div>
+                    <h1 class="text-xl font-semibold leading-tight text-gray-800">Matrice des droits</h1>
+                    <p class="mt-0.5 text-xs text-gray-500">{{ $tenant->name }}</p>
+                </div>
             </div>
             <a href="{{ route(auth()->user()->isTechAdmin() ? 'tech.establishments.show' : 'business.establishments.show', $tenant) }}"
                class="text-xs font-medium text-gray-500 hover:text-gray-800">&larr; Retour à l'établissement</a>
@@ -94,26 +98,116 @@
                 @csrf
                 @method('PUT')
 
-                @foreach($parModule as $module => $droits)
-                    <section class="mb-5 overflow-hidden rounded-xl border border-slate-200 bg-white">
-                        <header class="border-b border-slate-100 bg-slate-50 px-4 py-2.5">
-                            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700">{{ $module }}</h3>
-                        </header>
+                {{-- Barre de recherche. Deux cent vingt-six droits sur dix rôles
+                     ne se parcourent pas à l'œil : on cherche « economat » ou
+                     « supprimer », on ne fait pas défiler. --}}
+                <div class="sticky top-0 z-40 mb-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <div class="relative min-w-[14rem] flex-1">
+                            <svg class="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400"
+                                 fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+                            </svg>
+                            <input type="search" id="recherche" autocomplete="off"
+                                   placeholder="Filtrer un droit — « economat », « supprimer », « ledger.periods »…"
+                                   class="w-full rounded-lg border border-slate-300 py-1.5 pl-8 pr-3 text-xs outline-none focus:border-slate-500">
+                        </div>
 
-                        <div class="overflow-x-auto">
-                            <table class="w-full text-xs">
+                        {{-- Une colonne à la fois : dix rôles de front rendent
+                             illisible le réglage d'un seul. --}}
+                        <select id="filtre-role"
+                                class="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs outline-none focus:border-slate-500">
+                            <option value="">Tous les rôles</option>
+                            @foreach($rolesAssignables as $role)
+                                <option value="{{ $role['slug'] }}">{{ $role['name'] }}</option>
+                            @endforeach
+                        </select>
+
+                        <label class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs text-slate-600">
+                            <input type="checkbox" id="filtre-ecarts" class="rounded border-slate-300">
+                            Écarts seulement
+                        </label>
+
+                        <div class="ml-auto flex items-center gap-2">
+                            <button type="button" data-plier="ouvrir"
+                                    class="rounded-lg border border-slate-300 px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50">
+                                Tout déplier
+                            </button>
+                            <button type="button" data-plier="fermer"
+                                    class="rounded-lg border border-slate-300 px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50">
+                                Tout replier
+                            </button>
+                        </div>
+                    </div>
+
+                    <p id="resultat-filtre" class="mt-1.5 hidden text-[11px] text-slate-500"></p>
+                </div>
+
+                @foreach($parModule as $module => $droits)
+                    @php
+                        // Combien de droits ce module compte-t-il d'écarts au
+                        // gabarit ? Affiché sur l'en-tête replié, pour qu'on
+                        // sache où regarder sans tout déplier.
+                        $ecartsDuModule = 0;
+                        foreach ($droits as $droit => $rolesDuGabarit) {
+                            foreach ($rolesAssignables as $role) {
+                                if (isset($enVigueur[$role['slug'] . '|' . $droit])) {
+                                    $ecartsDuModule++;
+                                }
+                            }
+                        }
+                    @endphp
+
+                    {{-- Chaque module se replie : la matrice complète fait plus
+                         de deux cents lignes, et on n'en règle qu'une à la fois.
+                         Les cases d'un module replié restent dans le document,
+                         donc une modification faite puis repliée part quand même
+                         à l'enregistrement. --}}
+                    <details class="module group mb-4 overflow-hidden rounded-xl border border-slate-200 bg-white"
+                             @if($ecartsDuModule > 0) open @endif>
+                        <summary class="flex cursor-pointer select-none items-center justify-between gap-3 border-b border-slate-100 bg-slate-50 px-4 py-2.5 hover:bg-slate-100">
+                            <div class="flex items-center gap-2">
+                                <svg class="h-3.5 w-3.5 text-slate-400 transition-transform group-open:rotate-90"
+                                     fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                                </svg>
+                                <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700">{{ $module }}</h3>
+                                <span class="text-[11px] font-normal text-slate-400">{{ count($droits) }} droit(s)</span>
+                            </div>
+
+                            <span class="badge-ecarts rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800 {{ $ecartsDuModule > 0 ? '' : 'hidden' }}">
+                                <span class="compte">{{ $ecartsDuModule }}</span> écart(s)
+                            </span>
+                        </summary>
+
+                        {{-- Le cadre défile ; les en-têtes n'en sortent pas. Sans
+                             cela, une matrice de dix rôles sur cinquante droits
+                             se lit en devinant à quelle colonne et à quelle ligne
+                             appartient la case qu'on coche. --}}
+                        <div class="matrice max-h-[65vh] overflow-auto">
+                            <table class="w-full border-separate border-spacing-0 text-xs">
                                 <thead>
-                                    <tr class="border-b border-slate-100">
-                                        <th class="px-4 py-2 text-left font-semibold text-slate-500">Droit</th>
+                                    <tr>
+                                        {{-- Coin : figé dans les deux sens, donc au-dessus des deux. --}}
+                                        <th class="sticky left-0 top-0 z-30 min-w-[16rem] border-b border-r border-slate-200 bg-slate-50 px-4 py-2 text-left font-semibold text-slate-500">
+                                            Droit
+                                        </th>
                                         @foreach($rolesAssignables as $role)
-                                            <th class="px-2 py-2 text-center font-semibold text-slate-500 whitespace-nowrap">{{ $role['slug'] }}</th>
+                                            <th data-colonne="{{ $role['slug'] }}"
+                                                class="sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-2 py-2 text-center font-semibold text-slate-500 whitespace-nowrap"
+                                                title="{{ $role['name'] }}">
+                                                {{ $role['slug'] }}
+                                            </th>
                                         @endforeach
                                     </tr>
                                 </thead>
-                                <tbody class="divide-y divide-slate-50">
+                                <tbody>
                                     @foreach($droits as $droit => $rolesDuGabarit)
-                                        <tr>
-                                            <td class="px-4 py-1.5 font-mono text-[11px] text-slate-700">{{ $droit }}</td>
+                                        <tr class="group">
+                                            <th scope="row"
+                                                class="sticky left-0 z-10 border-b border-r border-slate-100 bg-white px-4 py-1.5 text-left font-mono text-[11px] font-normal text-slate-700 group-hover:bg-slate-50">
+                                                {{ $droit }}
+                                            </th>
                                             @foreach($rolesAssignables as $role)
                                                 @php
                                                     $cle      = $role['slug'] . '|' . $droit;
@@ -122,7 +216,8 @@
                                                     $coche    = $ecart ? $ecart['effect'] === 'allow' : $gabarit;
                                                     $lecture  = str_ends_with($droit, '.voir') || str_ends_with($droit, '.export');
                                                 @endphp
-                                                <td class="px-2 py-1.5 text-center">
+                                                <td data-colonne="{{ $role['slug'] }}"
+                                                    class="border-b border-slate-100 px-2 py-1.5 text-center group-hover:bg-slate-50">
                                                     <input type="checkbox"
                                                            data-gabarit="{{ $gabarit ? '1' : '0' }}"
                                                            data-role="{{ $role['slug'] }}"
@@ -151,17 +246,24 @@
                                 </tbody>
                             </table>
                         </div>
-                    </section>
+                    </details>
                 @endforeach
 
-                <div class="sticky bottom-0 flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-lg">
+                <div class="sticky bottom-0 z-40 flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-lg">
                     <div class="flex-1">
-                        <input type="text" name="motif" id="motif" maxlength="255"
-                               placeholder="Motif de la modification — consigné au journal"
+                        {{-- Sans « name » : la valeur n'est pas postée telle quelle,
+                             elle est recopiée sur chaque écart du lot. Un attribut
+                             « name » laisserait croire qu'elle compte seule. --}}
+                        <input type="text" id="motif" maxlength="255"
+                               placeholder="Motif de la modification — consigné au journal et sur chaque droit modifié"
                                class="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs outline-none focus:border-slate-500">
-                        <p class="mt-1 text-[11px] text-slate-500"><span id="compteur">0</span> écart(s) au gabarit.</p>
+                        <p class="mt-1 text-[11px] text-slate-500">
+                            <span id="compteur">0</span> écart(s) au gabarit.
+                            <span id="exigence" class="hidden font-medium text-amber-700">Indiquez un motif pour enregistrer.</span>
+                        </p>
                     </div>
-                    <button type="submit" class="shrink-0 rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800">
+                    <button type="submit" id="appliquer" disabled
+                            class="shrink-0 rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300">
                         Appliquer à l'établissement
                     </button>
                 </div>
@@ -210,7 +312,113 @@
                         });
 
                         compteur.textContent = n;
+                        rafraichirBadges();
+
+                        // L'application REMPLACE les écarts portés par les rôles :
+                        // valider un lot vide effacerait les surcharges en place.
+                        // Et une matrice de droits qui change sans motif écrit ne
+                        // se contrôle pas six mois plus tard.
+                        const motifManquant = n > 0 && motif.value.trim() === '';
+                        document.getElementById('exigence').classList.toggle('hidden', !motifManquant);
+                        document.getElementById('appliquer').disabled = n === 0 || motifManquant;
+
+                        // Le filtre « écarts seulement » suit ce qu'on coche.
+                        if (filtreEcart.checked) filtrer();
                     }
+
+                    // Le badge de chaque module compte ses propres écarts : on
+                    // voit qu'un module replié contient des modifications en
+                    // attente, sans avoir à le rouvrir.
+                    function rafraichirBadges() {
+                        document.querySelectorAll('.module').forEach((module) => {
+                            let n = 0;
+
+                            module.querySelectorAll('.case-droit').forEach((c) => {
+                                const gabarit = c.dataset.gabarit === '1';
+                                const portee  = module.querySelector(
+                                    `[data-portee-de="${c.dataset.role}|${c.dataset.droit}"]`
+                                );
+                                const restreinte = c.checked && portee && portee.value !== 'etablissement';
+                                if (c.checked !== gabarit || restreinte) n++;
+                            });
+
+                            const badge = module.querySelector('.badge-ecarts');
+                            badge.querySelector('.compte').textContent = n;
+                            badge.classList.toggle('hidden', n === 0);
+                        });
+                    }
+
+                    // ── Filtrage ───────────────────────────────────────────
+                    // Les lignes masquées restent dans le document : une case
+                    // cochée puis filtrée part quand même à l'enregistrement.
+                    // Masquer n'est pas annuler.
+                    const recherche   = document.getElementById('recherche');
+                    const filtreRole  = document.getElementById('filtre-role');
+                    const filtreEcart = document.getElementById('filtre-ecarts');
+                    const resultat    = document.getElementById('resultat-filtre');
+
+                    function estUnEcart(c) {
+                        const gabarit = c.dataset.gabarit === '1';
+                        const portee  = document.querySelector(
+                            `[data-portee-de="${c.dataset.role}|${c.dataset.droit}"]`
+                        );
+                        return c.checked !== gabarit
+                            || (c.checked && portee && portee.value !== 'etablissement');
+                    }
+
+                    function filtrer() {
+                        const terme   = recherche.value.trim().toLowerCase();
+                        const role    = filtreRole.value;
+                        const ecarts  = filtreEcart.checked;
+                        const actif   = terme !== '' || role !== '' || ecarts;
+                        let trouves   = 0;
+
+                        document.querySelectorAll('.module').forEach((module) => {
+                            let visiblesDansLeModule = 0;
+
+                            module.querySelectorAll('tbody tr').forEach((ligne) => {
+                                const droit = ligne.querySelector('.case-droit')?.dataset.droit ?? '';
+                                const cases = [...ligne.querySelectorAll('.case-droit')];
+
+                                const parLeTexte = terme === '' || droit.toLowerCase().includes(terme);
+                                const parLEcart  = !ecarts || cases.some((c) =>
+                                    (role === '' || c.dataset.role === role) && estUnEcart(c));
+
+                                const visible = parLeTexte && parLEcart;
+                                ligne.classList.toggle('hidden', !visible);
+                                if (visible) { visiblesDansLeModule++; trouves++; }
+                            });
+
+                            module.classList.toggle('hidden', visiblesDansLeModule === 0);
+                            // Un filtre actif déplie ce qu'il a trouvé : chercher
+                            // puis devoir ouvrir chaque module n'aurait pas de sens.
+                            if (actif && visiblesDansLeModule > 0) module.open = true;
+                        });
+
+                        // Colonne unique : dix rôles de front rendent illisible le
+                        // réglage d'un seul.
+                        document.querySelectorAll('.module').forEach((module) => {
+                            module.querySelectorAll('[data-colonne]').forEach((cellule) => {
+                                cellule.classList.toggle('hidden', role !== '' && cellule.dataset.colonne !== role);
+                            });
+                        });
+
+                        resultat.classList.toggle('hidden', !actif);
+                        resultat.textContent = trouves === 0
+                            ? 'Aucun droit ne correspond.'
+                            : `${trouves} droit(s) affiché(s).`;
+                    }
+
+                    [recherche, filtreRole].forEach((e) => e.addEventListener('input', filtrer));
+                    filtreRole.addEventListener('change', filtrer);
+                    filtreEcart.addEventListener('change', filtrer);
+
+                    document.querySelectorAll('[data-plier]').forEach((b) => {
+                        b.addEventListener('click', () => {
+                            const ouvrir = b.dataset.plier === 'ouvrir';
+                            document.querySelectorAll('.module').forEach((m) => (m.open = ouvrir));
+                        });
+                    });
 
                     // Une portée modifiée sur une case cochée conforme au gabarit
                     // reste un écart : elle doit être envoyée.

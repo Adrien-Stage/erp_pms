@@ -119,8 +119,9 @@
 <html lang="fr">
 <head>
     <meta charset="utf-8">
+    <x-favicon />
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Administration - {{ \App\Models\Tenant::first()?->name ?? 'Villa Boutanga' }}</title>
+    <title>Wetchah ERP — Administration</title>
     <!-- Premium Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -133,10 +134,11 @@
     <header class="sticky top-0 z-30 w-full bg-[#0f172a] border-b border-slate-800 text-white shadow-md">
         <div class="mx-auto max-w-7xl px-5 lg:px-8 flex items-center justify-between h-16">
             <div class="flex items-center gap-8">
-                <div class="flex items-center gap-2">
-                    <div class="text-sm font-extrabold uppercase tracking-wider text-white">
-                        WeTchah ERP
-                    </div>
+                <a href="{{ route($isTech ? 'tech.dashboard' : 'business.dashboard') }}" class="flex items-center gap-2.5">
+                    {{-- La marque seule : le mot « Wetchah ERP » du lockup serait
+                         illisible à la hauteur d'une barre de navigation. --}}
+                    <x-brand variant="mark" class="h-8" />
+                    <span class="text-sm font-extrabold uppercase tracking-wider text-white">Wetchah ERP</span>
                     @if($isTech)
                         <span class="inline-flex items-center rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-400 border border-emerald-500/30">
                             TECH
@@ -146,7 +148,7 @@
                             BUSINESS
                         </span>
                     @endif
-                </div>
+                </a>
                 <nav class="hidden md:flex items-center gap-1.5" aria-label="Navigation administration">
                     @foreach($tabs as $key => $tab)
                         <a

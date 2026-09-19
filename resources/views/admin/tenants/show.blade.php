@@ -21,6 +21,7 @@
 <html lang="fr">
 <head>
     <meta charset="utf-8">
+    <x-favicon />
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ $tenant->name }} — Administration</title>
     <meta name="description" content="Espace de gestion de l'établissement {{ $tenant->name }}">
@@ -35,6 +36,11 @@
     <header class="sticky top-0 z-30 w-full bg-[#0f172a] border-b border-slate-800 text-white shadow-md">
         <div class="mx-auto px-5 lg:px-8 flex items-center justify-between h-14">
             <div class="flex items-center gap-4">
+                <a href="{{ route(auth()->user()?->isTechAdmin() ? 'tech.dashboard' : 'business.dashboard') }}"
+                   class="shrink-0" title="Wetchah ERP">
+                    <x-brand variant="mark" class="h-7" />
+                </a>
+                <div class="h-5 w-px bg-slate-700"></div>
                 <a href="{{ route('tech.dashboard', ['tab' => 'tenants']) }}" class="flex items-center gap-2 text-slate-400 hover:text-white transition text-xs font-semibold">
                     <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />

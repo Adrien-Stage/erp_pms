@@ -22,6 +22,7 @@
 <html lang="fr">
 <head>
     <meta charset="utf-8">
+    <x-favicon />
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Créer un Nouvel Établissement - Administration</title>
     <meta name="description" content="Création d'un nouvel établissement en mode multi-étapes.">
@@ -36,6 +37,11 @@
     <header class="sticky top-0 z-30 w-full bg-[#0f172a] border-b border-slate-800 text-white shadow-md">
         <div class="mx-auto max-w-7xl px-5 lg:px-8 flex items-center justify-between h-16">
             <div class="flex items-center gap-8">
+                <a href="{{ route(auth()->user()?->isTechAdmin() ? 'tech.dashboard' : 'business.dashboard') }}"
+                   class="shrink-0" title="Wetchah ERP">
+                    <x-brand variant="mark" class="h-7" />
+                </a>
+                <div class="h-5 w-px bg-slate-700"></div>
                 <div class="text-sm font-extrabold uppercase tracking-wider text-white">
                     WeTchah ERP
                 </div>

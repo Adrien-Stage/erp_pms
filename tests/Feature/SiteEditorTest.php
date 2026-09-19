@@ -255,3 +255,13 @@ test('la route des éditeurs ne permet pas de toucher un administrateur', functi
 
     expect(User::find($cible->id))->not->toBeNull();
 });
+
+test("l'espace éditeur ne porte pas non plus la marque de l'ERP", function () {
+    // Le logo et le favicon nomment le produit dans leur chemin même
+    // (images/logo-erp-mark.png) : les poser ici annulerait la discrétion que
+    // le test précédent protège.
+    $page = $this->get(route('site-editor.login'))->assertOk()->getContent();
+
+    expect($page)->not->toContain('logo-erp')
+        ->and($page)->not->toContain('apple-touch-icon');
+});
