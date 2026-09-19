@@ -140,3 +140,64 @@ test("un propriétaire étranger n'ouvre pas la matrice", function () {
         ->get(route('business.establishments.permissions', $tenant))
         ->assertForbidden();
 });
+
+test("l'écran propose une étendue sur les droits de consultation", function () {
+    Http::fake(['*/api/permissions/matrice' => Http::response(array_merge(matriceFeinte(), [
+        'portees' => [
+            ['valeur' => 'propre',        'libelle' => 'Ses propres données'],
+            ['valeur' => 'departement',   'libelle' => 'Son département'],
+            ['valeur' => 'etablissement', 'libelle' => "Tout l'établissement"],
+        ],
+    ]), 200)]);
+
+    $tenant = etablissementProvisionne();
+
+    $this->actingAs(User::find($tenant->owner_id))
+        ->get(route('business.establishments.permissions', $tenant))
+        ->assertOk()
+        ->assertSee('Son département')
+        // L'étendue ne porte que sur la consultation : restreindre une écriture
+        // n'aurait pas de sens, c'est le droit lui-même qu'on retire.
+        ->assertSee('data-portee-de="econome|economat.items.voir"', false)
+        ->assertDontSee('data-portee-de="econome|economat.items.creer"', false);
+});
+
+test("une version d'application sans portées n'en invente pas", function () {
+    // matriceFeinte() ne déclare aucune portée : l'écran ne doit proposer que
+    // l'établissement, et surtout pas des valeurs que l'application ignore.
+    Http::fake(['*/api/permissions/matrice' => Http::response(matriceFeinte(), 200)]);
+
+    $tenant = etablissementProvisionne();
+
+    $this->actingAs(User::find($tenant->owner_id))
+        ->get(route('business.establishments.permissions', $tenant))
+        ->assertOk()
+        ->assertSee("Tout l'établissement")
+        ->assertDontSee('Son département');
+});
+
+test("la portée est transmise avec l'écart", function () {
+    Http::fake(['*' => Http::response(['appliques' => 1], 200)]);
+
+    $tenant = etablissementProvisionne();
+
+    $this->actingAs(User::find($tenant->owner_id))
+        ->put(route('business.establishments.permissions.update', $tenant), [
+            'ecarts' => [['role' => 'controller', 'permission' => 'users.voir', 'effect' => 'allow', 'scope' => 'departement']],
+        ])->assertRedirect();
+
+    Http::assertSent(fn ($r) => $r['ecarts'][0]['scope'] === 'departement');
+});
+
+test('une portée inconnue est refusée avant même de partir', function () {
+    Http::fake();
+
+    $tenant = etablissementProvisionne();
+
+    $this->actingAs(User::find($tenant->owner_id))
+        ->put(route('business.establishments.permissions.update', $tenant), [
+            'ecarts' => [['role' => 'controller', 'permission' => 'users.voir', 'effect' => 'allow', 'scope' => 'planete']],
+        ])->assertSessionHasErrors('ecarts.0.scope');
+
+    Http::assertNothingSent();
+});

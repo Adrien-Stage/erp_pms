@@ -64,6 +64,7 @@ class TenantPermissionMatrixController extends Controller
             'ecarts.*.role'       => ['required', 'string', 'max:64'],
             'ecarts.*.permission' => ['required', 'string', 'max:128'],
             'ecarts.*.effect'     => ['required', 'in:allow,deny'],
+            'ecarts.*.scope'      => ['nullable', 'in:propre,departement,etablissement'],
             'ecarts.*.reason'     => ['nullable', 'string', 'max:255'],
         ]);
 
