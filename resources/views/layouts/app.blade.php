@@ -2,6 +2,7 @@
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 
 <head>
+<x-favicon />
     <!-- ... autres balises ... -->
 
     <!-- Polices Google Fonts -->

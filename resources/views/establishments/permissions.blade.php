@@ -2,8 +2,9 @@
 <html lang="fr">
 <head>
     <meta charset="utf-8">
+    <x-favicon />
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Matrice des droits — {{ $tenant->name }}</title>
+    <title>Wetchah ERP — Matrice des droits · {{ $tenant->name }}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -13,9 +14,12 @@
 
     <header class="bg-white shadow">
         <div class="max-w-7xl mx-auto flex items-center justify-between gap-4 px-4 py-5 sm:px-6 lg:px-8">
-            <div>
-                <h1 class="text-xl font-semibold leading-tight text-gray-800">Matrice des droits</h1>
-                <p class="mt-0.5 text-xs text-gray-500">{{ $tenant->name }}</p>
+            <div class="flex items-center gap-3">
+                <x-brand variant="mark" class="h-9 shrink-0" />
+                <div>
+                    <h1 class="text-xl font-semibold leading-tight text-gray-800">Matrice des droits</h1>
+                    <p class="mt-0.5 text-xs text-gray-500">{{ $tenant->name }}</p>
+                </div>
             </div>
             <a href="{{ route(auth()->user()->isTechAdmin() ? 'tech.establishments.show' : 'business.establishments.show', $tenant) }}"
                class="text-xs font-medium text-gray-500 hover:text-gray-800">&larr; Retour à l'établissement</a>
