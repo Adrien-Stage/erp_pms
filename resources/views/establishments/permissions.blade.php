@@ -52,6 +52,9 @@
                     }
                 }
                 $rolesAssignables = collect($matrice['roles'] ?? [])->where('is_assignable', true)->values();
+                // Repli si l'établissement tourne une version antérieure de
+                // l'application, qui n'annonce pas encore ses portées.
+                $portees = $matrice['portees'] ?? [['valeur' => 'etablissement', 'libelle' => "Tout l'établissement"]];
                 // preserveKeys : sans lui, groupBy réindexe et le nom du droit,
                 // qui est la clé, serait perdu au profit de 0, 1, 2…
                 $parModule = collect($matrice['catalogue'] ?? [])
@@ -117,6 +120,7 @@
                                                     $gabarit  = in_array($role['slug'], $rolesDuGabarit, true);
                                                     $ecart    = $enVigueur[$cle] ?? null;
                                                     $coche    = $ecart ? $ecart['effect'] === 'allow' : $gabarit;
+                                                    $lecture  = str_ends_with($droit, '.voir') || str_ends_with($droit, '.export');
                                                 @endphp
                                                 <td class="px-2 py-1.5 text-center">
                                                     <input type="checkbox"
@@ -125,6 +129,21 @@
                                                            data-droit="{{ $droit }}"
                                                            @checked($coche)
                                                            class="case-droit rounded border-slate-300 {{ $ecart ? 'ring-2 ring-amber-400' : '' }}">
+
+                                                    {{-- Étendue : seules les consultations la portent. Restreindre
+                                                         une écriture n'aurait pas de sens ici — c'est le droit
+                                                         lui-même qu'on retire. --}}
+                                                    @if($lecture)
+                                                        <select data-portee-de="{{ $role['slug'] }}|{{ $droit }}"
+                                                                class="portee mt-1 block w-full rounded border-slate-200 text-[10px] {{ $coche ? '' : 'invisible' }}">
+                                                            @foreach($portees as $portee)
+                                                                <option value="{{ $portee['valeur'] }}"
+                                                                        @selected(($ecart['scope'] ?? 'etablissement') === $portee['valeur'])>
+                                                                    {{ $portee['libelle'] }}
+                                                                </option>
+                                                            @endforeach
+                                                        </select>
+                                                    @endif
                                                 </td>
                                             @endforeach
                                         </tr>
@@ -165,11 +184,22 @@
 
                         cases.forEach((c) => {
                             const gabarit = c.dataset.gabarit === '1';
-                            if (c.checked === gabarit) return;
+                            const portee  = document.querySelector(
+                                `[data-portee-de="${c.dataset.role}|${c.dataset.droit}"]`
+                            );
+                            const porteeRestreinte = c.checked && portee && portee.value !== 'etablissement';
+
+                            if (c.checked === gabarit && !porteeRestreinte) return;
 
                             const effet = c.checked ? 'allow' : 'deny';
-                            [['role', c.dataset.role], ['permission', c.dataset.droit],
-                             ['effect', effet], ['reason', motif.value]].forEach(([champ, valeur]) => {
+                            const select = document.querySelector(
+                                `[data-portee-de="${c.dataset.role}|${c.dataset.droit}"]`
+                            );
+                            const champs = [['role', c.dataset.role], ['permission', c.dataset.droit],
+                                            ['effect', effet], ['reason', motif.value]];
+                            if (select && c.checked) champs.push(['scope', select.value]);
+
+                            champs.forEach(([champ, valeur]) => {
                                 const input = document.createElement('input');
                                 input.type  = 'hidden';
                                 input.name  = `ecarts[${n}][${champ}]`;
@@ -182,7 +212,17 @@
                         compteur.textContent = n;
                     }
 
-                    cases.forEach((c) => c.addEventListener('change', recalculer));
+                    // Une portée modifiée sur une case cochée conforme au gabarit
+                    // reste un écart : elle doit être envoyée.
+                    document.querySelectorAll('.portee').forEach((s) => s.addEventListener('change', recalculer));
+
+                    cases.forEach((c) => c.addEventListener('change', () => {
+                        const select = document.querySelector(
+                            `[data-portee-de="${c.dataset.role}|${c.dataset.droit}"]`
+                        );
+                        if (select) select.classList.toggle('invisible', !c.checked);
+                        recalculer();
+                    }));
                     motif.addEventListener('input', recalculer);
                     recalculer();
                 })();
