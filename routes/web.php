@@ -8,6 +8,7 @@ use App\Http\Controllers\OwnerController;
 use App\Http\Controllers\SiteEditorController;
 use App\Http\Controllers\SupportTicketController;
 use App\Http\Controllers\TenantDepartmentController;
+use App\Http\Controllers\TenantPermissionMatrixController;
 use App\Http\Controllers\TenantUserController;
 
 // ==========================================
@@ -100,6 +101,11 @@ Route::middleware(['auth', 'role:tech_admin'])->prefix('tech')->name('tech.')->g
     Route::delete('/establishments/{tenant}/users/{user}', [TenantUserController::class, 'destroy'])->name('establishments.users.destroy');
 
     // Départements de l'établissement
+    // Matrice des droits : lue depuis l'établissement, les écarts y sont
+    // renvoyés. Le gabarit reste dans le code de l'application.
+    Route::get('/establishments/{tenant}/permissions', [TenantPermissionMatrixController::class, 'show'])->name('establishments.permissions');
+    Route::put('/establishments/{tenant}/permissions', [TenantPermissionMatrixController::class, 'update'])->name('establishments.permissions.update');
+
     Route::post('/establishments/{tenant}/departments', [TenantDepartmentController::class, 'store'])->name('establishments.departments.store');
     Route::put('/establishments/{tenant}/departments/{department}', [TenantDepartmentController::class, 'update'])->name('establishments.departments.update');
     Route::post('/establishments/{tenant}/departments/{department}', [TenantDepartmentController::class, 'update'])->name('establishments.departments.update.post');
@@ -155,6 +161,10 @@ Route::middleware(['auth', 'role:owner'])->prefix('business')->name('business.')
     Route::get('/establishments/{tenant}/finance-data', [AdminAuditController::class, 'businessEstablishmentFinance'])->name('establishments.finance-data');
     Route::post('/establishments/{tenant}/create-manager', [AdminAuditController::class, 'createTenantManager'])->name('establishments.create-manager');
     Route::post('/establishments/{tenant}/create-controller', [AdminAuditController::class, 'createTenantController'])->name('establishments.create-controller');
+
+    // Matrice des droits de l'établissement, éditée par son propriétaire.
+    Route::get('/establishments/{tenant}/permissions', [TenantPermissionMatrixController::class, 'show'])->name('establishments.permissions');
+    Route::put('/establishments/{tenant}/permissions', [TenantPermissionMatrixController::class, 'update'])->name('establishments.permissions.update');
     Route::get('/analytics', [AdminAuditController::class, 'businessDashboard'])->name('analytics');
     Route::get('/clients', [AdminAuditController::class, 'businessDashboard'])->name('clients');
     Route::get('/employees', [AdminAuditController::class, 'businessDashboard'])->name('employees');
