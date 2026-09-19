@@ -98,15 +98,49 @@
                 @csrf
                 @method('PUT')
 
-                <div class="mb-3 flex items-center justify-end gap-2">
-                    <button type="button" data-plier="ouvrir"
-                            class="rounded-lg border border-slate-300 px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50">
-                        Tout déplier
-                    </button>
-                    <button type="button" data-plier="fermer"
-                            class="rounded-lg border border-slate-300 px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50">
-                        Tout replier
-                    </button>
+                {{-- Barre de recherche. Deux cent vingt-six droits sur dix rôles
+                     ne se parcourent pas à l'œil : on cherche « economat » ou
+                     « supprimer », on ne fait pas défiler. --}}
+                <div class="sticky top-0 z-40 mb-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <div class="relative min-w-[14rem] flex-1">
+                            <svg class="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400"
+                                 fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+                            </svg>
+                            <input type="search" id="recherche" autocomplete="off"
+                                   placeholder="Filtrer un droit — « economat », « supprimer », « ledger.periods »…"
+                                   class="w-full rounded-lg border border-slate-300 py-1.5 pl-8 pr-3 text-xs outline-none focus:border-slate-500">
+                        </div>
+
+                        {{-- Une colonne à la fois : dix rôles de front rendent
+                             illisible le réglage d'un seul. --}}
+                        <select id="filtre-role"
+                                class="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs outline-none focus:border-slate-500">
+                            <option value="">Tous les rôles</option>
+                            @foreach($rolesAssignables as $role)
+                                <option value="{{ $role['slug'] }}">{{ $role['name'] }}</option>
+                            @endforeach
+                        </select>
+
+                        <label class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs text-slate-600">
+                            <input type="checkbox" id="filtre-ecarts" class="rounded border-slate-300">
+                            Écarts seulement
+                        </label>
+
+                        <div class="ml-auto flex items-center gap-2">
+                            <button type="button" data-plier="ouvrir"
+                                    class="rounded-lg border border-slate-300 px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50">
+                                Tout déplier
+                            </button>
+                            <button type="button" data-plier="fermer"
+                                    class="rounded-lg border border-slate-300 px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50">
+                                Tout replier
+                            </button>
+                        </div>
+                    </div>
+
+                    <p id="resultat-filtre" class="mt-1.5 hidden text-[11px] text-slate-500"></p>
                 </div>
 
                 @foreach($parModule as $module => $droits)
@@ -159,7 +193,8 @@
                                             Droit
                                         </th>
                                         @foreach($rolesAssignables as $role)
-                                            <th class="sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-2 py-2 text-center font-semibold text-slate-500 whitespace-nowrap"
+                                            <th data-colonne="{{ $role['slug'] }}"
+                                                class="sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-2 py-2 text-center font-semibold text-slate-500 whitespace-nowrap"
                                                 title="{{ $role['name'] }}">
                                                 {{ $role['slug'] }}
                                             </th>
@@ -181,7 +216,8 @@
                                                     $coche    = $ecart ? $ecart['effect'] === 'allow' : $gabarit;
                                                     $lecture  = str_ends_with($droit, '.voir') || str_ends_with($droit, '.export');
                                                 @endphp
-                                                <td class="border-b border-slate-100 px-2 py-1.5 text-center group-hover:bg-slate-50">
+                                                <td data-colonne="{{ $role['slug'] }}"
+                                                    class="border-b border-slate-100 px-2 py-1.5 text-center group-hover:bg-slate-50">
                                                     <input type="checkbox"
                                                            data-gabarit="{{ $gabarit ? '1' : '0' }}"
                                                            data-role="{{ $role['slug'] }}"
@@ -213,7 +249,7 @@
                     </details>
                 @endforeach
 
-                <div class="sticky bottom-0 flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-lg">
+                <div class="sticky bottom-0 z-40 flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-lg">
                     <div class="flex-1">
                         {{-- Sans « name » : la valeur n'est pas postée telle quelle,
                              elle est recopiée sur chaque écart du lot. Un attribut
@@ -285,6 +321,9 @@
                         const motifManquant = n > 0 && motif.value.trim() === '';
                         document.getElementById('exigence').classList.toggle('hidden', !motifManquant);
                         document.getElementById('appliquer').disabled = n === 0 || motifManquant;
+
+                        // Le filtre « écarts seulement » suit ce qu'on coche.
+                        if (filtreEcart.checked) filtrer();
                     }
 
                     // Le badge de chaque module compte ses propres écarts : on
@@ -308,6 +347,71 @@
                             badge.classList.toggle('hidden', n === 0);
                         });
                     }
+
+                    // ── Filtrage ───────────────────────────────────────────
+                    // Les lignes masquées restent dans le document : une case
+                    // cochée puis filtrée part quand même à l'enregistrement.
+                    // Masquer n'est pas annuler.
+                    const recherche   = document.getElementById('recherche');
+                    const filtreRole  = document.getElementById('filtre-role');
+                    const filtreEcart = document.getElementById('filtre-ecarts');
+                    const resultat    = document.getElementById('resultat-filtre');
+
+                    function estUnEcart(c) {
+                        const gabarit = c.dataset.gabarit === '1';
+                        const portee  = document.querySelector(
+                            `[data-portee-de="${c.dataset.role}|${c.dataset.droit}"]`
+                        );
+                        return c.checked !== gabarit
+                            || (c.checked && portee && portee.value !== 'etablissement');
+                    }
+
+                    function filtrer() {
+                        const terme   = recherche.value.trim().toLowerCase();
+                        const role    = filtreRole.value;
+                        const ecarts  = filtreEcart.checked;
+                        const actif   = terme !== '' || role !== '' || ecarts;
+                        let trouves   = 0;
+
+                        document.querySelectorAll('.module').forEach((module) => {
+                            let visiblesDansLeModule = 0;
+
+                            module.querySelectorAll('tbody tr').forEach((ligne) => {
+                                const droit = ligne.querySelector('.case-droit')?.dataset.droit ?? '';
+                                const cases = [...ligne.querySelectorAll('.case-droit')];
+
+                                const parLeTexte = terme === '' || droit.toLowerCase().includes(terme);
+                                const parLEcart  = !ecarts || cases.some((c) =>
+                                    (role === '' || c.dataset.role === role) && estUnEcart(c));
+
+                                const visible = parLeTexte && parLEcart;
+                                ligne.classList.toggle('hidden', !visible);
+                                if (visible) { visiblesDansLeModule++; trouves++; }
+                            });
+
+                            module.classList.toggle('hidden', visiblesDansLeModule === 0);
+                            // Un filtre actif déplie ce qu'il a trouvé : chercher
+                            // puis devoir ouvrir chaque module n'aurait pas de sens.
+                            if (actif && visiblesDansLeModule > 0) module.open = true;
+                        });
+
+                        // Colonne unique : dix rôles de front rendent illisible le
+                        // réglage d'un seul.
+                        document.querySelectorAll('.module').forEach((module) => {
+                            module.querySelectorAll('[data-colonne]').forEach((cellule) => {
+                                cellule.classList.toggle('hidden', role !== '' && cellule.dataset.colonne !== role);
+                            });
+                        });
+
+                        resultat.classList.toggle('hidden', !actif);
+                        resultat.textContent = trouves === 0
+                            ? 'Aucun droit ne correspond.'
+                            : `${trouves} droit(s) affiché(s).`;
+                    }
+
+                    [recherche, filtreRole].forEach((e) => e.addEventListener('input', filtrer));
+                    filtreRole.addEventListener('change', filtrer);
+                    filtreEcart.addEventListener('change', filtrer);
 
                     document.querySelectorAll('[data-plier]').forEach((b) => {
                         b.addEventListener('click', () => {

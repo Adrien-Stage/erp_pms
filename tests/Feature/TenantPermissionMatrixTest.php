@@ -271,3 +271,35 @@ test("le bandeau exige un motif et refuse un lot vide", function () {
         // Le champ n'est pas posté tel quel : il est recopié sur chaque écart.
         ->and($page)->not->toContain('name="motif"');
 });
+
+test("l'écran offre de filtrer les droits, les rôles et les écarts", function () {
+    Http::fake(['*/api/permissions/matrice' => Http::response(matriceFeinte(), 200)]);
+
+    $tenant = etablissementProvisionne();
+
+    $page = $this->actingAs(User::find($tenant->owner_id))
+        ->get(route('business.establishments.permissions', $tenant))->getContent();
+
+    // Deux cent vingt-six droits sur dix rôles ne se parcourent pas à l'œil.
+    expect($page)->toContain('id="recherche"')
+        ->and($page)->toContain('id="filtre-role"')
+        ->and($page)->toContain('id="filtre-ecarts"')
+        // Le filtre de colonne a besoin de savoir à quel rôle chaque cellule
+        // appartient, en-tête compris.
+        ->and($page)->toContain('data-colonne="econome"')
+        ->and($page)->toContain('data-colonne="accountant"');
+});
+
+test("le bandeau d'enregistrement passe au-dessus des en-têtes figés", function () {
+    Http::fake(['*/api/permissions/matrice' => Http::response(matriceFeinte(), 200)]);
+
+    $tenant = etablissementProvisionne();
+
+    $page = $this->actingAs(User::find($tenant->owner_id))
+        ->get(route('business.establishments.permissions', $tenant))->getContent();
+
+    // Les en-têtes de matrice montent jusqu'à z-30 : sous ce seuil, le bandeau
+    // s'encastre dedans dès qu'un module est déplié.
+    expect($page)->toContain('sticky bottom-0 z-40')
+        ->and($page)->toContain('sticky top-0 z-40');
+});
