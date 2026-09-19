@@ -215,12 +215,19 @@
 
                 <div class="sticky bottom-0 flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-lg">
                     <div class="flex-1">
-                        <input type="text" name="motif" id="motif" maxlength="255"
-                               placeholder="Motif de la modification — consigné au journal"
+                        {{-- Sans « name » : la valeur n'est pas postée telle quelle,
+                             elle est recopiée sur chaque écart du lot. Un attribut
+                             « name » laisserait croire qu'elle compte seule. --}}
+                        <input type="text" id="motif" maxlength="255"
+                               placeholder="Motif de la modification — consigné au journal et sur chaque droit modifié"
                                class="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs outline-none focus:border-slate-500">
-                        <p class="mt-1 text-[11px] text-slate-500"><span id="compteur">0</span> écart(s) au gabarit.</p>
+                        <p class="mt-1 text-[11px] text-slate-500">
+                            <span id="compteur">0</span> écart(s) au gabarit.
+                            <span id="exigence" class="hidden font-medium text-amber-700">Indiquez un motif pour enregistrer.</span>
+                        </p>
                     </div>
-                    <button type="submit" class="shrink-0 rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800">
+                    <button type="submit" id="appliquer" disabled
+                            class="shrink-0 rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300">
                         Appliquer à l'établissement
                     </button>
                 </div>
@@ -270,6 +277,14 @@
 
                         compteur.textContent = n;
                         rafraichirBadges();
+
+                        // L'application REMPLACE les écarts portés par les rôles :
+                        // valider un lot vide effacerait les surcharges en place.
+                        // Et une matrice de droits qui change sans motif écrit ne
+                        // se contrôle pas six mois plus tard.
+                        const motifManquant = n > 0 && motif.value.trim() === '';
+                        document.getElementById('exigence').classList.toggle('hidden', !motifManquant);
+                        document.getElementById('appliquer').disabled = n === 0 || motifManquant;
                     }
 
                     // Le badge de chaque module compte ses propres écarts : on

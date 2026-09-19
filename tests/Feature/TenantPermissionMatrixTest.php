@@ -237,3 +237,37 @@ test("les en-têtes de la matrice ne défilent pas avec la grille", function () 
         ->and($page)->toContain('sticky left-0 z-10')       // les droits
         ->and($page)->toContain('overflow-auto');           // seul le cadre défile
 });
+
+test("le motif accompagne chaque droit modifié, pas seulement le journal", function () {
+    Http::fake(['*' => Http::response(['appliques' => 1], 200)]);
+
+    $tenant = etablissementProvisionne();
+
+    $this->actingAs(User::find($tenant->owner_id))
+        ->put(route('business.establishments.permissions.update', $tenant), [
+            'ecarts' => [[
+                'role' => 'accountant', 'permission' => 'economat.items.creer',
+                'effect' => 'deny', 'reason' => 'Séparation des tâches : détention et enregistrement.',
+            ]],
+        ]);
+
+    // C'est ce qu'on lit six mois plus tard pour savoir pourquoi le droit a
+    // été retiré.
+    Http::assertSent(fn ($r) => str_contains($r['ecarts'][0]['reason'], 'Séparation des tâches'));
+});
+
+test("le bandeau exige un motif et refuse un lot vide", function () {
+    Http::fake(['*/api/permissions/matrice' => Http::response(matriceFeinte(), 200)]);
+
+    $tenant = etablissementProvisionne();
+
+    $page = $this->actingAs(User::find($tenant->owner_id))
+        ->get(route('business.establishments.permissions', $tenant))->getContent();
+
+    // L'application remplace les écarts de rôle : valider un lot vide
+    // effacerait les surcharges en place.
+    expect($page)->toContain('id="appliquer" disabled')
+        ->and($page)->toContain('Indiquez un motif pour enregistrer')
+        // Le champ n'est pas posté tel quel : il est recopié sur chaque écart.
+        ->and($page)->not->toContain('name="motif"');
+});
