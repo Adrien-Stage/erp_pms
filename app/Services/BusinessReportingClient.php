@@ -33,9 +33,9 @@ class BusinessReportingClient
             return null;
         }
 
-        $secret = (string) config('provisioning.reporting_secret');
+        $secret = app(TenantSecrets::class)->current($tenant, TenantSecrets::REPORTING);
         if ($secret === '') {
-            Log::warning('[BusinessReporting] REPORTING_SECRET non configuré côté pms.');
+            Log::warning("[BusinessReporting] Aucun secret de service connu pour {$tenant->slug}.");
             return null;
         }
 

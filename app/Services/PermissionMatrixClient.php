@@ -29,9 +29,9 @@ class PermissionMatrixClient
         return 'http://' . $container;
     }
 
-    private function secret(): string
+    private function secret(Tenant $tenant): string
     {
-        return (string) config('provisioning.reporting_secret');
+        return app(TenantSecrets::class)->current($tenant, TenantSecrets::REPORTING);
     }
 
     /**
@@ -42,12 +42,12 @@ class PermissionMatrixClient
      */
     public function fetch(Tenant $tenant): ?array
     {
-        if (!$tenant->provisioned_at || $this->secret() === '') {
+        if (!$tenant->provisioned_at || $this->secret($tenant) === '') {
             return null;
         }
 
         try {
-            $reponse = Http::withToken($this->secret())->timeout(5)->acceptJson()
+            $reponse = Http::withToken($this->secret($tenant))->timeout(5)->acceptJson()
                 ->get($this->baseUrl($tenant) . '/api/permissions/matrice');
 
             return $reponse->successful() ? (array) $reponse->json() : null;
@@ -66,12 +66,12 @@ class PermissionMatrixClient
      */
     public function push(Tenant $tenant, array $ecarts): array
     {
-        if ($this->secret() === '') {
+        if ($this->secret($tenant) === '') {
             return ['ok' => false, 'message' => "Le secret de service n'est pas configuré : la matrice n'a pas été transmise."];
         }
 
         try {
-            $reponse = Http::withToken($this->secret())->timeout(8)->acceptJson()
+            $reponse = Http::withToken($this->secret($tenant))->timeout(8)->acceptJson()
                 ->put($this->baseUrl($tenant) . '/api/permissions/matrice', ['ecarts' => array_values($ecarts)]);
 
             if ($reponse->successful()) {

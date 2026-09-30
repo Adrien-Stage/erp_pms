@@ -1469,12 +1469,12 @@ class AdminAuditController extends Controller
 
         $tenant = Tenant::findOrFail($validated['tenant_id']);
 
-        if (empty(config('assistance.secret'))) {
-            return back()->with('error', "Le secret d'assistance (ASSISTANCE_SECRET) n'est pas configuré côté pms.");
-        }
-
         if (! $tenant->provisioned_at) {
             return back()->with('error', "Cet établissement n'est pas encore provisionné.");
+        }
+
+        if (app(\App\Services\TenantSecrets::class)->current($tenant, \App\Services\TenantSecrets::ASSISTANCE) === '') {
+            return back()->with('error', "Aucun secret d'assistance n'est connu pour cet établissement.");
         }
 
         $ttl = (int) config('assistance.ttl_minutes', 30);

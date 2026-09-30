@@ -8,7 +8,10 @@ use RuntimeException;
 
 class TenantProvisioningService
 {
-    public function __construct(private DockerRegistryService $registry)
+    public function __construct(
+        private DockerRegistryService $registry,
+        private TenantSecrets $secrets,
+    )
     {
     }
 
@@ -592,9 +595,8 @@ class TenantProvisioningService
 
     private function generateDockerCompose(Tenant $tenant, string $imageRef, ?string $webImageRef, ?string $grcImageRef = null, ?callable $log = null): string
     {
-        $baseDir     = rtrim(config('provisioning.tenants_base_path'), '/\\');
-        $composeDir  = $baseDir . '/.compose';
-        $composePath = $composeDir . '/' . $tenant->slug . '.yml';
+        $composePath = $tenant->composePath();
+        $composeDir  = dirname($composePath);
 
         if (!is_dir($composeDir) && !mkdir($composeDir, 0777, true) && !is_dir($composeDir)) {
             throw new RuntimeException("Impossible de créer le répertoire : {$composeDir}");
@@ -628,18 +630,20 @@ class TenantProvisioningService
         // n'ont jamais pu être json_decode() correctement).
         $settingsJson = $this->yamlSingleQuoteEscape(json_encode($settings));
         $modulesJson  = $this->yamlSingleQuoteEscape(json_encode($tenant->modules ?? []));
-        // Secret partagé pms <-> tenant pour vérifier les jetons d'assistance
-        // (Support > Mode assistance). Injecté ici pour que le container
-        // dispose de la même clé que celle qui signe les jetons côté pms.
-        $assistanceSecret = (string) config('assistance.secret');
+        // Secret de signature des jetons d'assistance (Support > Mode
+        // assistance), propre à cet établissement : la console signe avec,
+        // l'application vérifie avec. Voir TenantSecrets.
+        $assistanceSecret = $this->secrets->forCompose($composePath, TenantSecrets::ASSISTANCE);
         // Clés VAPID communes pour les notifications Web Push des tenants
         // (identifient l'éditeur de l'application, pas l'établissement).
         $vapidSubject = (string) env('VAPID_SUBJECT', 'mailto:admin@meka-erp.local');
         $vapidPublic  = (string) env('VAPID_PUBLIC_KEY', '');
         $vapidPrivate = (string) env('VAPID_PRIVATE_KEY', '');
-        // Secret de service pour que la console business de pms consomme
-        // l'API de reporting (données financières) de cet établissement.
-        $reportingSecret = (string) env('REPORTING_SECRET', '');
+        // Secret de service de cet établissement : il garde son API de
+        // reporting (données financières), sa matrice des droits et le
+        // provisioning des comptes de son GRC. Jamais partagé avec un autre
+        // établissement. Voir TenantSecrets.
+        $reportingSecret = $this->secrets->forCompose($composePath, TenantSecrets::REPORTING);
         // Messagerie sortante, mutualisée pour toute la plateforme comme les
         // clés VAPID : l'acheminement (compte Resend, relais SMTP) appartient à
         // l'éditeur, alors que l'adresse *affichée* au client relève de chaque

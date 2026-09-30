@@ -67,6 +67,15 @@ class Tenant extends Model
     ];
 
     /**
+     * Fichier docker-compose de l'établissement : la source de vérité de ce
+     * que ses conteneurs ont reçu — images, clés et secrets de service.
+     */
+    public function composePath(): string
+    {
+        return rtrim(config('provisioning.tenants_base_path'), '/\\') . '/.compose/' . $this->slug . '.yml';
+    }
+
+    /**
      * Relation : L'établissement appartient à un propriétaire (owner/user).
      */
     public function owner(): BelongsTo

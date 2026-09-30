@@ -55,9 +55,10 @@ TENANTS_BASE_PATH=/var/wetchah/tenants
 # Doit correspondre au container_name du service app
 CMS_CONTAINER_NAME=wetchah_erp-app
 
-# Secrets partagés avec tous les établissements
-REPORTING_SECRET=<aléatoire>
-ASSISTANCE_SECRET=<aléatoire>
+# Anciens secrets communs : facultatifs pour une installation neuve.
+# Chaque établissement reçoit ses propres secrets dans son Compose.
+REPORTING_SECRET=
+ASSISTANCE_SECRET=
 
 # Clés Web Push (communes à la plateforme)
 VAPID_SUBJECT=mailto:support@exemple.com

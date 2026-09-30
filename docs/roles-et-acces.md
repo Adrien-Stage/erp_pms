@@ -180,9 +180,11 @@ appliqué à tout le groupe `web`, maintient un marqueur en cache exploité par
   équivaut à un accès root sur l'hôte. C'est le point le plus sensible de toute
   l'architecture : réserver ce rôle à des comptes de confiance et déployer la console
   sur une machine dédiée.
-- **`ASSISTANCE_SECRET` et `REPORTING_SECRET` sont des secrets partagés** entre la
-  console et tous les établissements. Les changer impose de régénérer les Compose et
-  de recréer les conteneurs concernés.
+- **`ASSISTANCE_SECRET` et `REPORTING_SECRET` sont propres à chaque établissement.**
+  Ils vivent dans son Compose, tirés au hasard à la première génération. Lire
+  l'environnement d'un établissement ne donne donc accès à aucun autre. Un
+  établissement encore sur l'ancien secret commun le quitte à sa prochaine mise à
+  jour ou application des modules.
 - **Les mots de passe de base sont stockés en clair** dans la table `tenants` — ils
   doivent être injectés en clair dans le Compose au provisioning. La base de la
   console est donc elle-même un secret à protéger.

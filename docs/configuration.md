@@ -15,7 +15,7 @@ plus important : il décrit d'où viennent les images et où vivent les établis
 | `REGISTRY_IMAGE_WEB` | `ghcr.io/clyde237/site_villab` | Image du site vitrine (`wetchah_site`) |
 | `CMS_CONTAINER_NAME` | `wetchah_erp-app` | Nom du conteneur de la console, injecté comme `CMS_API_URL` dans les conteneurs web |
 | `DOCKER_NETWORK` | `pms` | Réseau Docker partagé — créé automatiquement s'il n'existe pas |
-| `REPORTING_SECRET` | *(vide)* | Jeton de service de l'API de reporting business |
+| `REPORTING_SECRET` | *(vide)* | **Ancien secret commun**, relu seulement pour reconnaître les établissements qui ne l'ont pas encore quitté. Chaque établissement reçoit désormais le sien |
 | `PORT_RANGE_APP_START` | `8081` | Premier port applicatif **suggéré** dans le formulaire |
 | `PORT_RANGE_DB_START` | `5434` | Premier port de base suggéré |
 | `PULL_STALL_TIMEOUT` | `120` | Secondes sans progression au-delà desquelles un `docker pull` est considéré bloqué |
@@ -44,16 +44,16 @@ Lu par [`config/assistance.php`](../config/assistance.php).
 
 | Variable | Défaut | Rôle |
 |---|---|---|
-| `ASSISTANCE_SECRET` | *(vide)* | **Secret partagé** entre la console (qui signe les jetons) et chaque établissement (qui les vérifie) |
+| `ASSISTANCE_SECRET` | *(vide)* | **Ancien secret commun** de signature des jetons d'assistance, même rôle que ci-dessus. Chaque établissement reçoit désormais le sien |
 | `ASSISTANCE_TTL_MINUTES` | `30` | Durée de vie d'une session d'assistance |
 
-Le secret est injecté dans chaque conteneur au provisioning. **Tant qu'il est vide,
-l'ouverture d'une session d'assistance est refusée** avec un message explicite.
+Chaque établissement reçoit son propre secret d'assistance, tiré au hasard dans son
+Compose : la console signe les jetons avec le secret de l'établissement visé. **Si
+aucun secret n'est connu** — Compose absent et ancien secret commun vide —
+**l'ouverture d'une session d'assistance est refusée** avec un message explicite.
 
-Le changer impose de régénérer les Compose et recréer les conteneurs — sinon les
-établissements continuent de vérifier avec l'ancienne clé.
-
-Générer une valeur solide :
+Si l'ancien secret commun doit rester défini, le temps que tous les établissements
+l'aient quitté, générer une valeur solide :
 
 ```bash
 php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"
@@ -153,8 +153,8 @@ APP_DEBUG=false       # en production
 
 TENANTS_BASE_PATH=    # chemin HÔTE absolu
 CMS_CONTAINER_NAME=   # nom du conteneur de la console
-REPORTING_SECRET=     # secret partagé, aléatoire
-ASSISTANCE_SECRET=    # secret partagé, aléatoire
+REPORTING_SECRET=     # ancien secret commun — facultatif pour une installation neuve
+ASSISTANCE_SECRET=    # ancien secret commun — facultatif pour une installation neuve
 
 VAPID_SUBJECT=
 VAPID_PUBLIC_KEY=
@@ -172,9 +172,15 @@ docker exec wetchah_erp-app php artisan config:clear
 En développement local, [`dev-refresh.ps1`](../dev-refresh.ps1) le fait déjà — c'est
 nécessaire à cause d'OPcache, voir [Développement](developpement.md).
 
-> Changer `ASSISTANCE_SECRET`, `REPORTING_SECRET` ou les clés VAPID ne suffit pas :
-> ces valeurs sont **inscrites dans les Compose des établissements**. Il faut
-> régénérer chaque Compose (via l'action Modules) et recréer les conteneurs.
+> Les clés VAPID sont **inscrites dans les Compose des établissements** : les
+> changer impose de régénérer chaque Compose (via l'action Modules) et de recréer
+> les conteneurs.
+>
+> `REPORTING_SECRET` et `ASSISTANCE_SECRET` ne sont plus distribués : chaque
+> établissement a les siens, tirés au hasard dans son Compose. Un établissement
+> encore sur l'ancien secret commun en reçoit de propres à sa prochaine mise à jour
+> ou application des modules — c'est aussi la façon de le faire quitter le secret
+> commun sans attendre.
 
 ## Pour aller plus loin
 

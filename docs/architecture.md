@@ -107,8 +107,11 @@ depuis l'espace TECH revient à écrire dans la base que `wetchah_app` lit. La
 
 [`BusinessReportingClient`](../app/Services/BusinessReportingClient.php) interroge
 `http://meka-erp-{slug}-app/api/reporting/*` avec un en-tête
-`Authorization: Bearer {REPORTING_SECRET}`. Ce secret est injecté dans chaque
-conteneur au provisioning : console et établissement partagent la même clé.
+`Authorization: Bearer {REPORTING_SECRET}`. Ce secret est **propre à chaque
+établissement** : tiré au hasard à la première génération de son Compose, puis
+réutilisé à chaque mise à jour. La console le relit dans ce Compose
+([`TenantSecrets`](../app/Services/TenantSecrets.php)) ; aucun autre établissement
+ne le connaît.
 
 L'espace business **n'a aucune base de données propre**. Chaque page agrège N appels
 HTTP vers N établissements. C'est un choix assumé — au prix d'une contrainte : ces
