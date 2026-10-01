@@ -7,6 +7,7 @@ use App\Http\Controllers\ModuleCatalogController;
 use App\Http\Controllers\OwnerController;
 use App\Http\Controllers\SiteEditorController;
 use App\Http\Controllers\SupportTicketController;
+use App\Http\Controllers\TenantAdminAccountController;
 use App\Http\Controllers\TenantDepartmentController;
 use App\Http\Controllers\TenantPermissionMatrixController;
 use App\Http\Controllers\TenantUserController;
@@ -89,23 +90,22 @@ Route::middleware(['auth', 'role:tech_admin'])->prefix('tech')->name('tech.')->g
     Route::get('/establishments/{tenant}', [AdminAuditController::class, 'showTenant'])->name('establishments.show');
     Route::post('/establishments/{tenant}', [AdminAuditController::class, 'updateTenant'])->name('establishments.update');
     Route::delete('/establishments/{tenant}', [AdminAuditController::class, 'destroyTenant'])->name('establishments.destroy');
-    Route::post('/establishments/{tenant}/create-manager', [AdminAuditController::class, 'createTenantManager'])->name('establishments.create-manager');
-    Route::post('/establishments/{tenant}/create-controller', [AdminAuditController::class, 'createTenantController'])->name('establishments.create-controller');
 
-    // Employés de l'établissement : ils vivent dans la base du tenant, donc
-    // toute modification faite ici est immédiatement effective dans wetchah_app.
+    // Employés de l'établissement : la console les consulte. Ils se créent et
+    // se modifient dans l'application, par l'administrateur de l'établissement.
     Route::get('/establishments/{tenant}/users/{user}', [TenantUserController::class, 'show'])->whereNumber('user')->name('establishments.users.show');
-    Route::post('/establishments/{tenant}/users', [TenantUserController::class, 'store'])->name('establishments.users.store');
-    Route::post('/establishments/{tenant}/users/{user}', [TenantUserController::class, 'update'])->name('establishments.users.update');
-    Route::post('/establishments/{tenant}/users/{user}/toggle-active', [TenantUserController::class, 'toggleActive'])->name('establishments.users.toggle-active');
-    Route::delete('/establishments/{tenant}/users/{user}', [TenantUserController::class, 'destroy'])->name('establishments.users.destroy');
+    Route::post('/establishments/{tenant}/users/{user}/grc', [TenantUserController::class, 'grcAccess'])->whereNumber('user')->name('establishments.users.grc');
 
-    // Départements de l'établissement
-    // Matrice des droits : lue depuis l'établissement, les écarts y sont
-    // renvoyés. Le gabarit reste dans le code de l'application.
+    // Droits & rôles : matrice lue depuis l'établissement, dont la console ne
+    // règle que sa propre couche ; comptes administrateurs.
     Route::get('/establishments/{tenant}/permissions', [TenantPermissionMatrixController::class, 'show'])->name('establishments.permissions');
     Route::put('/establishments/{tenant}/permissions', [TenantPermissionMatrixController::class, 'update'])->name('establishments.permissions.update');
+    Route::post('/establishments/{tenant}/permissions/apercu', [TenantPermissionMatrixController::class, 'preview'])->name('establishments.permissions.preview');
+    Route::post('/establishments/{tenant}/permissions/versions/{version}/retour', [TenantPermissionMatrixController::class, 'restore'])->name('establishments.permissions.restore');
+    Route::post('/establishments/{tenant}/administrateurs', [TenantAdminAccountController::class, 'store'])->name('establishments.admins.store');
+    Route::post('/establishments/{tenant}/administrateurs/{compte}', [TenantAdminAccountController::class, 'update'])->whereNumber('compte')->name('establishments.admins.update');
 
+    // Départements de l'établissement, tenus par son API.
     Route::post('/establishments/{tenant}/departments', [TenantDepartmentController::class, 'store'])->name('establishments.departments.store');
     Route::put('/establishments/{tenant}/departments/{department}', [TenantDepartmentController::class, 'update'])->name('establishments.departments.update');
     Route::post('/establishments/{tenant}/departments/{department}', [TenantDepartmentController::class, 'update'])->name('establishments.departments.update.post');
@@ -159,12 +159,15 @@ Route::middleware(['auth', 'role:owner'])->prefix('business')->name('business.')
     Route::get('/establishments', [AdminAuditController::class, 'businessDashboard'])->name('establishments');
     Route::get('/establishments/{tenant}', [AdminAuditController::class, 'businessShowTenant'])->name('establishments.show');
     Route::get('/establishments/{tenant}/finance-data', [AdminAuditController::class, 'businessEstablishmentFinance'])->name('establishments.finance-data');
-    Route::post('/establishments/{tenant}/create-manager', [AdminAuditController::class, 'createTenantManager'])->name('establishments.create-manager');
-    Route::post('/establishments/{tenant}/create-controller', [AdminAuditController::class, 'createTenantController'])->name('establishments.create-controller');
 
-    // Matrice des droits de l'établissement, éditée par son propriétaire.
+    // Droits & rôles de l'établissement, réglés par son propriétaire : la
+    // couche de la console et les comptes administrateurs.
     Route::get('/establishments/{tenant}/permissions', [TenantPermissionMatrixController::class, 'show'])->name('establishments.permissions');
     Route::put('/establishments/{tenant}/permissions', [TenantPermissionMatrixController::class, 'update'])->name('establishments.permissions.update');
+    Route::post('/establishments/{tenant}/permissions/apercu', [TenantPermissionMatrixController::class, 'preview'])->name('establishments.permissions.preview');
+    Route::post('/establishments/{tenant}/permissions/versions/{version}/retour', [TenantPermissionMatrixController::class, 'restore'])->name('establishments.permissions.restore');
+    Route::post('/establishments/{tenant}/administrateurs', [TenantAdminAccountController::class, 'store'])->name('establishments.admins.store');
+    Route::post('/establishments/{tenant}/administrateurs/{compte}', [TenantAdminAccountController::class, 'update'])->whereNumber('compte')->name('establishments.admins.update');
     Route::get('/analytics', [AdminAuditController::class, 'businessDashboard'])->name('analytics');
     Route::get('/clients', [AdminAuditController::class, 'businessDashboard'])->name('clients');
     Route::get('/employees', [AdminAuditController::class, 'businessDashboard'])->name('employees');

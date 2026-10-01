@@ -19,7 +19,8 @@ namespace App\Support;
  *                      module est toujours actif
  *  - depends         : libellé du prérequis, quand il y en a un
  *  - entry           : point d'entrée dans le menu de l'application
- *  - roles           : rôles opérationnels qui y accèdent (voir TenantRoles)
+ *  - roles           : rôles opérationnels qui y accèdent — indicatif : les droits réels
+ *                      se lisent dans « Droits & rôles » de chaque établissement
  *  - screens         : écrans du module — libellé, chemin, rôle de l'écran
  *  - guide           : guide d'utilisation, étape par étape
  *  - tips            : points de vigilance issus du fonctionnement réel

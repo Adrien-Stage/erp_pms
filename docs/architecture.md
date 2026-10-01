@@ -88,10 +88,11 @@ son usage propre :
 | Canal | Implémentation | Sert à |
 |---|---|---|
 | **Docker** | `docker` / `docker compose` via le socket | Créer, démarrer, arrêter, mettre à jour, diagnostiquer |
-| **PDO** | Connexion PostgreSQL directe au conteneur `db` | Lire et écrire les employés de l'établissement |
-| **HTTP** | `GET /api/reporting/*` avec jeton de service | Agréger les chiffres pour la console business |
+| **PDO** | Connexion PostgreSQL directe au conteneur `db` | **Lire** le personnel et les départements ; tickets de support |
+| **HTTP — orchestration** | `/api/permissions/*`, `/api/comptes/*`, `/api/departements` avec `ORCHESTRATION_SECRET` | Matrice des droits, comptes administrateurs, départements |
+| **HTTP — reporting** | `GET /api/reporting/*` avec `REPORTING_SECRET` | Agréger les chiffres pour la console business |
 
-### PDO — pourquoi il n'y a pas de synchronisation
+### PDO — lecture seule pour le personnel
 
 [`TenantDatabase`](../app/Services/TenantDatabase.php) ouvre une connexion PostgreSQL
 directe vers le conteneur de base de l'établissement, par son **nom de conteneur**
@@ -99,9 +100,20 @@ sur le réseau `pms` (pas l'alias générique `db`, qui pointerait vers la base 
 console elle-même). Un repli sur `127.0.0.1:{db_port}` couvre le cas où la console
 tourne hors conteneur.
 
-Il n'y a donc **aucune copie** des employés côté console : modifier un utilisateur
-depuis l'espace TECH revient à écrire dans la base que `wetchah_app` lit. La
-« synchronisation » est immédiate parce qu'il n'y a qu'une seule donnée.
+Il n'y a **aucune copie** des employés côté console : elle lit la base que
+`wetchah_app` lit. Elle n'y **écrit plus** ni compte ni département : une écriture
+directe contournait l'application, qui ne pouvait ni la valider ni la tracer.
+
+### HTTP — l'orchestration
+
+[`EtablissementApi`](../app/Services/EtablissementApi.php) joint
+`http://meka-erp-{slug}-app` avec `Authorization: Bearer {ORCHESTRATION_SECRET}`, un
+secret que **seule la console détient** — le GRC ne le reçoit pas. Une application
+antérieure à ce secret refuse le jeton : la requête est rejouée avec
+`REPORTING_SECRET`, qui gardait autrefois la matrice. S'appuient sur ce canal
+[`PermissionMatrixClient`](../app/Services/PermissionMatrixClient.php) (matrice,
+aperçu) et [`TenantDirectoryClient`](../app/Services/TenantDirectoryClient.php)
+(comptes administrateurs, départements). Voir [Rôles et accès](roles-et-acces.md#droits--rôles-dun-établissement).
 
 ### HTTP — le reporting business
 

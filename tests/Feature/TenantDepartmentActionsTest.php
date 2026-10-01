@@ -1,193 +1,115 @@
 <?php
 
+/**
+ * Départements d'un établissement, tenus depuis l'ERP par l'API de
+ * l'application — plus aucune écriture directe dans sa base.
+ */
+
 use App\Models\Tenant;
 use App\Models\User;
-use App\Services\TenantDatabase;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 
 uses(RefreshDatabase::class);
+
+beforeEach(function () {
+    config(['provisioning.reporting_secret' => 'jeton-de-service']);
+});
 
 function departmentTestTenant(): Tenant
 {
     return Tenant::create([
         'name' => 'Hôtel Test Département',
-        'slug' => 'hotel-test-'.random_int(1000, 99999),
-        'db_name' => 'db_test_'.random_int(1000, 99999),
+        'slug' => 'hotel-test-' . random_int(1000, 99999),
+        'db_name' => 'db_test_' . random_int(1000, 99999),
         'owner_id' => User::factory()->create(['role' => User::ROLE_OWNER])->id,
+        'docker_app_container' => 'meka-erp-hotel-test-app',
+        'provisioned_at' => now(),
         'is_active' => true,
         'users_count' => 5,
     ]);
 }
 
-class DepartmentTestTenantDatabase extends TenantDatabase
+function adminTechnique(): User
 {
-    public array $departments = [];
-
-    public array $requetes = [];
-
-    public function createDepartment(Tenant $tenant, array $data, array $modules = []): int
-    {
-        $id = count($this->departments) + 1;
-        $this->departments[$id] = array_merge($data, ['id' => $id, 'modules' => $modules]);
-        $this->requetes[] = ['action' => 'create', 'data' => $data, 'modules' => $modules];
-
-        return $id;
-    }
-
-    public function updateDepartment(Tenant $tenant, int $id, array $data, array $modules = []): void
-    {
-        $this->departments[$id] = array_merge($data, ['id' => $id, 'modules' => $modules]);
-        $this->requetes[] = ['action' => 'update', 'id' => $id, 'data' => $data, 'modules' => $modules];
-    }
-
-    public function deleteDepartment(Tenant $tenant, int $id): void
-    {
-        unset($this->departments[$id]);
-        $this->requetes[] = ['action' => 'delete', 'id' => $id];
-    }
-
-    public function createUser(Tenant $tenant, array $userData, array $roleSlugs = [], array $levels = [], ?int $departmentId = null): int
-    {
-        $id = 42;
-        $this->requetes[] = ['action' => 'createUser', 'data' => $userData, 'roles' => $roleSlugs, 'levels' => $levels, 'departmentId' => $departmentId];
-
-        return $id;
-    }
-
-    public function connect(Tenant $tenant): PDO
-    {
-        return new class extends PDO
-        {
-            public function __construct() {}
-
-            public function prepare(string $query, array $options = []): PDOStatement|false
-            {
-                return new class extends PDOStatement
-                {
-                    public function execute(?array $params = null): bool
-                    {
-                        return true;
-                    }
-
-                    public function fetch(int $mode = PDO::FETCH_DEFAULT, int $orientation = PDO::FETCH_ORI_NEXT, int $offset = 0): mixed
-                    {
-                        return false;
-                    }
-                };
-            }
-        };
-    }
+    return User::factory()->create(['role' => User::ROLE_TECH_ADMIN, 'is_active' => true]);
 }
 
-test('un administrateur technique peut créer un département avec ses modules associés', function () {
+test('créer un département passe par l\'API, avec ses modules', function () {
+    Http::fake(['*' => Http::response(['id' => 12], 201)]);
     $tenant = departmentTestTenant();
-    $double = new DepartmentTestTenantDatabase;
-    app()->instance(TenantDatabase::class, $double);
 
-    $admin = User::factory()->create(['role' => User::ROLE_TECH_ADMIN, 'is_active' => true]);
-
-    $reponse = $this->actingAs($admin)
+    $this->actingAs(adminTechnique())
         ->post(route('tech.establishments.departments.store', $tenant), [
             'name' => 'Réception & Accueil',
             'code' => 'REC',
-            'description' => 'Accueil et gestion des réservations',
             'icon' => 'calendar-check',
-            'accent' => 'sky',
-            'sort_order' => 2,
             'modules' => ['reservations', 'hebergement'],
-            'levels' => [
-                'reservations' => 'write',
-                'hebergement' => 'read',
-            ],
-        ]);
+            'levels' => ['reservations' => 'write', 'hebergement' => 'read'],
+        ])
+        ->assertRedirect()
+        ->assertSessionHas('success');
 
-    $reponse->assertRedirect();
-    $reponse->assertSessionHas('success');
-
-    expect($double->requetes)->toHaveCount(1)
-        ->and($double->requetes[0]['action'])->toBe('create')
-        ->and($double->requetes[0]['data']['name'])->toBe('Réception & Accueil')
-        ->and($double->requetes[0]['modules'])->toBe([
-            'reservations' => 'write',
-            'hebergement' => 'read',
-        ]);
+    Http::assertSent(fn ($r) => $r->method() === 'POST'
+        && $r->url() === 'http://meka-erp-hotel-test-app/api/departements'
+        && $r->hasHeader('Authorization', 'Bearer jeton-de-service')
+        && $r['name'] === 'Réception & Accueil'
+        && $r['modules'] === ['reservations' => 'write', 'hebergement' => 'read']);
 });
 
-test('un administrateur technique peut modifier un département et ajuster les modules', function () {
+test('modifier un département passe par l\'API', function () {
+    Http::fake(['*' => Http::response(['id' => 3], 200)]);
     $tenant = departmentTestTenant();
-    $double = new DepartmentTestTenantDatabase;
-    app()->instance(TenantDatabase::class, $double);
 
-    $admin = User::factory()->create(['role' => User::ROLE_TECH_ADMIN, 'is_active' => true]);
-
-    $reponse = $this->actingAs($admin)
+    $this->actingAs(adminTechnique())
         ->put(route('tech.establishments.departments.update', ['tenant' => $tenant, 'department' => 3]), [
             'name' => 'Hébergement & Housekeeping',
-            'code' => 'HSK',
-            'description' => 'Entretien des chambres',
-            'icon' => 'sparkles',
-            'accent' => 'teal',
-            'sort_order' => 3,
-            'modules' => ['housekeeping', 'economat'],
-            'levels' => [
-                'housekeeping' => 'write',
-                'economat' => 'write',
-            ],
-        ]);
+            'modules' => ['housekeeping'],
+        ])
+        ->assertSessionHas('success');
 
-    $reponse->assertRedirect();
-    $reponse->assertSessionHas('success');
-
-    expect($double->requetes)->toHaveCount(1)
-        ->and($double->requetes[0]['action'])->toBe('update')
-        ->and($double->requetes[0]['id'])->toBe(3)
-        ->and($double->requetes[0]['data']['name'])->toBe('Hébergement & Housekeeping');
+    Http::assertSent(fn ($r) => $r->method() === 'PUT'
+        && str_ends_with($r->url(), '/api/departements/3')
+        && $r['name'] === 'Hébergement & Housekeeping');
 });
 
-test('un administrateur technique peut supprimer un département', function () {
+test('supprimer un département passe par l\'API', function () {
+    Http::fake(['*' => Http::response(['supprime' => 5], 200)]);
     $tenant = departmentTestTenant();
-    $double = new DepartmentTestTenantDatabase;
-    app()->instance(TenantDatabase::class, $double);
 
-    $admin = User::factory()->create(['role' => User::ROLE_TECH_ADMIN, 'is_active' => true]);
+    $this->actingAs(adminTechnique())
+        ->delete(route('tech.establishments.departments.destroy', ['tenant' => $tenant, 'department' => 5]))
+        ->assertSessionHas('success');
 
-    $reponse = $this->actingAs($admin)
-        ->delete(route('tech.establishments.departments.destroy', ['tenant' => $tenant, 'department' => 5]));
-
-    $reponse->assertRedirect();
-    $reponse->assertSessionHas('success');
-
-    expect($double->requetes)->toHaveCount(1)
-        ->and($double->requetes[0]['action'])->toBe('delete')
-        ->and($double->requetes[0]['id'])->toBe(5);
+    Http::assertSent(fn ($r) => $r->method() === 'DELETE' && str_ends_with($r->url(), '/api/departements/5'));
 });
 
-test('un administrateur peut créer un utilisateur avec son département et ses rôles', function () {
+test("un établissement pas encore à jour le dit, sans rien écrire", function () {
+    Http::fake(['*' => Http::response([], 404)]);
     $tenant = departmentTestTenant();
-    $double = new DepartmentTestTenantDatabase;
-    app()->instance(TenantDatabase::class, $double);
 
-    $admin = User::factory()->create(['role' => User::ROLE_TECH_ADMIN, 'is_active' => true]);
+    $this->actingAs(adminTechnique())
+        ->post(route('tech.establishments.departments.store', $tenant), ['name' => 'Cuisine'])
+        ->assertSessionHas('error', fn ($m) => str_contains($m, 'mettez-le à jour'));
+});
 
-    $reponse = $this->actingAs($admin)
-        ->post(route('tech.establishments.users.store', $tenant), [
-            'name' => 'Marie Dupont',
-            'email' => 'marie.dupont@test.com',
-            'phone' => '+237699112233',
-            'password' => 'Secret123!',
-            'role' => 'receptionniste',
-            'department_id' => 2,
-            'roles' => ['receptionniste'],
-            'levels' => ['receptionniste' => 'write'],
-            'is_active' => 1,
-        ]);
+test('un refus de validation est rapporté tel quel', function () {
+    Http::fake(['*' => Http::response([
+        'message' => 'Données invalides.',
+        'errors' => ['slug' => ['Un département porte déjà cet identifiant.']],
+    ], 422)]);
+    $tenant = departmentTestTenant();
 
-    $reponse->assertRedirect();
-    $reponse->assertSessionHas('success');
+    $this->actingAs(adminTechnique())
+        ->post(route('tech.establishments.departments.store', $tenant), ['name' => 'Cuisine', 'slug' => 'cuisine'])
+        ->assertSessionHas('error', fn ($m) => str_contains($m, 'Un département porte déjà cet identifiant.'));
+});
 
-    expect($double->requetes)->toHaveCount(1)
-        ->and($double->requetes[0]['action'])->toBe('createUser')
-        ->and($double->requetes[0]['data']['name'])->toBe('Marie Dupont')
-        ->and($double->requetes[0]['data']['department_id'])->toBe(2)
-        ->and($double->requetes[0]['roles'])->toBe(['receptionniste']);
+test('un établissement injoignable donne un message clair', function () {
+    Http::fake(fn () => throw new \Illuminate\Http\Client\ConnectionException('refusée'));
+    $tenant = departmentTestTenant();
+
+    $this->actingAs(adminTechnique())
+        ->delete(route('tech.establishments.departments.destroy', ['tenant' => $tenant, 'department' => 5]))
+        ->assertSessionHas('error', fn ($m) => str_contains($m, 'injoignable'));
 });

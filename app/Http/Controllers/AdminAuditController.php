@@ -11,12 +11,11 @@ use App\Models\User;
 use App\Services\BusinessReportExporter;
 use App\Services\BusinessReportingClient;
 use App\Services\DemoDataService;
-use App\Services\GrcAccountSync;
 use App\Services\TenantBackupService;
+use App\Services\PermissionMatrixClient;
 use App\Services\TenantDatabase;
 use App\Services\TenantProvisioningService;
 use App\Support\SiteContentSchema;
-use App\Support\TenantRoles;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -128,7 +127,7 @@ class AdminAuditController extends Controller
             'owner_phone' => ['nullable', 'string', 'max:30'],
             'owner_company' => ['nullable', 'string', 'max:255'],
             'owner_nationality' => ['required_if:owner_type,new', 'nullable', 'string', 'max:100'],
-            'owner_password' => ['required_if:owner_type,new', 'nullable', 'string', 'min:4'],
+            'owner_password' => ['required_if:owner_type,new', 'nullable', 'string', 'min:8'],
 
             // If existing owner
             'owner_id' => ['required_if:owner_type,existing', 'nullable', 'exists:users,id'],
@@ -269,9 +268,6 @@ class AdminAuditController extends Controller
 
         $section = request('section', 'overview');
         $tenantUsers = collect();
-        // Rôles proposés à l'affectation, lus dans la base de l'établissement :
-        // chaque établissement a son propre référentiel de rôles et de départements.
-        $tenantRoles = collect();
         $tenantDepartments = collect();
 
         if ($section === 'users' || $section === 'modules' || $section === 'departments') {
@@ -280,7 +276,6 @@ class AdminAuditController extends Controller
 
                 if ($section === 'users' || $section === 'departments') {
                     $tenantUsers = collect($tenantDb->users($tenant));
-                    $tenantRoles = collect($tenantDb->assignableRoles($tenant));
 
                     // users_count est un compteur dénormalisé
                     if ($tenant->users_count !== $tenantUsers->count()) {
@@ -301,7 +296,7 @@ class AdminAuditController extends Controller
             && app(DemoDataService::class)->estInstalle($tenant);
 
         return view('admin.tenants.show', compact(
-            'tenant', 'tenantUsers', 'tenantRoles', 'tenantDepartments', 'section', 'demoDataInstalled'
+            'tenant', 'tenantUsers', 'tenantDepartments', 'section', 'demoDataInstalled'
         ));
     }
 
@@ -1680,20 +1675,24 @@ class AdminAuditController extends Controller
     }
 
     /**
-     * Répartition des rôles opérationnels par établissement (onglet Rôles) :
-     * lit la table users de chaque tenant provisionné, timeout court, une
-     * base injoignable est signalée plutôt que bloquante. Consommé en AJAX.
+     * Rôles par établissement (onglet Rôles), lus en direct.
+     *
+     * Le référentiel n'est plus recopié dans la console : il vit dans le code
+     * de chaque établissement, qui l'annonce par son API (matrice v2) avec le
+     * nombre de comptes actifs par rôle. Un établissement d'avant la v2 est
+     * compté par sa colonne héritée users.role, comme avant. Une base
+     * injoignable est signalée plutôt que bloquante. Consommé en AJAX.
      */
-    public function rolesDistribution()
+    public function rolesDistribution(PermissionMatrixClient $matrices)
     {
         $user = Auth::user();
         if (! $user || ! $user->isTechAdmin()) {
             abort(403);
         }
 
-        $catalogKeys = array_keys(TenantRoles::catalog());
+        $referentiel = [];
         $rows = [];
-        $totals = array_fill_keys($catalogKeys, 0);
+        $totals = [];
         $unknownTotal = 0;
 
         foreach (Tenant::orderBy('name')->get() as $tenant) {
@@ -1702,41 +1701,92 @@ class AdminAuditController extends Controller
                 'name' => $tenant->name,
                 'slug' => $tenant->slug,
                 'url' => route('tech.establishments.show', ['tenant' => $tenant, 'section' => 'users']),
+                'matrice_url' => route('tech.establishments.permissions', ['tenant' => $tenant]),
                 'reachable' => false,
+                'version' => null,
                 'roles' => [],
                 'unknown' => 0,
                 'total' => 0,
             ];
 
-            if ($tenant->provisioned_at) {
-                try {
-                    $pdo = $this->connectToTenantDatabase($tenant);
-                    $stmt = $pdo->query('SELECT role, COUNT(*) AS n FROM users GROUP BY role');
+            if (! $tenant->provisioned_at) {
+                $rows[] = $row;
 
-                    foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
-                        $role = (string) $r['role'];
-                        $count = (int) $r['n'];
-                        $row['total'] += $count;
+                continue;
+            }
 
-                        if (in_array($role, $catalogKeys, true)) {
-                            $row['roles'][$role] = $count;
-                            $totals[$role] += $count;
-                        } else {
-                            $row['unknown'] += $count;
-                            $unknownTotal += $count;
-                        }
+            $matrice = $matrices->fetch($tenant);
+
+            if ($matrice !== null && (int) ($matrice['version'] ?? 1) >= 2) {
+                $connus = [];
+                foreach ($matrice['roles'] ?? [] as $role) {
+                    $connus[] = $role['slug'];
+                    // Le plus récent l'emporte : un établissement à jour décrit
+                    // mieux un rôle qu'un autre en retard.
+                    $referentiel[$role['slug']] = [
+                        'slug' => $role['slug'],
+                        'name' => $role['name'],
+                        'description' => $role['description'] ?? null,
+                        'level' => $role['level'] ?? null,
+                        'module' => $role['module'] ?? null,
+                        'statut' => $role['statut'] ?? 'actif',
+                    ];
+                    if (($role['titulaires'] ?? 0) > 0) {
+                        $row['roles'][$role['slug']] = (int) $role['titulaires'];
+                        $totals[$role['slug']] = ($totals[$role['slug']] ?? 0) + (int) $role['titulaires'];
                     }
-
-                    $row['reachable'] = true;
-                } catch (\Exception $e) {
-                    // Base injoignable : la ligne reste marquée non joignable
                 }
+
+                foreach ($matrice['comptes'] ?? [] as $compte) {
+                    if (! ($compte['actif'] ?? false)) {
+                        continue;
+                    }
+                    $row['total']++;
+                    if (array_diff($compte['roles'] ?? [], $connus) !== [] || ($compte['roles'] ?? []) === []) {
+                        $row['unknown']++;
+                        $unknownTotal++;
+                    }
+                }
+
+                $row['reachable'] = true;
+                $row['version'] = (int) $matrice['version'];
+                $rows[] = $row;
+
+                continue;
+            }
+
+            try {
+                $pdo = $this->connectToTenantDatabase($tenant);
+                $stmt = $pdo->query('SELECT role, COUNT(*) AS n FROM users GROUP BY role');
+
+                foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
+                    $role = (string) $r['role'];
+                    $count = (int) $r['n'];
+                    $row['total'] += $count;
+                    $row['roles'][$role] = $count;
+                    $totals[$role] = ($totals[$role] ?? 0) + $count;
+                }
+
+                $row['reachable'] = true;
+                $row['version'] = 1;
+            } catch (\Exception $e) {
+                // Base injoignable : la ligne reste marquée non joignable
             }
 
             $rows[] = $row;
         }
 
+        // Rôles comptés chez un établissement d'avant la v2 sans figurer au
+        // référentiel des autres : montrés tels quels plutôt que perdus.
+        foreach (array_keys($totals) as $slug) {
+            $referentiel[$slug] ??= ['slug' => $slug, 'name' => $slug, 'description' => null, 'level' => null, 'module' => null, 'statut' => 'inconnu'];
+        }
+
+        $ordre = array_values($referentiel);
+        usort($ordre, fn ($a, $b) => [($a['level'] ?? 9), $a['name']] <=> [($b['level'] ?? 9), $b['name']]);
+
         return response()->json([
+            'referentiel' => $ordre,
             'establishments' => $rows,
             'totals' => $totals,
             'unknown_total' => $unknownTotal,
@@ -2284,10 +2334,9 @@ class AdminAuditController extends Controller
         $tenantUsers = collect();
         if ($section === 'users') {
             try {
-                $pdo = $this->connectToTenantDatabase($tenant);
-                $rows = $pdo->query('SELECT id, name, email, phone, role, is_active FROM users ORDER BY name')
-                    ->fetchAll(\PDO::FETCH_ASSOC);
-                $tenantUsers = collect($rows)->map(fn ($r) => (object) $r);
+                // Avec leurs affectations : la colonne héritée users.role peut
+                // être périmée.
+                $tenantUsers = collect(app(TenantDatabase::class)->users($tenant));
 
                 if ($tenant->users_count !== $tenantUsers->count()) {
                     $tenant->update(['users_count' => $tenantUsers->count()]);
@@ -2575,172 +2624,5 @@ class AdminAuditController extends Controller
             'restaurant' => array_values($restaurant),
             'shop' => array_values($shop),
         ]);
-    }
-
-    public function createTenantManager(Request $request, Tenant $tenant)
-    {
-        $user = Auth::user();
-        if (! $user) {
-            abort(401);
-        }
-        if (! $user->isTechAdmin() && ($tenant->owner_id !== $user->id)) {
-            abort(403, "Vous n'avez pas l'autorisation de gérer cet établissement.");
-        }
-
-        $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:30'],
-            'password' => ['nullable', 'string', 'min:4'],
-        ]);
-
-        // Si aucun mot de passe fourni (flux TECH), on en génère un et on le
-        // renvoie dans la réponse pour que TECH puisse le transmettre au manager.
-        $generatedPassword = null;
-        if (empty($validated['password'])) {
-            $generatedPassword = Str::random(10);
-            $validated['password'] = $generatedPassword;
-        }
-
-        try {
-            $pdo = $this->connectToTenantDatabase($tenant);
-
-            $stmt = $pdo->prepare('SELECT 1 FROM users WHERE email = ?');
-            $stmt->execute([$validated['email']]);
-            if ($stmt->fetch()) {
-                return response()->json([
-                    'message' => 'Un utilisateur avec cet email existe déjà dans cet établissement.',
-                ], 422);
-            }
-
-            $hashedPassword = Hash::make($validated['password']);
-
-            $stmt = $pdo->prepare('
-                INSERT INTO users (name, email, phone, password, role, is_active, created_at, updated_at) 
-                VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())
-            ');
-
-            $stmt->execute([
-                $validated['name'],
-                $validated['email'],
-                $validated['phone'] ?? null,
-                $hashedPassword,
-                'manager',
-                true,
-            ]);
-
-            $tenant->increment('users_count');
-
-            AuditLog::record(
-                Auth::id(),
-                'create_manager',
-                "Création du manager {$validated['name']} ({$validated['email']}) pour l'établissement {$tenant->name}",
-                $user->role
-            );
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Manager créé avec succès.',
-                'generated_password' => $generatedPassword,
-            ], 201);
-
-        } catch (\PDOException $e) {
-            Log::error("Failed to connect or insert manager in tenant database {$tenant->db_name}: ".$e->getMessage());
-
-            return response()->json([
-                'message' => "Impossible de se connecter à la base de données de l'établissement: ".$e->getMessage(),
-            ], 500);
-        }
-    }
-
-    public function createTenantController(Request $request, Tenant $tenant)
-    {
-        $user = Auth::user();
-        if (! $user) {
-            abort(401);
-        }
-        if (! $user->isTechAdmin() && ($tenant->owner_id !== $user->id)) {
-            abort(403, "Vous n'avez pas l'autorisation de gérer cet établissement.");
-        }
-
-        $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:30'],
-            'password' => ['nullable', 'string', 'min:4'],
-        ]);
-
-        $generatedPassword = null;
-        if (empty($validated['password'])) {
-            $generatedPassword = Str::random(10);
-            $validated['password'] = $generatedPassword;
-        }
-
-        try {
-            $pdo = $this->connectToTenantDatabase($tenant);
-
-            $stmt = $pdo->prepare('SELECT 1 FROM users WHERE email = ?');
-            $stmt->execute([$validated['email']]);
-            if ($stmt->fetch()) {
-                return response()->json([
-                    'message' => 'Un utilisateur avec cet email existe déjà dans cet établissement.',
-                ], 422);
-            }
-
-            $hashedPassword = Hash::make($validated['password']);
-
-            $stmt = $pdo->prepare('
-                INSERT INTO users (name, email, phone, password, role, is_active, created_at, updated_at) 
-                VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())
-            ');
-
-            $stmt->execute([
-                $validated['name'],
-                $validated['email'],
-                $validated['phone'] ?? null,
-                $hashedPassword,
-                'controller',
-                true,
-            ]);
-
-            $tenant->increment('users_count');
-
-            // Report du compte vers le conteneur GRC (voir GrcAccountSync :
-            // la logique est partagée avec la modification d'un employé, pour
-            // que les deux chemins ne divergent plus).
-            $grcSynchronise = app(GrcAccountSync::class)->push($tenant, [
-                'email' => $validated['email'],
-                'password' => $validated['password'],
-                'full_name' => $validated['name'],
-                'phone' => $validated['phone'] ?? null,
-            ]);
-
-            AuditLog::record(
-                Auth::id(),
-                'create_controller',
-                "Création du contrôleur de gestion {$validated['name']} ({$validated['email']}) pour l'établissement {$tenant->name}",
-                $user->role
-            );
-
-            $message = 'Contrôleur de gestion créé avec succès.';
-            if ($grcSynchronise === false) {
-                $message .= " Attention : le compte n'a pas pu être reporté dans le module GRC —"
-                    ." il faudra relancer l'opération une fois le conteneur joignable.";
-            }
-
-            return response()->json([
-                'success' => true,
-                'message' => $message,
-                'generated_password' => $generatedPassword,
-                'grc_synchronise' => $grcSynchronise,
-            ], 201);
-
-        } catch (\PDOException $e) {
-            Log::error("Failed to connect or insert controller in tenant database {$tenant->db_name}: ".$e->getMessage());
-
-            return response()->json([
-                'message' => "Impossible de se connecter à la base de données de l'établissement: ".$e->getMessage(),
-            ], 500);
-        }
     }
 }

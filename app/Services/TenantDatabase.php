@@ -3,8 +3,6 @@
 namespace App\Services;
 
 use App\Models\Tenant;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Str;
 use PDO;
 use PDOException;
 
@@ -12,9 +10,10 @@ use PDOException;
  * Accès à la base applicative d'un établissement.
  *
  * Chaque établissement a sa propre base dans son propre conteneur : il n'y a
- * pas de copie des employés côté ERP. Modifier un utilisateur depuis l'ERP
- * revient donc à écrire dans la base que wetchah_app lit — la « synchronisation »
- * est immédiate parce qu'il n'y a qu'une seule donnée.
+ * pas de copie des employés côté ERP. La console y lit le personnel et les
+ * départements ; elle n'y écrit plus ni compte ni département — ceux-là
+ * passent par l'API d'orchestration de l'application (TenantDirectoryClient),
+ * seule à pouvoir les valider et les tracer. Restent les tickets de support.
  */
 class TenantDatabase
 {
@@ -127,25 +126,6 @@ class TenantDatabase
         }, $users);
     }
 
-    /** Un employé précis, ou null s'il n'existe pas dans cet établissement. */
-    public function findUser(Tenant $tenant, int $userId): ?object
-    {
-        $stmt = $this->connect($tenant)->prepare(
-            'SELECT id, name, email, phone, role, is_active, department_id FROM users WHERE id = ?'
-        );
-        try {
-            $stmt->execute([$userId]);
-            $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        } catch (PDOException $e) {
-            $stmt = $this->connect($tenant)->prepare(
-                'SELECT id, name, email, phone, role, is_active FROM users WHERE id = ?'
-            );
-            $stmt->execute([$userId]);
-            $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        }
-
-        return $row ? (object) $row : null;
-    }
 
     /**
      * Fiche complète d'un employé : identité, département, rôles et permissions modulaires.
@@ -277,331 +257,13 @@ class TenantDatabase
         }
     }
 
-    /**
-     * Enregistre le département et les surcharges de permissions par module d'un employé.
-     *
-     * @param  array<string, string>  $modulePermissions  [module_key => inherit|write|read|none]
-     */
-    public function syncUserPermissions(Tenant $tenant, int $userId, ?int $departmentId, array $modulePermissions): void
-    {
-        try {
-            $pdo = $this->connect($tenant);
 
-            // 1. Mise à jour du département
-            try {
-                $stmt = $pdo->prepare('UPDATE users SET department_id = ?, updated_at = NOW() WHERE id = ?');
-                $stmt->execute([$departmentId, $userId]);
-            } catch (\Throwable $e) {
-                // Colonne department_id absente sur ancien schéma
-            }
 
-            // 2. Synchronisation des surcharges modulaires
-            try {
-                $pdo->prepare('DELETE FROM user_module_permissions WHERE user_id = ?')->execute([$userId]);
 
-                if (! empty($modulePermissions)) {
-                    $insert = $pdo->prepare(
-                        'INSERT INTO user_module_permissions (user_id, module_key, access_level, created_at, updated_at)
-                         VALUES (?, ?, ?, NOW(), NOW())'
-                    );
 
-                    foreach ($modulePermissions as $moduleKey => $level) {
-                        $level = trim(strtolower((string) $level));
-                        // 'inherit' signifie "suit la règle du département", aucune ligne de surcharge stockée
-                        if ($level === 'inherit' || empty($level)) {
-                            continue;
-                        }
-                        if (in_array($level, ['write', 'read', 'none'], true)) {
-                            $insert->execute([$userId, $moduleKey, $level]);
-                        }
-                    }
-                }
-            } catch (\Throwable $e) {
-                // Table non présente sur ancien schéma
-            }
-        } catch (\Throwable $e) {
-            // Conteneur injoignable ou erreur générale
-        }
-    }
 
-    /** Nombre de managers actifs — un établissement doit en garder au moins un. */
-    public function activeManagerCount(Tenant $tenant): int
-    {
-        try {
-            $stmt = $this->connect($tenant)
-                ->query("SELECT COUNT(*) FROM users WHERE role = 'manager' AND is_active = true");
 
-            return $stmt ? (int) $stmt->fetchColumn() : 0;
-        } catch (\Throwable $e) {
-            return 0;
-        }
-    }
 
-    /**
-     * Rôles assignables de l'établissement, groupés par module.
-     * Vide si l'établissement n'a pas encore la table des rôles.
-     *
-     * @return array<int, object>
-     */
-    public function assignableRoles(Tenant $tenant): array
-    {
-        try {
-            $rows = $this->connect($tenant)->query('
-                SELECT id, name, slug, description, module, icon
-                FROM roles
-                WHERE is_assignable = true
-                ORDER BY sort_order, name
-            ')->fetchAll(PDO::FETCH_ASSOC);
-
-            return array_map(fn ($r) => (object) $r, $rows);
-        } catch (PDOException $e) {
-            return [];
-        }
-    }
-
-    /**
-     * Récupère un département précis avec ses modules.
-     */
-    public function findDepartment(Tenant $tenant, int $departmentId): ?object
-    {
-        $pdo = $this->connect($tenant);
-
-        try {
-            $stmt = $pdo->prepare('
-                SELECT id, name, slug, code, description, icon, accent, sort_order, is_active
-                FROM departments
-                WHERE id = ?
-            ');
-            $stmt->execute([$departmentId]);
-            $dept = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            if (! $dept) {
-                return null;
-            }
-
-            $modStmt = $pdo->prepare('
-                SELECT module_key, default_level
-                FROM department_module
-                WHERE department_id = ?
-            ');
-            $modStmt->execute([$departmentId]);
-            $dept['modules'] = $modStmt->fetchAll(PDO::FETCH_KEY_PAIR) ?: [];
-
-            return (object) $dept;
-        } catch (\Throwable $e) {
-            return null;
-        }
-    }
-
-    /**
-     * Crée un nouveau département pour l'établissement.
-     */
-    public function createDepartment(Tenant $tenant, array $data, array $modules = []): int
-    {
-        $pdo = $this->connect($tenant);
-
-        $name = trim((string) ($data['name'] ?? ''));
-        $slug = trim((string) ($data['slug'] ?? ''));
-        if (empty($slug)) {
-            $slug = Str::slug($name, '_');
-        }
-        $code = trim((string) ($data['code'] ?? ''));
-        if (empty($code)) {
-            $code = strtoupper(substr(preg_replace('/[^a-zA-Z]/', '', $slug), 0, 4)) ?: 'DEPT';
-        }
-        $description = $data['description'] ?? null;
-        $icon = $data['icon'] ?? 'briefcase';
-        $accent = $data['accent'] ?? 'indigo';
-        $sortOrder = (int) ($data['sort_order'] ?? 0);
-        $isActive = isset($data['is_active']) ? (bool) $data['is_active'] : true;
-
-        $pdo->beginTransaction();
-        try {
-            $stmt = $pdo->prepare('
-                INSERT INTO departments (name, slug, code, description, icon, accent, sort_order, is_active, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
-                RETURNING id
-            ');
-            $stmt->execute([$name, $slug, $code, $description, $icon, $accent, $sortOrder, $isActive ? 'true' : 'false']);
-            $deptId = (int) $stmt->fetchColumn();
-
-            if (! empty($modules)) {
-                $modStmt = $pdo->prepare('
-                    INSERT INTO department_module (department_id, module_key, default_level, created_at, updated_at)
-                    VALUES (?, ?, ?, NOW(), NOW())
-                ');
-                foreach ($modules as $modKey => $level) {
-                    $lvl = in_array($level, ['write', 'read'], true) ? $level : 'write';
-                    $modStmt->execute([$deptId, $modKey, $lvl]);
-                }
-            }
-
-            $pdo->commit();
-
-            return $deptId;
-        } catch (\Throwable $e) {
-            if ($pdo->inTransaction()) {
-                $pdo->rollBack();
-            }
-            throw $e;
-        }
-    }
-
-    /**
-     * Met à jour un département existant et ses modules par défaut.
-     */
-    public function updateDepartment(Tenant $tenant, int $departmentId, array $data, array $modules = []): void
-    {
-        $pdo = $this->connect($tenant);
-
-        $pdo->beginTransaction();
-        try {
-            $fields = [];
-            $values = [];
-
-            if (isset($data['name'])) {
-                $fields[] = 'name = ?';
-                $values[] = trim((string) $data['name']);
-            }
-            if (isset($data['slug'])) {
-                $fields[] = 'slug = ?';
-                $values[] = trim((string) $data['slug']);
-            }
-            if (isset($data['code'])) {
-                $fields[] = 'code = ?';
-                $values[] = trim((string) $data['code']);
-            }
-            if (array_key_exists('description', $data)) {
-                $fields[] = 'description = ?';
-                $values[] = $data['description'];
-            }
-            if (isset($data['icon'])) {
-                $fields[] = 'icon = ?';
-                $values[] = $data['icon'];
-            }
-            if (isset($data['accent'])) {
-                $fields[] = 'accent = ?';
-                $values[] = $data['accent'];
-            }
-            if (isset($data['sort_order'])) {
-                $fields[] = 'sort_order = ?';
-                $values[] = (int) $data['sort_order'];
-            }
-            if (isset($data['is_active'])) {
-                $fields[] = 'is_active = ?';
-                $values[] = $data['is_active'] ? 'true' : 'false';
-            }
-
-            if (! empty($fields)) {
-                $fields[] = 'updated_at = NOW()';
-                $values[] = $departmentId;
-                $sql = 'UPDATE departments SET '.implode(', ', $fields).' WHERE id = ?';
-                $pdo->prepare($sql)->execute($values);
-            }
-
-            // Synchroniser les modules attachés
-            $pdo->prepare('DELETE FROM department_module WHERE department_id = ?')->execute([$departmentId]);
-            if (! empty($modules)) {
-                $modStmt = $pdo->prepare('
-                    INSERT INTO department_module (department_id, module_key, default_level, created_at, updated_at)
-                    VALUES (?, ?, ?, NOW(), NOW())
-                ');
-                foreach ($modules as $modKey => $level) {
-                    $lvl = in_array($level, ['write', 'read'], true) ? $level : 'write';
-                    $modStmt->execute([$departmentId, $modKey, $lvl]);
-                }
-            }
-
-            $pdo->commit();
-        } catch (\Throwable $e) {
-            if ($pdo->inTransaction()) {
-                $pdo->rollBack();
-            }
-            throw $e;
-        }
-    }
-
-    /**
-     * Supprime un département de l'établissement (dissocie d'abord les employés rattachés).
-     */
-    public function deleteDepartment(Tenant $tenant, int $departmentId): void
-    {
-        $pdo = $this->connect($tenant);
-
-        $pdo->beginTransaction();
-        try {
-            // Dissocier les employés rattachés
-            $pdo->prepare('UPDATE users SET department_id = NULL, updated_at = NOW() WHERE department_id = ?')
-                ->execute([$departmentId]);
-
-            // Supprimer les associations de modules
-            $pdo->prepare('DELETE FROM department_module WHERE department_id = ?')
-                ->execute([$departmentId]);
-
-            // Supprimer le département
-            $pdo->prepare('DELETE FROM departments WHERE id = ?')
-                ->execute([$departmentId]);
-
-            $pdo->commit();
-        } catch (\Throwable $e) {
-            if ($pdo->inTransaction()) {
-                $pdo->rollBack();
-            }
-            throw $e;
-        }
-    }
-
-    /**
-     * Crée un utilisateur directement dans la base de l'établissement.
-     */
-    public function createUser(Tenant $tenant, array $userData, array $roleSlugs = [], array $levels = [], ?int $departmentId = null): int
-    {
-        $pdo = $this->connect($tenant);
-
-        $name = trim((string) $userData['name']);
-        $email = strtolower(trim((string) $userData['email']));
-        $phone = $userData['phone'] ?? null;
-        $password = Hash::make($userData['password']);
-        $isActive = isset($userData['is_active']) ? (bool) $userData['is_active'] : true;
-        $role = ! empty($roleSlugs) ? $roleSlugs[0] : ($userData['role'] ?? 'reception');
-
-        $pdo->beginTransaction();
-        try {
-            $stmt = $pdo->prepare('
-                INSERT INTO users (name, email, phone, password, role, is_active, department_id, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
-                RETURNING id
-            ');
-            $stmt->execute([$name, $email, $phone, $password, $role, $isActive ? 'true' : 'false', $departmentId]);
-            $userId = (int) $stmt->fetchColumn();
-
-            // Attacher les rôles dans le pivot role_user
-            if (! empty($roleSlugs)) {
-                $placeholders = implode(',', array_fill(0, count($roleSlugs), '?'));
-                $rStmt = $pdo->prepare("SELECT id, slug FROM roles WHERE slug IN ({$placeholders})");
-                $rStmt->execute($roleSlugs);
-                $roles = $rStmt->fetchAll(PDO::FETCH_ASSOC);
-
-                $pivotStmt = $pdo->prepare('
-                    INSERT INTO role_user (user_id, role_id, level, created_at, updated_at)
-                    VALUES (?, ?, ?, NOW(), NOW())
-                ');
-                foreach ($roles as $r) {
-                    $lvl = $levels[$r['slug']] ?? ($levels[$r['id']] ?? 'write');
-                    $pivotStmt->execute([$userId, $r['id'], $lvl === 'read' ? 'read' : 'write']);
-                }
-            }
-
-            $pdo->commit();
-
-            return $userId;
-        } catch (\Throwable $e) {
-            if ($pdo->inTransaction()) {
-                $pdo->rollBack();
-            }
-            throw $e;
-        }
-    }
 
     /**
      * Tickets remontés par le personnel depuis le bouton « Suggestion » de

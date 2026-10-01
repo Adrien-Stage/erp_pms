@@ -169,3 +169,47 @@ test("le jeton d'assistance est signé avec le secret de l'établissement", func
     expect(hash_equals(hash_hmac('sha256', $charge, $secret), $signature))->toBeTrue()
         ->and(hash_equals(hash_hmac('sha256', $charge, SECRET_COMMUN_ASSISTANCE), $signature))->toBeFalse();
 });
+
+// ── Canal d'orchestration ────────────────────────────────────────────────────
+
+test("le secret d'orchestration ne va qu'à l'application, jamais au GRC", function () {
+    $yaml = composeDe(etablissementAvecGrc('zingana'));
+
+    $orchestration = valeursDe($yaml, 'ORCHESTRATION_SECRET');
+
+    // Le GRC détient le secret de reporting pour lire les chiffres : s'il
+    // détenait celui-ci, il pourrait se créer un compte administrateur.
+    expect($orchestration)->toHaveCount(1)
+        ->and($orchestration[0])->toMatch('/^[0-9a-f]{64}$/')
+        ->and($orchestration[0])->not->toBe(valeursDe($yaml, 'REPORTING_SECRET')[0]);
+});
+
+test("le secret d'orchestration est repris d'une mise à jour à l'autre", function () {
+    $tenant = etablissementAvecGrc('zingana');
+
+    expect(valeursDe(composeDe($tenant), 'ORCHESTRATION_SECRET'))
+        ->toBe(valeursDe(composeDe($tenant), 'ORCHESTRATION_SECRET'));
+});
+
+test("la console ouvre le canal avec le secret d'orchestration, et retombe sur celui du reporting pour une application antérieure", function () {
+    $tenant = etablissementAvecGrc('zingana');
+    $yaml = composeDe($tenant);
+    $orchestration = valeursDe($yaml, 'ORCHESTRATION_SECRET')[0];
+    $reporting = valeursDe($yaml, 'REPORTING_SECRET')[0];
+
+    // Une application d'avant ce secret refuse le premier jeton.
+    Http::fakeSequence()
+        ->push(['message' => 'Non autorisé.'], 401)
+        ->push(['catalogue' => [], 'ecarts' => []], 200);
+
+    expect(app(PermissionMatrixClient::class)->fetch($tenant))->not->toBeNull();
+
+    $jetons = [];
+    Http::assertSent(function ($requete) use (&$jetons) {
+        $jetons[] = $requete->header('Authorization')[0] ?? null;
+
+        return true;
+    });
+
+    expect($jetons)->toBe(['Bearer ' . $orchestration, 'Bearer ' . $reporting]);
+});

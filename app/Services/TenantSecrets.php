@@ -7,9 +7,12 @@ use App\Models\Tenant;
 /**
  * Secrets de service propres à chaque établissement.
  *
- * REPORTING_SECRET garde l'API de reporting, la matrice des droits et le
- * provisioning des comptes GRC ; ASSISTANCE_SECRET signe les jetons du mode
- * assistance. Longtemps, une seule valeur lue dans le .env de la console était
+ * REPORTING_SECRET garde l'API de reporting et le provisioning des comptes
+ * GRC ; ORCHESTRATION_SECRET ouvre le canal d'administration de
+ * l'établissement — matrice des droits, comptes administrateurs,
+ * départements — et n'est remis qu'à la console, jamais au GRC, qui détient le
+ * précédent pour lire les chiffres ; ASSISTANCE_SECRET signe les jetons du
+ * mode assistance. Longtemps, une seule valeur lue dans le .env de la console était
  * injectée dans tous les établissements et tous les GRC : qui lisait
  * l'environnement d'un seul conteneur pouvait lire les finances, réécrire les
  * droits et ouvrir une session d'administration dans tous les autres.
@@ -24,8 +27,9 @@ use App\Models\Tenant;
  */
 class TenantSecrets
 {
-    public const REPORTING  = 'REPORTING_SECRET';
-    public const ASSISTANCE = 'ASSISTANCE_SECRET';
+    public const REPORTING     = 'REPORTING_SECRET';
+    public const ASSISTANCE    = 'ASSISTANCE_SECRET';
+    public const ORCHESTRATION = 'ORCHESTRATION_SECRET';
 
     /**
      * Secret en vigueur chez l'établissement : celui que ses conteneurs ont
@@ -76,6 +80,8 @@ class TenantSecrets
         return (string) match ($cle) {
             self::REPORTING  => config('provisioning.reporting_secret'),
             self::ASSISTANCE => config('assistance.secret'),
+            // Né par établissement : il n'a jamais eu de valeur commune.
+            self::ORCHESTRATION => '',
         };
     }
 }

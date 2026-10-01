@@ -640,10 +640,13 @@ class TenantProvisioningService
         $vapidPublic  = (string) env('VAPID_PUBLIC_KEY', '');
         $vapidPrivate = (string) env('VAPID_PRIVATE_KEY', '');
         // Secret de service de cet établissement : il garde son API de
-        // reporting (données financières), sa matrice des droits et le
-        // provisioning des comptes de son GRC. Jamais partagé avec un autre
-        // établissement. Voir TenantSecrets.
+        // reporting (données financières) et le provisioning des comptes de
+        // son GRC. Jamais partagé avec un autre établissement. Voir TenantSecrets.
         $reportingSecret = $this->secrets->forCompose($composePath, TenantSecrets::REPORTING);
+        // Canal d'administration (droits, comptes administrateurs,
+        // départements) : remis à l'application seule. Le GRC, qui reçoit le
+        // secret de reporting, ne doit pas pouvoir s'y créer un compte.
+        $orchestrationSecret = $this->secrets->forCompose($composePath, TenantSecrets::ORCHESTRATION);
         // Messagerie sortante, mutualisée pour toute la plateforme comme les
         // clés VAPID : l'acheminement (compte Resend, relais SMTP) appartient à
         // l'éditeur, alors que l'adresse *affichée* au client relève de chaque
@@ -697,6 +700,7 @@ class TenantProvisioningService
       VAPID_PUBLIC_KEY: "{$vapidPublic}"
       VAPID_PRIVATE_KEY: "{$vapidPrivate}"
       REPORTING_SECRET: "{$reportingSecret}"
+      ORCHESTRATION_SECRET: "{$orchestrationSecret}"
       MAIL_MAILER: '{$mailMailer}'
       RESEND_API_KEY: '{$resendKey}'
       MAIL_SCHEME: '{$mailScheme}'

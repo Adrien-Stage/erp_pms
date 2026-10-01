@@ -156,78 +156,23 @@
 
             {{-- ==================== UTILISATEURS ==================== --}}
             @elseif($section === 'users')
-                <div class="mb-6 flex items-baseline justify-between" x-data="{
-                    show: false, submitting: false, errorMsg: '', generatedPassword: null,
-                    name: '', email: '', phone: '',
-                    reset() { this.name=''; this.email=''; this.phone=''; this.errorMsg=''; this.generatedPassword=null; },
-                    submit() {
-                        this.submitting = true; this.errorMsg = '';
-                        fetch('{{ route('business.establishments.create-manager', $tenant) }}', {
-                            method: 'POST',
-                            headers: { 'Content-Type':'application/json', 'X-CSRF-TOKEN':'{{ csrf_token() }}', 'Accept':'application/json' },
-                            body: JSON.stringify({ name: this.name, email: this.email, phone: this.phone })
-                        })
-                        .then(r => r.json().then(d => ({ status: r.status, body: d })))
-                        .then(res => {
-                            this.submitting = false;
-                            if (res.status === 201) { this.generatedPassword = res.body.generated_password; }
-                            else { this.errorMsg = res.body.message || 'Une erreur est survenue.'; }
-                        })
-                        .catch(() => { this.submitting = false; this.errorMsg = 'Impossible de contacter le serveur.'; });
-                    }
-                }">
+                <div class="mb-6 flex flex-wrap items-baseline justify-between gap-3">
                     <div>
                         <h2 class="text-xl font-extrabold text-slate-800 tracking-tight">Utilisateurs</h2>
                         <p class="text-xs text-slate-500 mt-1">{{ $tenantUsers->count() }} utilisateur(s) dans {{ $tenant->name }}.</p>
                     </div>
-                    <button type="button" @click="show = true; reset()" class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 transition cursor-pointer">
-                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-                        Créer un manager
-                    </button>
+                    <a href="{{ route('business.establishments.permissions', ['tenant' => $tenant, 'onglet' => 'administrateurs']) }}"
+                       class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 transition">
+                        Comptes administrateurs
+                    </a>
+                </div>
 
-                    {{-- Modale création manager --}}
-                    <div x-show="show" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" x-transition.opacity>
-                        <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden max-w-md w-full" @click.away="if(!submitting){ show = generatedPassword ? show : false }">
-                            <div class="bg-slate-950 px-6 py-5 flex items-center gap-3">
-                                <div class="rounded-lg bg-indigo-500/20 p-2"><svg class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 19.235V18a3.75 3.75 0 013.75-3.75h1.5A3.75 3.75 0 0112 18v1.235" /></svg></div>
-                                <h3 class="text-sm font-bold text-white">Créer un manager — <span class="font-mono">{{ $tenant->slug }}</span></h3>
-                            </div>
-                            <template x-if="!generatedPassword">
-                                <form @submit.prevent="submit()" class="p-6 space-y-4">
-                                    <p class="text-xs text-slate-600 leading-relaxed">Crée un compte manager (directeur) dans cet établissement. Un mot de passe sera généré automatiquement.</p>
-                                    <div x-show="errorMsg" x-cloak class="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700" x-text="errorMsg"></div>
-                                    <div>
-                                        <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1">Nom complet</label>
-                                        <input type="text" x-model="name" required class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">
-                                    </div>
-                                    <div>
-                                        <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1">Email</label>
-                                        <input type="email" x-model="email" required class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">
-                                    </div>
-                                    <div>
-                                        <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1">Téléphone <span class="normal-case text-slate-400">(optionnel)</span></label>
-                                        <input type="text" x-model="phone" class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">
-                                    </div>
-                                    <div class="flex items-center justify-end gap-3 pt-1">
-                                        <button type="button" @click="show = false" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition">Annuler</button>
-                                        <button type="submit" :disabled="submitting" class="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 transition disabled:opacity-60 cursor-pointer" x-text="submitting ? 'Création…' : 'Créer le manager'"></button>
-                                    </div>
-                                </form>
-                            </template>
-                            <template x-if="generatedPassword">
-                                <div class="p-6 space-y-4 text-center">
-                                    <div class="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center mx-auto"><svg class="h-6 w-6 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></div>
-                                    <h3 class="text-sm font-bold text-slate-800">Manager créé</h3>
-                                    <p class="text-xs text-slate-500">Transmettez ces identifiants au directeur :</p>
-                                    <div class="rounded-lg bg-slate-50 border border-slate-200 p-3 text-left space-y-1">
-                                        <p class="text-xs"><span class="text-slate-400">Email :</span> <span class="font-mono font-semibold" x-text="email"></span></p>
-                                        <p class="text-xs"><span class="text-slate-400">Mot de passe :</span> <span class="font-mono font-semibold text-indigo-600" x-text="generatedPassword"></span></p>
-                                    </div>
-                                    <button type="button" @click="show = false; window.location.reload()" class="w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-indigo-700 transition cursor-pointer">Terminé</button>
-                                </div>
-                            </template>
-                        </div>
-                    </div>
+                {{-- Le propriétaire désigne l'administrateur — le service
+                     informatique de l'hôtel —, qui crée tous les autres comptes,
+                     managers compris, dans l'application. --}}
+                <div class="mb-5 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3 text-xs leading-relaxed text-indigo-900">
+                    Les comptes du personnel se créent dans l'application de l'établissement, par son administrateur.
+                    Vous créez les comptes administrateurs depuis <strong>Droits &amp; rôles</strong>.
                 </div>
 
                 <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -247,7 +192,17 @@
                                             <td class="px-6 py-3 font-bold text-slate-800">{{ $u->name }}</td>
                                             <td class="px-3 py-3 text-slate-600">{{ $u->email }}</td>
                                             <td class="px-3 py-3 text-slate-500">{{ $u->phone ?? '—' }}</td>
-                                            <td class="px-3 py-3"><span class="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">{{ $u->role }}</span></td>
+                                            <td class="px-3 py-3">
+                                                {{-- Les affectations font foi ; la colonne héritée ne compte
+                                                     que pour un compte qui n'en a pas. --}}
+                                                <div class="flex flex-wrap gap-1">
+                                                    @forelse($u->roles ?? [] as $r)
+                                                        <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">{{ $r['name'] }}</span>
+                                                    @empty
+                                                        <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">{{ $u->role }}</span>
+                                                    @endforelse
+                                                </div>
+                                            </td>
                                             <td class="px-6 py-3 text-center">
                                                 <span class="inline-flex items-center gap-1.5 text-[10px] font-bold {{ $u->is_active ? 'text-emerald-600' : 'text-red-500' }}">
                                                     <span class="h-1.5 w-1.5 rounded-full {{ $u->is_active ? 'bg-emerald-500' : 'bg-red-500' }}"></span>

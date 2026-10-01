@@ -177,7 +177,8 @@ nécessaire à cause d'OPcache, voir [Développement](developpement.md).
 > les conteneurs.
 >
 > `REPORTING_SECRET` et `ASSISTANCE_SECRET` ne sont plus distribués : chaque
-> établissement a les siens, tirés au hasard dans son Compose. Un établissement
+> établissement a les siens, tirés au hasard dans son Compose, comme son
+> `ORCHESTRATION_SECRET` — qui n'a jamais eu de valeur commune. Un établissement
 > encore sur l'ancien secret commun en reçoit de propres à sa prochaine mise à jour
 > ou application des modules — c'est aussi la façon de le faire quitter le secret
 > commun sans attendre.

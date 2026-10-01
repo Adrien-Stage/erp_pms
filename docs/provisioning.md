@@ -98,7 +98,8 @@ l'établissement :
 | `TENANT_SLUG`, `TENANT_CURRENCY` | Identité |
 | `TENANT_SETTINGS`, `TENANT_MODULES` | JSON — thème, pays, ville, modules actifs |
 | `ASSISTANCE_SECRET` | Vérification des jetons du mode assistance — propre à l'établissement |
-| `REPORTING_SECRET` | Protection de l'API de reporting, de la matrice des droits et du provisioning GRC — propre à l'établissement, partagé avec son seul GRC |
+| `REPORTING_SECRET` | Protection de l'API de reporting et du provisioning GRC — propre à l'établissement, partagé avec son seul GRC |
+| `ORCHESTRATION_SECRET` | Canal d'administration : matrice des droits, comptes administrateurs, départements — propre à l'établissement, remis à l'application **seule** (jamais au GRC) |
 | `VAPID_*` | Notifications Web Push (clés de l'éditeur, communes) |
 
 L'`APP_KEY` est **stable entre deux provisionings** : elle est relue depuis le

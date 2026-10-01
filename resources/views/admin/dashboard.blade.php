@@ -2282,16 +2282,6 @@
         @elseif($activeTab === 'roles' && $isTech)
             {{-- ================= RÔLES & PERMISSIONS ================= --}}
             @php
-                $roleCatalog     = \App\Support\TenantRoles::catalog();
-                $moduleColumns   = \App\Support\TenantRoles::moduleColumns();
-                $rolePermissions = \App\Support\TenantRoles::permissions();
-                $moduleBadges = [
-                    'core' => 'bg-indigo-50 text-indigo-700 border-indigo-200',
-                    'restaurant' => 'bg-amber-50 text-amber-700 border-amber-200',
-                    'shop' => 'bg-emerald-50 text-emerald-700 border-emerald-200',
-                    'housekeeping' => 'bg-sky-50 text-sky-700 border-sky-200',
-                    'accounting' => 'bg-violet-50 text-violet-700 border-violet-200',
-                ];
                 $platformRoles = [
                     'tech_admin' => ['label' => 'Administrateur technique', 'description' => 'Provisioning, supervision, modules, CMS et cycle de vie des établissements.', 'count' => \App\Models\User::where('role', \App\Models\User::ROLE_TECH_ADMIN)->count()],
                     'owner' => ['label' => 'Propriétaire (business)', 'description' => 'Console business consolidée de ses établissements — pas d\'accès technique.', 'count' => \App\Models\User::where('role', \App\Models\User::ROLE_OWNER)->count()],
@@ -2300,7 +2290,7 @@
             <div class="mt-6 space-y-8">
                 <div>
                     <h2 class="text-xl font-bold text-slate-800 tracking-tight">Rôles et permissions</h2>
-                    <p class="text-xs text-slate-500 mt-1">Consultation des rôles de la plateforme et des rôles opérationnels de l'application établissement — pms documente ces rôles et suit leur répartition, ils sont attribués dans chaque application.</p>
+                    <p class="text-xs text-slate-500 mt-1">Rôles de la plateforme, et rôles opérationnels lus en direct dans chaque établissement : leur référentiel vit dans le code de l'application, la console ne le recopie plus. Les droits de chaque établissement se règlent dans sa rubrique « Droits &amp; rôles ».</p>
                 </div>
 
                 {{-- Rôles plateforme (pms) --}}
@@ -2323,68 +2313,12 @@
                     </div>
                 </div>
 
-                {{-- Rôles opérationnels (application établissement) --}}
-                <div>
-                    <h3 class="text-sm font-bold text-slate-800 mb-3">Rôles opérationnels (application établissement)</h3>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                        @foreach($roleCatalog as $key => $role)
-                            <div class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-                                <div class="flex items-start justify-between gap-2">
-                                    <p class="text-xs font-bold text-slate-800">{{ $role['label'] }}</p>
-                                    <span class="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wider {{ $moduleBadges[$role['module']] ?? 'bg-slate-50 text-slate-500 border-slate-200' }}">
-                                        {{ $moduleColumns[$role['module']] ?? $role['module'] }}
-                                    </span>
-                                </div>
-                                <p class="font-mono text-[10px] text-slate-400 mt-0.5">{{ $key }}</p>
-                                <p class="text-[11px] text-slate-500 mt-2 leading-relaxed">{{ $role['description'] }}</p>
-                            </div>
-                        @endforeach
-                    </div>
-                </div>
-
-                {{-- Permissions par module (matrice consultative) --}}
-                <div class="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
-                    <div class="px-5 py-4 border-b border-slate-100">
-                        <h3 class="text-sm font-bold text-slate-800">Permissions par module</h3>
-                        <p class="text-[10px] text-slate-400 mt-0.5">Accès de chaque rôle aux modules de l'application (déduit des règles d'accès du template). Un module désactivé pour un établissement reste inaccessible quel que soit le rôle.</p>
-                    </div>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-xs">
-                            <thead>
-                                <tr class="text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
-                                    <th class="px-5 py-3">Rôle</th>
-                                    @foreach($moduleColumns as $moduleKey => $moduleLabel)
-                                        <th class="px-3 py-3 text-center whitespace-nowrap">{{ $moduleLabel }}</th>
-                                    @endforeach
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-slate-50">
-                                @foreach($roleCatalog as $key => $role)
-                                    <tr class="hover:bg-slate-50/60 transition">
-                                        <td class="px-5 py-2.5">
-                                            <span class="font-bold text-slate-700">{{ $role['label'] }}</span>
-                                        </td>
-                                        @foreach($moduleColumns as $moduleKey => $moduleLabel)
-                                            <td class="px-3 py-2.5 text-center">
-                                                @if(in_array($moduleKey, $rolePermissions[$key] ?? [], true))
-                                                    <span class="inline-block h-2.5 w-2.5 rounded-full bg-emerald-500" title="Accès"></span>
-                                                @else
-                                                    <span class="text-slate-200">—</span>
-                                                @endif
-                                            </td>
-                                        @endforeach
-                                    </tr>
-                                @endforeach
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                {{-- Répartition par établissement (live, bases tenants) --}}
-                <div class="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden"
+                {{-- Référentiel et répartition, lus en direct dans les établissements --}}
+                <div class="space-y-6"
                      x-data="{
                         loading: true,
                         data: null,
+                        niveau(r) { return r.level === null ? 'Transversal' : ('Niveau ' + r.level); },
                         async refresh() {
                             this.loading = true;
                             try {
@@ -2394,74 +2328,103 @@
                             this.loading = false;
                         }
                      }" x-init="refresh()">
-                    <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-4">
-                        <div>
+
+                    <div>
+                        <div class="mb-3 flex items-center justify-between gap-4">
+                            <h3 class="text-sm font-bold text-slate-800">Rôles opérationnels (application établissement)</h3>
+                            <button type="button" @click="refresh()" :disabled="loading"
+                                    class="shrink-0 inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition disabled:opacity-50 cursor-pointer">
+                                <svg class="h-3.5 w-3.5" :class="loading ? 'animate-spin' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                                </svg>
+                                Actualiser
+                            </button>
+                        </div>
+
+                        <div x-show="loading && !data" class="h-24 rounded-lg bg-slate-50 animate-pulse"></div>
+
+                        <template x-if="data">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <template x-for="r in data.referentiel" :key="r.slug">
+                                    <div class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                                        <div class="flex items-start justify-between gap-2">
+                                            <p class="text-xs font-bold text-slate-800" x-text="r.name"></p>
+                                            <span class="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wider bg-slate-50 text-slate-500 border-slate-200" x-text="niveau(r)"></span>
+                                        </div>
+                                        <p class="font-mono text-[10px] text-slate-400 mt-0.5" x-text="r.slug"></p>
+                                        <p class="text-[11px] text-slate-500 mt-2 leading-relaxed" x-text="r.description ?? ''"></p>
+                                        <template x-if="r.statut === 'retire'">
+                                            <span class="mt-2 inline-block text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-50 text-red-600 border border-red-200 uppercase">Retiré</span>
+                                        </template>
+                                    </div>
+                                </template>
+                            </div>
+                        </template>
+                    </div>
+
+                    <div class="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
+                        <div class="px-5 py-4 border-b border-slate-100">
                             <h3 class="text-sm font-bold text-slate-800">Rôles par établissement</h3>
-                            <p class="text-[10px] text-slate-400 mt-0.5">Répartition en direct, lue dans la base de chaque établissement joignable.</p>
+                            <p class="text-[10px] text-slate-400 mt-0.5">Comptes actifs par rôle, lus dans chaque établissement joignable. Un établissement d'avant la version 2 est compté par son rôle principal.</p>
                         </div>
-                        <button type="button" @click="refresh()" :disabled="loading"
-                                class="shrink-0 inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition disabled:opacity-50 cursor-pointer">
-                            <svg class="h-3.5 w-3.5" :class="loading ? 'animate-spin' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-                            </svg>
-                            Actualiser
-                        </button>
-                    </div>
 
-                    <div x-show="loading && !data" class="p-5">
-                        <div class="h-16 rounded-md bg-slate-50 animate-pulse"></div>
-                    </div>
-
-                    <template x-if="data">
-                        <div class="overflow-x-auto">
-                            <table class="w-full text-xs">
-                                <thead>
-                                    <tr class="text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
-                                        <th class="px-5 py-3">Établissement</th>
-                                        @foreach($roleCatalog as $key => $role)
-                                            <th class="px-2 py-3 text-center font-mono normal-case" title="{{ $role['label'] }}">{{ $key }}</th>
-                                        @endforeach
-                                        <th class="px-3 py-3 text-right">Total</th>
-                                        <th class="px-5 py-3 text-right">Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-slate-50">
-                                    <template x-for="e in data.establishments" :key="e.id">
-                                        <tr class="hover:bg-slate-50/60 transition">
-                                            <td class="px-5 py-3">
-                                                <p class="font-bold text-slate-800" x-text="e.name"></p>
-                                                <template x-if="!e.reachable">
-                                                    <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-50 text-red-600 border border-red-200 uppercase">Base injoignable</span>
-                                                </template>
-                                            </td>
-                                            @foreach($roleCatalog as $key => $role)
-                                                <td class="px-2 py-3 text-center">
-                                                    <span class="font-bold" :class="(e.roles['{{ $key }}'] ?? 0) > 0 ? 'text-slate-800' : 'text-slate-200'" x-text="e.roles['{{ $key }}'] ?? '·'"></span>
-                                                </td>
-                                            @endforeach
-                                            <td class="px-3 py-3 text-right font-extrabold text-slate-800" x-text="e.reachable ? e.total : '—'"></td>
-                                            <td class="px-5 py-3 text-right">
-                                                <a :href="e.url" class="font-semibold text-indigo-600 hover:text-indigo-800 hover:underline">Utilisateurs →</a>
-                                            </td>
+                        <template x-if="data">
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-xs">
+                                    <thead>
+                                        <tr class="text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
+                                            <th class="px-5 py-3">Établissement</th>
+                                            <template x-for="r in data.referentiel" :key="r.slug">
+                                                <th class="px-2 py-3 text-center font-mono normal-case" :title="r.name" x-text="r.slug"></th>
+                                            </template>
+                                            <th class="px-3 py-3 text-right">Total</th>
+                                            <th class="px-5 py-3 text-right">Action</th>
                                         </tr>
-                                    </template>
-                                </tbody>
-                            </table>
-                        </div>
-                    </template>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-50">
+                                        <template x-for="e in data.establishments" :key="e.id">
+                                            <tr class="hover:bg-slate-50/60 transition">
+                                                <td class="px-5 py-3">
+                                                    <p class="font-bold text-slate-800" x-text="e.name"></p>
+                                                    <template x-if="!e.reachable">
+                                                        <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-50 text-red-600 border border-red-200 uppercase">Injoignable</span>
+                                                    </template>
+                                                    <template x-if="e.reachable && e.version === 1">
+                                                        <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 uppercase">À mettre à jour</span>
+                                                    </template>
+                                                    <template x-if="e.unknown > 0">
+                                                        <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200" x-text="e.unknown + ' compte(s) hors référentiel'"></span>
+                                                    </template>
+                                                </td>
+                                                <template x-for="r in data.referentiel" :key="r.slug">
+                                                    <td class="px-2 py-3 text-center">
+                                                        <span class="font-bold" :class="(e.roles[r.slug] ?? 0) > 0 ? 'text-slate-800' : 'text-slate-200'" x-text="e.roles[r.slug] ?? '·'"></span>
+                                                    </td>
+                                                </template>
+                                                <td class="px-3 py-3 text-right font-extrabold text-slate-800" x-text="e.reachable ? e.total : '—'"></td>
+                                                <td class="px-5 py-3 text-right whitespace-nowrap">
+                                                    <a :href="e.matrice_url" class="font-semibold text-indigo-600 hover:text-indigo-800 hover:underline">Droits &amp; rôles →</a>
+                                                </td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </template>
 
-                    <div x-show="!loading && !data" x-cloak class="p-5 text-xs font-bold text-red-700 bg-red-50 border-t border-red-100">
-                        Impossible de charger la répartition des rôles.
+                        <div x-show="!loading && !data" x-cloak class="p-5 text-xs font-bold text-red-700 bg-red-50 border-t border-red-100">
+                            Impossible de charger la répartition des rôles.
+                        </div>
                     </div>
                 </div>
 
                 {{-- Rôles personnalisés (à venir) --}}
                 <div class="rounded-lg border border-dashed border-slate-300 bg-slate-50/60 p-5">
                     <div class="flex items-center gap-2">
-                        <h3 class="text-sm font-bold text-slate-500">Rôles personnalisés</h3>
+                        <h3 class="text-sm font-bold text-slate-500">Rôles propres à un établissement</h3>
                         <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-200 text-slate-500 uppercase tracking-wider">À venir</span>
                     </div>
-                    <p class="text-xs text-slate-400 mt-1.5 leading-relaxed">Création de rôles sur mesure par établissement (permissions à la carte) — prévu avec le futur système de permissions par module, une fois la matrice ci-dessus rendue configurable.</p>
+                    <p class="text-xs text-slate-400 mt-1.5 leading-relaxed">Un rôle créé par l'établissement à partir d'un modèle (par exemple « Barman »), réglé par son administrateur — prévu avec l'écran local « Rôles &amp; droits » de l'application.</p>
                 </div>
             </div>
         @elseif($activeTab === 'support' && $isTech)
@@ -4017,125 +3980,5 @@
 
      </main>
 
-    <!-- Modal: Créer un Manager pour un établissement ( BUSINESS / Owner space ) -->
-    <div 
-        x-data="{ 
-            open: false, 
-            tenantId: null, 
-            tenantName: '',
-            name: '',
-            email: '',
-            phone: '',
-            password: '',
-            errorMsg: '',
-            successMsg: '',
-            submitting: false
-        }"
-        @open-create-manager-modal.window="
-            open = true; 
-            tenantId = $event.detail.tenant_id; 
-            tenantName = $event.detail.tenant_name; 
-            name = ''; 
-            email = ''; 
-            phone = ''; 
-            password = ''; 
-            errorMsg = '';
-            successMsg = '';
-        "
-        x-show="open" 
-        class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4"
-        style="display: none;"
-        x-transition
-    >
-        <div class="bg-white rounded-xl border border-slate-200 w-full max-w-md shadow-2xl overflow-hidden" @click.away="if(!submitting) open = false">
-            <!-- Header -->
-            <div class="bg-slate-900 px-6 py-4 flex items-center justify-between">
-                <h3 class="text-sm font-bold text-white tracking-wide">Créer le Manager - <span x-text="tenantName"></span></h3>
-                <button type="button" @click="open = false" class="text-slate-400 hover:text-white text-lg font-bold" :disabled="submitting">&times;</button>
-            </div>
-            
-            <!-- Form -->
-            <form @submit.prevent="
-                submitting = true;
-                errorMsg = '';
-                successMsg = '';
-                fetch('/business/establishments/' + tenantId + '/create-manager', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({ name, email, phone, password })
-                })
-                .then(res => res.json().then(data => ({ status: res.status, body: data })))
-                .then(res => {
-                    submitting = false;
-                    if (res.status === 200 || res.status === 201) {
-                        successMsg = 'Le compte manager a été créé avec succès dans l\'établissement !';
-                        name = '';
-                        email = '';
-                        phone = '';
-                        password = '';
-                        setTimeout(() => { open = false; window.location.reload(); }, 1500);
-                    } else {
-                        errorMsg = res.body.message || 'Une erreur est survenue lors de la création du manager.';
-                    }
-                })
-                .catch(err => {
-                    submitting = false;
-                    errorMsg = 'Impossible de se connecter au serveur.';
-                });
-            " class="p-6 space-y-4">
-                
-                <template x-if="errorMsg">
-                    <div class="rounded-lg bg-red-50 border border-red-150 p-3 text-xs font-semibold text-red-700" x-text="errorMsg"></div>
-                </template>
-                
-                <template x-if="successMsg">
-                    <div class="rounded-lg bg-emerald-50 border border-emerald-150 p-3 text-xs font-semibold text-emerald-700" x-text="successMsg"></div>
-                </template>
-
-                <!-- Name -->
-                <div>
-                    <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase">Nom complet <span class="text-red-400">*</span></label>
-                    <input type="text" x-model="name" required placeholder="Ex: Jean Dupont"
-                           class="mt-1 block w-full rounded-lg border border-slate-205 bg-white px-3 py-2.5 text-xs text-slate-700 outline-none focus:border-indigo-500 transition">
-                </div>
-
-                <!-- Email -->
-                <div>
-                    <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase">Adresse e-mail <span class="text-red-400">*</span></label>
-                    <input type="email" x-model="email" required placeholder="manager@etablissement.com"
-                           class="mt-1 block w-full rounded-lg border border-slate-205 bg-white px-3 py-2.5 text-xs text-slate-700 outline-none focus:border-indigo-500 transition">
-                </div>
-
-                <!-- Phone -->
-                <div>
-                    <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase">Téléphone</label>
-                    <input type="text" x-model="phone" placeholder="+237 600 000 000"
-                           class="mt-1 block w-full rounded-lg border border-slate-205 bg-white px-3 py-2.5 text-xs text-slate-700 outline-none focus:border-indigo-500 transition">
-                </div>
-
-                <!-- Password -->
-                <div>
-                    <label class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase">Mot de passe temporaire <span class="text-red-400">*</span></label>
-                    <input type="password" x-model="password" required minlength="4" placeholder="••••••••"
-                           class="mt-1 block w-full rounded-lg border border-slate-205 bg-white px-3 py-2.5 text-xs text-slate-700 outline-none focus:border-indigo-500 transition">
-                </div>
-
-                <!-- Actions -->
-                <div class="flex items-center justify-end gap-2 pt-2">
-                    <button type="button" @click="open = false" class="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer" :disabled="submitting">
-                        Annuler
-                    </button>
-                    <button type="submit" class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-indigo-700 transition cursor-pointer" :disabled="submitting">
-                        <span x-show="submitting">Création...</span>
-                        <span x-show="!submitting">Créer le Manager</span>
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
 </body>
 </html>

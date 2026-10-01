@@ -15,11 +15,11 @@ Un utilisateur porte **un seul rôle**, dans une colonne `role` (chaîne). Il ex
 bien un modèle `Role` avec une relation many-to-many, mais il n'est pas utilisé pour
 l'autorisation dans la console — `hasRole()` et `hasAnyRole()` comparent la colonne.
 
-> Ne pas confondre avec les rôles de `wetchah_app` (`admin`, `manager`, `reception`,
-> `cashier`, `econome`…). Ceux-là vivent dans la base de chaque établissement. La
-> console ne les crée pas : elle les **documente** dans
-> [`App\Support\TenantRoles`](../app/Support/TenantRoles.php) et compte leur
-> répartition pour l'onglet Rôles du tableau de bord TECH.
+> Ne pas confondre avec les rôles de `wetchah_app` (`admin`, `manager`,
+> `reception_chief`, `reception`, `econome`…). Ceux-là vivent dans le code et la
+> base de chaque établissement. La console n'en garde aucune copie : l'onglet Rôles
+> du tableau de bord TECH les **lit en direct** dans chaque établissement, par son
+> API (voir [Droits & rôles d'un établissement](#droits--rôles-dun-établissement)).
 
 ## Le middleware `role`
 
@@ -82,7 +82,8 @@ Réservé à `tech_admin`. C'est le seul espace sans restriction de portée.
 | **Tableau de bord** | Santé des conteneurs, statistiques globales, répartition des rôles |
 | **Établissements** | Créer, configurer, provisionner, démarrer/arrêter, mettre à jour, supprimer |
 | **Propriétaires** | Registre des `owner` — une entrée par personne, avec accès direct à ses établissements |
-| **Employés** | Modifier, activer/désactiver, supprimer les employés **dans la base de l'établissement** |
+| **Employés** | Consulter le personnel d'un établissement ; donner l'accès au portail GRC d'un contrôleur de gestion |
+| **Droits & rôles** | Matrice des droits (couche de la console), comptes administrateurs, exceptions, alertes, historique |
 | **Éditeurs** | Créer et gérer les comptes `site_editor` d'un établissement |
 | **Sauvegardes** | Créer, restaurer, importer, télécharger, planifier |
 | **Support** | Journaux applicatifs, interventions, diagnostic, mode assistance |
@@ -107,7 +108,8 @@ Les écrans chargent leurs chiffres en AJAX (`/business/*/data`) : la page s'aff
 immédiatement, les données arrivent ensuite. C'est ce qui évite qu'un établissement
 lent bloque tout l'écran.
 
-Un propriétaire peut aussi créer un compte gérant pour l'un de ses établissements.
+Un propriétaire règle aussi les **Droits & rôles** de ses établissements : la
+matrice et les comptes administrateurs.
 
 ## Espace ÉDITEUR
 
@@ -137,19 +139,40 @@ $autorise = $user->isTechAdmin()
 
 C'est la distinction la plus importante à saisir :
 
-| Compte | Où il vit | Conséquence |
+| Compte | Où il vit | Qui le crée |
 |---|---|---|
-| `tech_admin`, `owner`, `site_editor` | Base **de la console** (SQLite) | Géré nativement par Eloquent |
-| Employés d'un établissement | Base **de l'établissement** (PostgreSQL) | Géré en PDO direct |
+| `tech_admin`, `owner`, `site_editor` | Base **de la console** (SQLite) | La console, nativement (Eloquent) |
+| Administrateur d'un établissement (`admin`) | Base **de l'établissement** | La console **seule**, par l'API de l'établissement |
+| Tous les autres employés, managers compris | Base **de l'établissement** | L'administrateur de l'établissement, dans `wetchah_app` |
+| Accès au portail GRC d'un contrôleur | Base **du GRC** | La console, depuis la fiche de l'employé |
 
-[`TenantUserController`](../app/Http/Controllers/TenantUserController.php) écrit
-directement dans la base de l'établissement via
-[`TenantDatabase`](../app/Services/TenantDatabase.php).
+L'administrateur d'un établissement est son **service informatique** : il crée et
+tient tous les autres comptes, attribue les rôles et règle la configuration. Ses
+propres comptes ne se créent que depuis la console : personne, dans l'établissement,
+n'accorde un niveau égal au sien. Tant qu'un établissement n'a pas d'administrateur,
+son manager gère les comptes du personnel.
 
-> **Il n'y a rien à synchroniser.** Écrire ici, c'est écrire dans la base que
-> `wetchah_app` lit : une modification est visible immédiatement côté établissement,
-> et inversement. Un `tech_admin` gère tous les établissements, un `owner` seulement
-> les siens.
+> **La console n'écrit plus dans la base d'un établissement.** Les écritures SQL
+> directes (création d'employés, de managers, de contrôleurs, départements)
+> contournaient l'application, qui ne pouvait ni les valider ni les tracer. Tout
+> passe désormais par l'API d'orchestration de l'établissement
+> ([`EtablissementApi`](../app/Services/EtablissementApi.php),
+> [`TenantDirectoryClient`](../app/Services/TenantDirectoryClient.php)). La console
+> lit encore le personnel en direct ([`TenantDatabase`](../app/Services/TenantDatabase.php)),
+> en lecture seule.
+
+### Comptes administrateurs
+
+Onglet **Comptes administrateurs** de « Droits & rôles » : créer (mot de passe saisi,
+ou tiré au hasard et montré une seule fois), réinitialiser le mot de passe,
+désactiver, réactiver. Mots de passe de **8 caractères au moins**.
+
+### Départements
+
+Créés, modifiés et supprimés depuis la fiche de l'établissement, par son API
+(`/api/departements`). Supprimer un département détache ses employés, sans les
+supprimer. Les modules d'un département sont un héritage : ils ne donnent plus de
+droits.
 
 ### Comptes éditeurs
 
@@ -157,10 +180,77 @@ Créés depuis la fiche d'un établissement (`POST /tech/establishments/{tenant}
 Ils vivent dans la base de la console — contrairement aux employés — mais restent
 bornés à ce site par `tenant_id`.
 
-### Actions sur les comptes
+### Actions sur les comptes de la console
 
 `POST /tech/users/{user}/toggle-active` et `POST /tech/users/{user}/reset-password`
-permettent de désactiver un compte ou de forcer une réinitialisation de mot de passe.
+permettent de désactiver un compte de la console ou de forcer une réinitialisation de
+mot de passe.
+
+## Droits & rôles d'un établissement
+
+Écran [`establishments/permissions-v2`](../resources/views/establishments/permissions-v2.blade.php),
+ouvert au `tech_admin` et au propriétaire de l'établissement
+([`TenantPermissionMatrixController`](../app/Http/Controllers/TenantPermissionMatrixController.php)).
+Le catalogue des droits vit dans le code de l'application : la console le demande
+(`GET /api/permissions/matrice`), ne renvoie que des écarts, et l'application refuse
+tout droit qu'aucune route n'applique.
+
+### Les couches
+
+Un droit se lit en couches. Un **refus**, quelle que soit sa couche, l'emporte.
+
+| Couche | Posée par | Modifiable depuis la console |
+|---|---|---|
+| Modèle | Le code de l'application (`PermissionCatalog`) | Non |
+| Console | Cet écran (`origin = erp`) | **Oui — la seule** |
+| Hôtel | L'administrateur de l'établissement (`origin = etablissement`) | Non, montrée (badge **H**) |
+| Exceptions nominatives | L'établissement, sur une personne, avec échéance possible | Non, montrées (badge **N**) |
+
+Un enregistrement **remplace toute la couche de la console** et elle seule : les
+réglages de l'hôtel ne sont jamais écrasés.
+
+### La matrice
+
+- Colonnes groupées par service et par niveau (1 administration, 2 direction,
+  3 chefs, 4 membres, transversal), avec le nombre de comptes actifs par rôle.
+- Le manager se règle ; l'administrateur est montré, **figé** : il consulte tout et
+  n'écrit que la configuration et les comptes.
+- Une **portée** (ses données, son département, l'établissement) n'est proposée que
+  sur les droits dont un écran borne vraiment les données.
+- **Cumuls interdits** : cocher une écriture qui ferait exercer à un rôle une
+  fonction incompatible (encaisser et enregistrer, détenir le stock et tenir les
+  livres, contrôler et participer…) colore la case en rouge et liste le motif.
+  Enregistrer exige alors une **dérogation explicite et motivée** ; l'établissement
+  la refuse sans elle et la trace dans son journal.
+- **Aperçu obligatoire** avant d'enregistrer : l'établissement calcule, compte par
+  compte, qui gagne ou perd quel droit — sans rien enregistrer.
+- **Motif obligatoire**, recopié sur chaque écart nouveau ou modifié.
+- **Concurrence** : l'écran envoie l'empreinte de la couche qu'il a ouverte ; si un
+  autre opérateur l'a modifiée entre-temps, rien n'est enregistré.
+
+### Les onglets
+
+| Onglet | Contenu |
+|---|---|
+| Matrice | Réglage de la couche de la console |
+| Comptes administrateurs | Création, réinitialisation, désactivation |
+| Exceptions | Exceptions nominatives, restrictions de service, écarts de rôle posés par l'hôtel |
+| Alertes | Revue des comptes de l'établissement (cumuls, rôles retirés, comptes sans rôle, pas de comptable, pas d'administrateur), dérogations en vigueur, exceptions échues |
+| Historique | Versions de la couche de la console, différences, retour arrière |
+
+### Historique et retour arrière
+
+Chaque enregistrement réussi crée une **version** (table `permission_matrix_versions`
+de la console) : l'état complet de la couche, l'auteur, la date, le motif, les
+dérogations. Avant le tout premier enregistrement, l'état trouvé dans l'établissement
+est conservé comme **version 0**. Revenir à une version la renvoie telle quelle et
+l'inscrit comme une **nouvelle** version : l'histoire ne se réécrit pas.
+
+### Compatibilité
+
+Un établissement dont l'application n'annonce pas la version 2 de l'API garde
+l'**ancien écran**. Les comptes administrateurs et les départements, eux, exigent la
+version à jour : la console le dit plutôt que d'écrire dans la base.
 
 ## Audit
 
@@ -180,17 +270,22 @@ appliqué à tout le groupe `web`, maintient un marqueur en cache exploité par
   équivaut à un accès root sur l'hôte. C'est le point le plus sensible de toute
   l'architecture : réserver ce rôle à des comptes de confiance et déployer la console
   sur une machine dédiée.
-- **`ASSISTANCE_SECRET` et `REPORTING_SECRET` sont propres à chaque établissement.**
-  Ils vivent dans son Compose, tirés au hasard à la première génération. Lire
-  l'environnement d'un établissement ne donne donc accès à aucun autre. Un
-  établissement encore sur l'ancien secret commun le quitte à sa prochaine mise à
-  jour ou application des modules.
+- **`ASSISTANCE_SECRET`, `REPORTING_SECRET` et `ORCHESTRATION_SECRET` sont propres
+  à chaque établissement.** Ils vivent dans son Compose, tirés au hasard à la première
+  génération. Lire l'environnement d'un établissement ne donne donc accès à aucun
+  autre. Un établissement encore sur l'ancien secret commun le quitte à sa prochaine
+  mise à jour ou application des modules.
+- **`ORCHESTRATION_SECRET` n'est remis qu'à l'application**, jamais au GRC. Il ouvre
+  la matrice des droits, les comptes administrateurs et les départements. Le GRC reçoit
+  `REPORTING_SECRET` pour lire les chiffres : avec le même jeton, il aurait pu se créer
+  un compte administrateur. Une application antérieure à ce secret est jointe avec
+  `REPORTING_SECRET`, sur la matrice seulement.
 - **Les mots de passe de base sont stockés en clair** dans la table `tenants` — ils
   doivent être injectés en clair dans le Compose au provisioning. La base de la
   console est donc elle-même un secret à protéger.
-- **La validation impose un mot de passe propriétaire d'au moins 4 caractères**
-  (`min:4`). C'est très faible pour un compte donnant accès à des données
-  financières — à durcir.
+- **Mots de passe de 8 caractères au moins** pour tous les comptes créés depuis la
+  console (propriétaires, éditeurs, administrateurs d'établissement, accès GRC). Le
+  mot de passe proposé à la création d'un propriétaire est tiré au hasard.
 
 ## Pour aller plus loin
 
