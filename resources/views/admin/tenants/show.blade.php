@@ -29,6 +29,78 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
+    <script>
+    /**
+     * Ajoute ou actualise sur place une ligne du journal SSE.
+     * Pour les battements de progression (ex: téléchargement de l'image Docker),
+     * la ligne existante est mise à jour sur place pour éviter d'empiler des dizaines de lignes.
+     */
+    function appendOrUpdateStreamLine(container, data) {
+        if (!container) return null;
+
+        const isProgress = Boolean(
+            data.progress === true ||
+            data.step === 'image_progress' ||
+            (data.step && data.step.includes('progress')) ||
+            (data.message && data.message.startsWith('⏳ Téléchargement en cours'))
+        );
+
+        // Recherche d'une ligne de progression active dans ce conteneur
+        let activeProgressLine = container.querySelector('[data-progress-line="true"]');
+
+        if (isProgress && activeProgressLine) {
+            const timeSpan = activeProgressLine.querySelector('.log-time');
+            const msgSpan = activeProgressLine.querySelector('.log-msg');
+            if (timeSpan) {
+                timeSpan.textContent = `[${data.time}]`;
+            }
+            if (msgSpan) {
+                msgSpan.textContent = data.message;
+                const levelClass = {
+                    'success': 'text-emerald-400 font-semibold',
+                    'error':   'text-red-400 font-semibold',
+                    'warning': 'text-amber-400',
+                    'info':    'text-slate-300',
+                }[data.level] || 'text-slate-300';
+                msgSpan.className = 'log-msg ' + levelClass;
+            }
+            container.scrollTop = container.scrollHeight;
+            return activeProgressLine;
+        }
+
+        // Si on passe d'une progression à une étape normale, figer la ligne de progression
+        if (!isProgress && activeProgressLine) {
+            activeProgressLine.removeAttribute('data-progress-line');
+        }
+
+        const line = document.createElement('div');
+        line.className = 'flex gap-2.5 items-start py-0.5 border-b border-slate-900/10';
+        if (isProgress) {
+            line.setAttribute('data-progress-line', 'true');
+        }
+
+        const timeSpan = document.createElement('span');
+        timeSpan.className = 'log-time text-slate-500 shrink-0 font-semibold select-none';
+        timeSpan.textContent = `[${data.time}]`;
+
+        const msgSpan = document.createElement('span');
+        const levelClass = {
+            'success': 'text-emerald-400 font-semibold',
+            'error':   'text-red-400 font-semibold',
+            'warning': 'text-amber-400',
+            'info':    'text-slate-300',
+        }[data.level] || 'text-slate-300';
+        msgSpan.className = 'log-msg ' + levelClass;
+        msgSpan.textContent = data.message;
+
+        line.appendChild(timeSpan);
+        line.appendChild(msgSpan);
+        container.appendChild(line);
+        container.scrollTop = container.scrollHeight;
+
+        return line;
+    }
+    </script>
 </head>
 <body class="min-h-screen bg-slate-100 text-slate-900 antialiased font-body">
 
@@ -326,26 +398,7 @@
                     evtSource.onmessage = function (event) {
                         try {
                             const data = JSON.parse(event.data);
-                            const line = document.createElement('div');
-                            line.className = 'flex gap-2.5 items-start py-0.5 border-b border-slate-900/10';
-                            
-                            const timeSpan = document.createElement('span');
-                            timeSpan.className = 'text-slate-500 shrink-0 font-semibold select-none';
-                            timeSpan.textContent = `[${data.time}]`;
-                            
-                            const msgSpan = document.createElement('span');
-                            msgSpan.className = {
-                                'success': 'text-emerald-400 font-semibold',
-                                'error':   'text-red-400 font-semibold',
-                                'warning': 'text-amber-400',
-                                'info':    'text-slate-300',
-                            }[data.level] || 'text-slate-300';
-                            msgSpan.textContent = data.message;
-                            
-                            line.appendChild(timeSpan);
-                            line.appendChild(msgSpan);
-                            logOutput.appendChild(line);
-                            logOutput.scrollTop = logOutput.scrollHeight;
+                            appendOrUpdateStreamLine(logOutput, data);
 
                             if (data.step === 'done' || data.step === 'finished') {
                                 clearInterval(timer);
@@ -1792,133 +1845,20 @@
                 </div>
 
                 <script>
-                function startUpdateStream(tag) {
-                    const logOutput = document.getElementById('update-log-output');
-                    logOutput.innerHTML = '';
-                    const streamUrl = '{{ route("tech.establishments.update-version.stream", $tenant) }}?tag=' + encodeURIComponent(tag);
-                    const evtSource = new EventSource(streamUrl);
-
-                    evtSource.onmessage = function (event) {
-                        try {
-                            const data = JSON.parse(event.data);
-                            const line = document.createElement('div');
-                            line.className = 'flex gap-2.5 items-start py-0.5 border-b border-slate-900/10';
-
-                            const timeSpan = document.createElement('span');
-                            timeSpan.className = 'text-slate-500 shrink-0 font-semibold select-none';
-                            timeSpan.textContent = `[${data.time}]`;
-
-                            const msgSpan = document.createElement('span');
-                            msgSpan.className = {
-                                'success': 'text-emerald-400 font-semibold',
-                                'error':   'text-red-400 font-semibold',
-                                'warning': 'text-amber-400',
-                                'info':    'text-slate-300',
-                            }[data.level] || 'text-slate-300';
-                            msgSpan.textContent = data.message;
-
-                            line.appendChild(timeSpan);
-                            line.appendChild(msgSpan);
-                            logOutput.appendChild(line);
-                            logOutput.scrollTop = logOutput.scrollHeight;
-
-                            if (data.step === 'done' || data.step === 'finished') {
-                                evtSource.close();
-                                setTimeout(() => location.reload(), 1500);
-                            }
-                            if (data.level === 'error' || data.step === 'error') {
-                                evtSource.close();
-                            }
-                        } catch (e) {
-                            console.error('Error parsing update stream payload:', e);
-                        }
-                    };
-
-                    evtSource.onerror = function () {
-                        evtSource.close();
-                    };
-                }
-
-                function startWebsiteUpdateStream() {
-                    const logOutput = document.getElementById('web-update-log-output');
-                    logOutput.innerHTML = '';
-                    const streamUrl = '{{ route("tech.establishments.update-website.stream", $tenant) }}';
-                    const evtSource = new EventSource(streamUrl);
-
-                    evtSource.onmessage = function (event) {
-                        try {
-                            const data = JSON.parse(event.data);
-                            const line = document.createElement('div');
-                            line.className = 'flex gap-2.5 items-start py-0.5 border-b border-slate-900/10';
-
-                            const timeSpan = document.createElement('span');
-                            timeSpan.className = 'text-slate-500 shrink-0 font-semibold select-none';
-                            timeSpan.textContent = `[${data.time}]`;
-
-                            const msgSpan = document.createElement('span');
-                            msgSpan.className = {
-                                'success': 'text-emerald-400 font-semibold',
-                                'error':   'text-red-400 font-semibold',
-                                'warning': 'text-amber-400',
-                                'info':    'text-slate-300',
-                            }[data.level] || 'text-slate-300';
-                            msgSpan.textContent = data.message;
-
-                            line.appendChild(timeSpan);
-                            line.appendChild(msgSpan);
-                            logOutput.appendChild(line);
-                            logOutput.scrollTop = logOutput.scrollHeight;
-
-                            if (data.step === 'done' || data.step === 'finished') {
-                                evtSource.close();
-                                setTimeout(() => location.reload(), 1500);
-                            }
-                            if (data.level === 'error' || data.step === 'error') {
-                                evtSource.close();
-                            }
-                        } catch (e) {
-                            console.error('Error parsing website update stream payload:', e);
-                        }
-                    };
-
-                    evtSource.onerror = function () {
-                        evtSource.close();
-                    };
-                }
-
                 /**
                  * Branche un flux SSE de mise à jour sur une zone de logs.
-                 * Même rendu que les deux fonctions ci-dessus, factorisé :
-                 * seules l'URL et la cible changent d'une mise à jour à l'autre.
+                 * Gère la réception, l'affichage et la mise à jour en direct sur place.
                  */
                 function streamUpdateLog(streamUrl, outputId, label) {
                     const logOutput = document.getElementById(outputId);
+                    if (!logOutput) return;
                     logOutput.innerHTML = '';
                     const evtSource = new EventSource(streamUrl);
 
                     evtSource.onmessage = function (event) {
                         try {
                             const data = JSON.parse(event.data);
-                            const line = document.createElement('div');
-                            line.className = 'flex gap-2.5 items-start py-0.5 border-b border-slate-900/10';
-
-                            const timeSpan = document.createElement('span');
-                            timeSpan.className = 'text-slate-500 shrink-0 font-semibold select-none';
-                            timeSpan.textContent = `[${data.time}]`;
-
-                            const msgSpan = document.createElement('span');
-                            msgSpan.className = {
-                                'success': 'text-emerald-400 font-semibold',
-                                'error':   'text-red-400 font-semibold',
-                                'warning': 'text-amber-400',
-                                'info':    'text-slate-300',
-                            }[data.level] || 'text-slate-300';
-                            msgSpan.textContent = data.message;
-
-                            line.appendChild(timeSpan);
-                            line.appendChild(msgSpan);
-                            logOutput.appendChild(line);
-                            logOutput.scrollTop = logOutput.scrollHeight;
+                            appendOrUpdateStreamLine(logOutput, data);
 
                             if (data.step === 'done' || data.step === 'finished') {
                                 evtSource.close();
@@ -1935,6 +1875,16 @@
                     evtSource.onerror = function () {
                         evtSource.close();
                     };
+                }
+
+                function startUpdateStream(tag) {
+                    const streamUrl = '{{ route("tech.establishments.update-version.stream", $tenant) }}?tag=' + encodeURIComponent(tag);
+                    streamUpdateLog(streamUrl, 'update-log-output', 'Version');
+                }
+
+                function startWebsiteUpdateStream() {
+                    const streamUrl = '{{ route("tech.establishments.update-website.stream", $tenant) }}';
+                    streamUpdateLog(streamUrl, 'web-update-log-output', 'Site web');
                 }
 
                 function startGrcUpdateStream() {

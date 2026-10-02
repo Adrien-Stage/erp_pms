@@ -32,5 +32,6 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <env name="TENANTS_BASE_PATH" value="/tmp/tenants_testing"/>
     </php>
 </phpunit>

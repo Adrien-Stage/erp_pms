@@ -529,11 +529,13 @@ class AdminAuditController extends Controller
                 if (mb_strlen($message) > 3000) {
                     $message = mb_substr($message, 0, 3000).'…';
                 }
+                $isProgress = ($step === 'image_progress' || str_contains($step, 'progress') || str_starts_with($message, '⏳ Téléchargement en cours'));
                 $payload = json_encode([
                     'step' => $step,
                     'message' => $message,
                     'level' => $level,
                     'time' => now()->format('H:i:s'),
+                    'progress' => $isProgress,
                 ]);
                 echo "data: {$payload}\n\n";
                 if (ob_get_level()) {
@@ -646,11 +648,13 @@ class AdminAuditController extends Controller
                 if (mb_strlen($message) > 3000) {
                     $message = mb_substr($message, 0, 3000).'…';
                 }
+                $isProgress = ($step === 'image_progress' || str_contains($step, 'progress') || str_starts_with($message, '⏳ Téléchargement en cours'));
                 $payload = json_encode([
                     'step' => $step,
                     'message' => $message,
                     'level' => $level,
                     'time' => now()->format('H:i:s'),
+                    'progress' => $isProgress,
                 ]);
                 echo "data: {$payload}\n\n";
                 if (ob_get_level()) {
@@ -1019,11 +1023,13 @@ class AdminAuditController extends Controller
                 if (mb_strlen($message) > 3000) {
                     $message = mb_substr($message, 0, 3000).'…';
                 }
+                $isProgress = ($step === 'image_progress' || str_contains($step, 'progress') || str_starts_with($message, '⏳ Téléchargement en cours'));
                 $payload = json_encode([
                     'step' => $step,
                     'message' => $message,
                     'level' => $level,
                     'time' => now()->format('H:i:s'),
+                    'progress' => $isProgress,
                 ]);
                 echo "data: {$payload}\n\n";
                 if (ob_get_level()) {
@@ -1130,7 +1136,7 @@ class AdminAuditController extends Controller
             ob_implicit_flush(true);
 
             $send = function (string $step, string $message, string $level = 'info') {
-                // Chaque ligne streamée (dont les battements de cœur du pull, ~12s)
+                // Chaque ligne streamée (dont les battements de cœur du pull, ~5s)
                 // repousse la limite d'exécution : une mise à jour longue sur une
                 // connexion lente ne doit pas être coupée par le timer PHP, tant
                 // qu'elle progresse.
@@ -1139,11 +1145,13 @@ class AdminAuditController extends Controller
                 if (mb_strlen($message) > 3000) {
                     $message = mb_substr($message, 0, 3000).'…';
                 }
+                $isProgress = ($step === 'image_progress' || str_contains($step, 'progress') || str_starts_with($message, '⏳ Téléchargement en cours'));
                 $payload = json_encode([
                     'step' => $step,
                     'message' => $message,
                     'level' => $level,
                     'time' => now()->format('H:i:s'),
+                    'progress' => $isProgress,
                 ]);
                 echo "data: {$payload}\n\n";
                 if (ob_get_level()) {

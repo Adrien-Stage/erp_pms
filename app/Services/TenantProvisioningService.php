@@ -305,7 +305,10 @@ class TenantProvisioningService
 
                     $lastLine = $this->derniereLigneLisible($chunk);
                     if ($lastLine !== '') {
-                        $tail = $lastLine;
+                        // Conserve le statut détaillé si la nouvelle ligne n'est qu'un identifiant nu de couche
+                        if (!preg_match('/^[a-f0-9]{6,}:\s*$/i', $lastLine) || $tail === '') {
+                            $tail = $lastLine;
+                        }
                     }
                 }
             }
@@ -344,11 +347,11 @@ class TenantProvisioningService
                 return [false, $buffer, "durée maximale atteinte ({$hardCap}s)"];
             }
 
-            // Battement de cœur toutes les ~12 s.
-            if ($now - $lastBeat >= 12) {
+            // Battement de cœur toutes les ~5 s (actualisé en place sur une seule ligne dans l'interface).
+            if ($now - $lastBeat >= 5) {
                 $elapsed = $now - $start;
                 $suffix  = $tail !== '' ? " · {$tail}" : '';
-                $log('image', "⏳ Téléchargement en cours… ({$elapsed}s){$suffix}", 'info');
+                $log('image_progress', "⏳ Téléchargement en cours… ({$elapsed}s){$suffix}", 'info');
                 $lastBeat = $now;
             }
         }
