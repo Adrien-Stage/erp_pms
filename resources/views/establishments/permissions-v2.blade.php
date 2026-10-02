@@ -78,6 +78,7 @@
     $onglets = [
         'matrice'         => ['Matrice', null],
         'administrateurs' => ['Comptes administrateurs', $administrateurs->count()],
+        'interventions'   => ['Interventions', $interventions->count()],
         'exceptions'      => ['Exceptions', count($nominatives) + $restrictions->count() + count($hotel)],
         'alertes'         => ['Alertes', $constats->count() + $echues->count() + $derogations->count()],
         'historique'      => ['Historique', $versions->count()],
@@ -461,6 +462,54 @@
                     <button type="submit" class="rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800">Créer l'administrateur</button>
                 </div>
             </form>
+        </section>
+
+        {{-- ==================== INTERVENTIONS ==================== --}}
+        <section data-panneau="interventions" class="{{ $onglet === 'interventions' ? '' : 'hidden' }} space-y-4">
+            <div class="rounded-lg border border-slate-200 bg-white px-4 py-3 text-xs leading-relaxed text-slate-600">
+                L'administrateur de l'établissement n'écrit dans l'exploitation — encaisser, valider, comptabiliser —
+                que pendant une intervention déclarée : motif, durée, services. L'établissement en transmet ici la
+                trace ; quand la console était injoignable, elle arrive après coup et reste marquée <strong>tardive</strong>.
+            </div>
+            <div class="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                <table class="w-full text-left text-xs">
+                    <thead class="border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                        <tr>
+                            <th class="px-4 py-3">N°</th>
+                            <th class="px-4 py-3">Administrateur</th>
+                            <th class="px-4 py-3">Services</th>
+                            <th class="px-4 py-3">Motif</th>
+                            <th class="px-4 py-3">Période</th>
+                            <th class="px-4 py-3">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                        @forelse($interventions as $i)
+                            <tr>
+                                <td class="px-4 py-3 font-mono text-slate-500">#{{ $i->reference }}</td>
+                                <td class="px-4 py-3 font-semibold text-slate-800">{{ $i->administrateur ?? '—' }}</td>
+                                <td class="px-4 py-3 text-slate-600">{{ implode(', ', $i->perimetres ?? []) }}</td>
+                                <td class="px-4 py-3 text-slate-600">{{ $i->motif }}</td>
+                                <td class="px-4 py-3 whitespace-nowrap text-slate-500">
+                                    {{ $i->debut->format('d/m/Y H:i') }} →
+                                    @if($i->enCours())
+                                        <span class="rounded-full bg-amber-100 px-2 py-0.5 font-bold text-amber-800">en cours, jusqu'à {{ $i->fin_prevue->format('H:i') }}</span>
+                                    @else
+                                        {{ $i->fin_reelle?->format('H:i') ?? $i->fin_prevue->format('H:i') }}
+                                        <span class="text-slate-400">({{ $i->cloture === 'expiree' ? 'durée écoulée' : 'terminée' }})</span>
+                                    @endif
+                                    @if($i->tardive)
+                                        <span class="ml-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">Tardive</span>
+                                    @endif
+                                </td>
+                                <td class="px-4 py-3 text-slate-600">{{ $i->actions }}</td>
+                            </tr>
+                        @empty
+                            <tr><td colspan="6" class="px-4 py-6 text-center text-slate-500">Aucune intervention transmise.</td></tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
         </section>
 
         {{-- ==================== EXCEPTIONS ==================== --}}

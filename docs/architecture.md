@@ -91,6 +91,7 @@ son usage propre :
 | **PDO** | Connexion PostgreSQL directe au conteneur `db` | **Lire** le personnel et les départements ; tickets de support |
 | **HTTP — orchestration** | `/api/permissions/*`, `/api/comptes/*`, `/api/departements` avec `ORCHESTRATION_SECRET` | Matrice des droits, comptes administrateurs, départements |
 | **HTTP — reporting** | `GET /api/reporting/*` avec `REPORTING_SECRET` | Agréger les chiffres pour la console business |
+| **HTTP — entrant** | L'établissement appelle `POST /api/etablissements/{slug}/interventions` avec son `ORCHESTRATION_SECRET` | Recevoir la trace des interventions de son administrateur |
 
 ### PDO — lecture seule pour le personnel
 

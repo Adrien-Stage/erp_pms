@@ -647,6 +647,9 @@ class TenantProvisioningService
         // départements) : remis à l'application seule. Le GRC, qui reçoit le
         // secret de reporting, ne doit pas pouvoir s'y créer un compte.
         $orchestrationSecret = $this->secrets->forCompose($composePath, TenantSecrets::ORCHESTRATION);
+        // La console, jointe par son nom sur le réseau Docker : l'application
+        // lui transmet la trace des interventions de son administrateur.
+        $consoleContainer = config('provisioning.cms_container', 'wetchah_erp-app');
         // Messagerie sortante, mutualisée pour toute la plateforme comme les
         // clés VAPID : l'acheminement (compte Resend, relais SMTP) appartient à
         // l'éditeur, alors que l'adresse *affichée* au client relève de chaque
@@ -701,6 +704,7 @@ class TenantProvisioningService
       VAPID_PRIVATE_KEY: "{$vapidPrivate}"
       REPORTING_SECRET: "{$reportingSecret}"
       ORCHESTRATION_SECRET: "{$orchestrationSecret}"
+      ERP_API_URL: "http://{$consoleContainer}"
       MAIL_MAILER: '{$mailMailer}'
       RESEND_API_KEY: '{$resendKey}'
       MAIL_SCHEME: '{$mailScheme}'

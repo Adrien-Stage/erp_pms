@@ -213,3 +213,11 @@ test("la console ouvre le canal avec le secret d'orchestration, et retombe sur c
 
     expect($jetons)->toBe(['Bearer ' . $orchestration, 'Bearer ' . $reporting]);
 });
+
+test("l'application reçoit l'adresse de la console, pour lui transmettre ses interventions", function () {
+    config(['provisioning.cms_container' => 'wetchah_erp-app']);
+
+    // Le premier service est l'application ; le GRC porte une variable du même
+    // nom, qui désigne l'application qu'il interroge.
+    expect(valeursDe(composeDe(etablissementAvecGrc('zingana')), 'ERP_API_URL')[0])->toBe('http://wetchah_erp-app');
+});

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\AuditLog;
 use App\Models\PermissionMatrixVersion;
 use App\Models\Tenant;
+use App\Models\TenantIntervention;
 use App\Services\PermissionMatrixClient;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -26,7 +27,7 @@ use Illuminate\View\View;
 class TenantPermissionMatrixController extends Controller
 {
     /** Onglets de l'écran v2. */
-    private const ONGLETS = ['matrice', 'administrateurs', 'exceptions', 'alertes', 'historique'];
+    private const ONGLETS = ['matrice', 'administrateurs', 'interventions', 'exceptions', 'alertes', 'historique'];
 
     public function __construct(private readonly PermissionMatrixClient $client)
     {
@@ -63,6 +64,8 @@ class TenantPermissionMatrixController extends Controller
                 'onglet'   => in_array($request->query('onglet'), self::ONGLETS, true) ? $request->query('onglet') : 'matrice',
                 'versions' => PermissionMatrixVersion::where('tenant_id', $tenant->id)
                     ->orderByDesc('numero')->limit(50)->get(),
+                'interventions' => TenantIntervention::where('tenant_id', $tenant->id)
+                    ->orderByDesc('debut')->limit(50)->get(),
             ]);
         }
 

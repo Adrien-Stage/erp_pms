@@ -234,6 +234,7 @@ réglages de l'hôtel ne sont jamais écrasés.
 |---|---|
 | Matrice | Réglage de la couche de la console |
 | Comptes administrateurs | Création, réinitialisation, désactivation |
+| Interventions | Interventions de l'administrateur de l'établissement dans son exploitation, transmises par l'établissement (badge **Tardive** si la console était injoignable) |
 | Exceptions | Exceptions nominatives, restrictions de service, écarts de rôle posés par l'hôtel |
 | Alertes | Revue des comptes de l'établissement (cumuls, rôles retirés, comptes sans rôle, pas de comptable, pas d'administrateur), dérogations en vigueur, exceptions échues |
 | Historique | Versions de la couche de la console, différences, retour arrière |
@@ -251,6 +252,23 @@ l'inscrit comme une **nouvelle** version : l'histoire ne se réécrit pas.
 Un établissement dont l'application n'annonce pas la version 2 de l'API garde
 l'**ancien écran**. Les comptes administrateurs et les départements, eux, exigent la
 version à jour : la console le dit plutôt que d'écrire dans la base.
+
+## Interventions des administrateurs d'établissement
+
+L'administrateur d'un établissement consulte tout et n'écrit que la configuration et
+les comptes. Encaisser, valider, comptabiliser : il ne le fait que pendant une
+**intervention** qu'il déclare dans l'application — motif, durée, services. Son
+manager en est prévenu, chaque action est marquée au journal de l'établissement.
+
+L'établissement en transmet la trace à la console
+(`POST /api/etablissements/{slug}/interventions`, [`routes/api.php`](../routes/api.php)),
+authentifié par **son** secret d'orchestration : aucun établissement n'écrit au nom
+d'un autre. Ouverture, clôture et rejeu mettent à jour la même ligne
+(`tenant_interventions`). Si la console était injoignable, l'intervention a eu lieu
+quand même : la trace arrive après coup et reste marquée **tardive**.
+
+Le `tech_admin` et le propriétaire les consultent dans l'onglet **Interventions** de
+« Droits & rôles ».
 
 ## Audit
 
