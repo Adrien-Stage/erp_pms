@@ -1596,13 +1596,27 @@ class AdminAuditController extends Controller
         foreach ($tenants as $tenant) {
             try {
                 $pdo = $this->connectToTenantDatabase($tenant);
-                $stmt = $pdo->prepare(
-                    'SELECT a.id, a.event_type, a.action, a.module, a.ip_address, a.created_at, u.name AS user_name, u.role AS user_role
-                     FROM audit_logs a LEFT JOIN users u ON u.id = a.user_id
-                     ORDER BY a.created_at DESC LIMIT :lim'
-                );
-                $stmt->bindValue(':lim', $perTenant, \PDO::PARAM_INT);
-                $stmt->execute();
+
+                // Rôle principal : la première affectation. La colonne
+                // users.role a disparu des établissements à jour ; seuls ceux
+                // d'avant les affectations multiples n'ont qu'elle.
+                $requete = static function (string $role) use ($pdo, $perTenant): \PDOStatement {
+                    $stmt = $pdo->prepare(
+                        "SELECT a.id, a.event_type, a.action, a.module, a.ip_address, a.created_at, u.name AS user_name, {$role} AS user_role
+                         FROM audit_logs a LEFT JOIN users u ON u.id = a.user_id
+                         ORDER BY a.created_at DESC LIMIT :lim"
+                    );
+                    $stmt->bindValue(':lim', $perTenant, \PDO::PARAM_INT);
+                    $stmt->execute();
+
+                    return $stmt;
+                };
+
+                try {
+                    $stmt = $requete('(SELECT r.slug FROM role_user ru JOIN roles r ON r.id = ru.role_id WHERE ru.user_id = u.id ORDER BY ru.id LIMIT 1)');
+                } catch (\PDOException $e) {
+                    $stmt = $requete('u.role');
+                }
 
                 foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
                     $logs[] = [
@@ -2506,9 +2520,9 @@ class AdminAuditController extends Controller
 
         foreach ($tenants as $tenant) {
             try {
-                $pdo = $this->connectToTenantDatabase($tenant);
-                $rows = $pdo->query('SELECT name, email, phone, role, is_active, created_at FROM users ORDER BY name')
-                    ->fetchAll(\PDO::FETCH_ASSOC);
+                // TenantDatabase lit le rôle principal quelle que soit la
+                // version de l'établissement (colonne ou affectations).
+                $rows = array_map(static fn ($u): array => (array) $u, app(TenantDatabase::class)->users($tenant));
 
                 foreach ($rows as $r) {
                     $employees[] = [
@@ -2519,8 +2533,8 @@ class AdminAuditController extends Controller
                         'is_active' => (bool) $r['is_active'],
                         'establishment' => $tenant->name,
                         'slug' => $tenant->slug,
-                        'created_at' => $r['created_at'] ? Carbon::parse($r['created_at'])->format('d/m/Y') : '—',
-                        'created_ts' => $r['created_at'] ? Carbon::parse($r['created_at'])->timestamp : 0,
+                        'created_at' => ($r['created_at'] ?? null) ? Carbon::parse($r['created_at'])->format('d/m/Y') : '—',
+                        'created_ts' => ($r['created_at'] ?? null) ? Carbon::parse($r['created_at'])->timestamp : 0,
                     ];
                 }
             } catch (\Exception $e) {

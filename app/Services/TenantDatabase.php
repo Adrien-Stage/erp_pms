@@ -63,22 +63,45 @@ class TenantDatabase
         return $connexion;
     }
 
+    /** La table existe-t-elle dans la base de l'établissement ? */
+    private function aLaTable(PDO $pdo, string $table): bool
+    {
+        $stmt = $pdo->prepare("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = ?");
+        $stmt->execute([$table]);
+
+        return (bool) $stmt->fetchColumn();
+    }
+
+    /** La colonne existe-t-elle dans la base de l'établissement ? */
+    private function aLaColonne(PDO $pdo, string $table, string $colonne): bool
+    {
+        $stmt = $pdo->prepare('SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = ? AND column_name = ?');
+        $stmt->execute([$table, $colonne]);
+
+        return (bool) $stmt->fetchColumn();
+    }
+
     /** Employés de l'établissement, avec leurs départements, rôles et niveaux d'accès. */
     public function users(Tenant $tenant): array
     {
         $pdo = $this->connect($tenant);
 
+        // La colonne users.role a disparu des établissements à jour (leurs
+        // droits ne viennent plus que des affectations) ; les autres l'ont
+        // encore.
+        $role = $this->aLaColonne($pdo, 'users', 'role') ? 'u.role' : 'NULL AS role';
+
         try {
-            $users = $pdo->query('
-                SELECT u.id, u.name, u.email, u.phone, u.role, u.is_active, u.department_id,
+            $users = $pdo->query("
+                SELECT u.id, u.name, u.email, u.phone, {$role}, u.is_active, u.department_id, u.created_at,
                        d.name AS department_name, d.code AS department_code, d.slug AS department_slug,
                        d.icon AS department_icon, d.accent AS department_accent
                 FROM users u
                 LEFT JOIN departments d ON d.id = u.department_id
                 ORDER BY u.name
-            ')->fetchAll(PDO::FETCH_ASSOC);
+            ")->fetchAll(PDO::FETCH_ASSOC);
         } catch (PDOException $e) {
-            $users = $pdo->query('SELECT id, name, email, phone, role, is_active FROM users ORDER BY name')
+            $users = $pdo->query("SELECT u.id, u.name, u.email, u.phone, {$role}, u.is_active, u.created_at FROM users u ORDER BY u.name")
                 ->fetchAll(PDO::FETCH_ASSOC);
         }
 
@@ -120,6 +143,9 @@ class TenantDatabase
 
         return array_map(function (array $user) use ($pivot, $permissionsByUser) {
             $user['roles'] = $pivot[$user['id']] ?? [];
+            // Rôle principal : la colonne si elle existe encore, sinon la
+            // première affectation.
+            $user['role'] ??= $user['roles'][0]['slug'] ?? null;
             $user['module_permissions'] = $permissionsByUser[$user['id']] ?? [];
 
             return (object) $user;
@@ -134,24 +160,26 @@ class TenantDatabase
     {
         $pdo = $this->connect($tenant);
 
+        $role = $this->aLaColonne($pdo, 'users', 'role') ? 'u.role' : 'NULL AS role';
+
         try {
             $stmt = $pdo->prepare(
-                'SELECT u.id, u.name, u.email, u.phone, u.role, u.is_active, u.department_id,
+                "SELECT u.id, u.name, u.email, u.phone, {$role}, u.is_active, u.department_id,
                         u.last_login_at, u.email_verified_at, u.created_at, u.updated_at,
                         d.name AS department_name, d.code AS department_code, d.slug AS department_slug,
                         d.icon AS department_icon, d.accent AS department_accent
                  FROM users u
                  LEFT JOIN departments d ON d.id = u.department_id
-                 WHERE u.id = ?'
+                 WHERE u.id = ?"
             );
             $stmt->execute([$userId]);
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
         } catch (PDOException $e) {
             try {
                 $stmt = $pdo->prepare(
-                    'SELECT id, name, email, phone, role, is_active, last_login_at,
-                            email_verified_at, created_at, updated_at
-                     FROM users WHERE id = ?'
+                    "SELECT u.id, u.name, u.email, u.phone, {$role}, u.is_active, u.last_login_at,
+                            u.email_verified_at, u.created_at, u.updated_at
+                     FROM users u WHERE u.id = ?"
                 );
                 $stmt->execute([$userId]);
                 $row = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -184,7 +212,10 @@ class TenantDatabase
             // Établissement antérieur au multi-rôles
         }
 
-        // Surcharges de permissions modulaires
+        $row['role'] ??= $row['roles'][0]['slug'] ?? null;
+
+        // Restrictions de module de l'ancienne console : converties en
+        // exceptions nominatives sur les établissements à jour.
         $row['module_permissions'] = [];
         try {
             $stmt = $pdo->prepare('SELECT module_key, access_level FROM user_module_permissions WHERE user_id = ?');
@@ -222,12 +253,13 @@ class TenantDatabase
                 return [];
             }
 
-            $modStmt = $pdo->query('
-                SELECT department_id, module_key, default_level
-                FROM department_module
-            ');
-
-            $modRows = $modStmt ? $modStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+            // Les modules par département ont disparu des établissements à
+            // jour : un département range le personnel, il ne donne aucun droit.
+            $modRows = [];
+            if ($this->aLaTable($pdo, 'department_module')) {
+                $modStmt = $pdo->query('SELECT department_id, module_key, default_level FROM department_module');
+                $modRows = $modStmt ? $modStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+            }
 
             $modsByDept = [];
             foreach ($modRows as $m) {

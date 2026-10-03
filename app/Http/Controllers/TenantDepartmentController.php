@@ -47,14 +47,13 @@ class TenantDepartmentController extends Controller
         $this->authorizeTenant($tenant);
 
         $validated = $request->validate($this->regles());
-        $modules = $this->modules($request);
 
-        $resultat = $this->annuaire->creerDepartement($tenant, $this->donnees($validated, $modules));
+        $resultat = $this->annuaire->creerDepartement($tenant, $this->donnees($validated));
 
         AuditLog::record(Auth::id(), 'tenant_department_create',
             "Département {$validated['name']} créé dans {$tenant->name}"
                 . ($resultat['ok'] ? '' : ' — échec : ' . $resultat['message']),
-            'tenant_departments', ['department_id' => $resultat['id'] ?? null, 'modules' => array_keys($modules)]);
+            'tenant_departments', ['department_id' => $resultat['id'] ?? null]);
 
         return $this->redirectBack($tenant)->with(
             $resultat['ok'] ? 'success' : 'error',
@@ -69,14 +68,13 @@ class TenantDepartmentController extends Controller
         $this->authorizeTenant($tenant);
 
         $validated = $request->validate($this->regles());
-        $modules = $this->modules($request);
 
-        $resultat = $this->annuaire->modifierDepartement($tenant, $department, $this->donnees($validated, $modules));
+        $resultat = $this->annuaire->modifierDepartement($tenant, $department, $this->donnees($validated));
 
         AuditLog::record(Auth::id(), 'tenant_department_update',
             "Département {$validated['name']} (#{$department}) modifié dans {$tenant->name}"
                 . ($resultat['ok'] ? '' : ' — échec : ' . $resultat['message']),
-            'tenant_departments', ['department_id' => $department, 'modules' => array_keys($modules)]);
+            'tenant_departments', ['department_id' => $department]);
 
         return $this->redirectBack($tenant)->with(
             $resultat['ok'] ? 'success' : 'error',
@@ -114,24 +112,14 @@ class TenantDepartmentController extends Controller
             'icon'        => ['nullable', 'string', 'max:50'],
             'accent'      => ['nullable', 'string', 'max:30'],
             'sort_order'  => ['nullable', 'integer'],
-            'modules'     => ['nullable', 'array'],
-            'levels'      => ['nullable', 'array'],
         ];
     }
 
-    /** @return array<string, string> module => niveau par défaut */
-    private function modules(Request $request): array
-    {
-        $modules = [];
-        foreach ((array) $request->input('modules', []) as $modKey) {
-            $level = $request->input("levels.{$modKey}", 'write');
-            $modules[$modKey] = in_array($level, ['write', 'read'], true) ? $level : 'write';
-        }
-
-        return $modules;
-    }
-
-    private function donnees(array $validated, array $modules): array
+    /**
+     * Un département range le personnel : il ne porte plus de modules, les
+     * droits viennent des rôles.
+     */
+    private function donnees(array $validated): array
     {
         return array_filter([
             'name'        => $validated['name'],
@@ -141,7 +129,6 @@ class TenantDepartmentController extends Controller
             'icon'        => $validated['icon'] ?? null,
             'accent'      => $validated['accent'] ?? null,
             'sort_order'  => $validated['sort_order'] ?? null,
-            'modules'     => $modules,
             'auteur'      => $this->auteur(),
         ], static fn ($v) => $v !== null);
     }

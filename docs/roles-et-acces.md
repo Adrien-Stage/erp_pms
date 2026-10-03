@@ -171,8 +171,11 @@ désactiver, réactiver. Mots de passe de **8 caractères au moins**.
 
 Créés, modifiés et supprimés depuis la fiche de l'établissement, par son API
 (`/api/departements`). Supprimer un département détache ses employés, sans les
-supprimer. Les modules d'un département sont un héritage : ils ne donnent plus de
-droits.
+supprimer. Un département range le personnel ; il ne porte plus de modules et ne
+donne aucun droit — les rôles et leurs exceptions s'en chargent. La console lit les
+établissements des deux générations : la colonne `users.role`, les restrictions de
+module et les modules par département n'existent plus dans un établissement à jour,
+et son rôle principal est alors sa première affectation.
 
 ### Comptes éditeurs
 
@@ -235,7 +238,7 @@ réglages de l'hôtel ne sont jamais écrasés.
 | Matrice | Réglage de la couche de la console |
 | Comptes administrateurs | Création, réinitialisation, désactivation |
 | Interventions | Interventions de l'administrateur de l'établissement dans son exploitation, transmises par l'établissement (badge **Tardive** si la console était injoignable) |
-| Exceptions | Exceptions nominatives, restrictions de service, écarts de rôle posés par l'hôtel |
+| Exceptions | Exceptions nominatives, écarts de rôle posés par l'hôtel (et, chez un établissement pas encore à jour, ses anciennes restrictions de service) |
 | Alertes | Revue des comptes de l'établissement (cumuls, rôles retirés, comptes sans rôle, pas de comptable, pas d'administrateur), dérogations en vigueur, exceptions échues |
 | Historique | Versions de la couche de la console, différences, retour arrière |
 

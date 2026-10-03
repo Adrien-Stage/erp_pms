@@ -1,5 +1,4 @@
 @php
-    $allModules = \App\Support\ModuleCatalog::all();
     $accentClasses = [
         'indigo'  => ['bg' => 'bg-indigo-50', 'text' => 'text-indigo-700', 'border' => 'border-indigo-200', 'badge' => 'bg-indigo-100 text-indigo-800'],
         'sky'     => ['bg' => 'bg-sky-50', 'text' => 'text-sky-700', 'border' => 'border-sky-200', 'badge' => 'bg-sky-100 text-sky-800'],
@@ -15,27 +14,13 @@
     $totalStaff = $tenantUsers->count();
     $staffInDepts = $tenantUsers->filter(fn($u) => !empty($u->department_id))->count();
     $staffWithoutDept = $totalStaff - $staffInDepts;
-
-    $modulesByService = [];
-    foreach ($allModules as $key => $mod) {
-        $srv = $mod['service'] ?? 'app';
-        $modulesByService[$srv][$key] = $mod;
-    }
 @endphp
 
 <div x-data="{
     showCreateModal: false,
     showEditModal: false,
-    editDept: { id: null, name: '', code: '', description: '', icon: 'briefcase', accent: 'indigo', sort_order: 10, modules: {} },
+    editDept: { id: null, name: '', code: '', description: '', icon: 'briefcase', accent: 'indigo', sort_order: 10 },
     openEdit(dept) {
-        let mods = {};
-        if (dept.modules && Array.isArray(dept.modules)) {
-            dept.modules.forEach(m => { 
-                let k = m.key || m.module_key;
-                let lvl = m.level || m.default_level || 'write';
-                mods[k] = lvl;
-            });
-        }
         this.editDept = {
             id: dept.id,
             name: dept.name,
@@ -43,8 +28,7 @@
             description: dept.description || '',
             icon: dept.icon || 'briefcase',
             accent: dept.accent || 'indigo',
-            sort_order: dept.sort_order || 1,
-            modules: mods
+            sort_order: dept.sort_order || 1
         };
         this.showEditModal = true;
     }
@@ -60,7 +44,7 @@
                 Départements & Structure Métier
             </h2>
             <p class="text-xs text-slate-500 mt-1">
-                Définissez les départements de {{ $tenant->name }} et les modules logiciels rattachés par défaut à chacun d'eux.
+                Les départements de {{ $tenant->name }} rangent le personnel. Ils ne donnent aucun droit : les rôles et leurs exceptions s'en chargent.
             </p>
         </div>
         <div class="flex items-center gap-2">
@@ -87,18 +71,16 @@
             <p class="mt-0.5 text-[11px] text-slate-500">{{ $staffWithoutDept > 0 ? $staffWithoutDept . ' employé(s) sans département' : '100% des employés affectés' }}</p>
         </div>
         <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Services & Modules</p>
-            <p class="mt-1 text-2xl font-extrabold text-indigo-600">3 services &bull; {{ count($allModules) }} modules</p>
-            <p class="mt-0.5 text-[11px] text-slate-500">PMS, Portail Site Web & GRC</p>
+            <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Droits</p>
+            <p class="mt-1 text-sm font-bold text-slate-700">Portés par les rôles</p>
+            <p class="mt-0.5 text-[11px] text-slate-500">Voir l'onglet Droits &amp; rôles</p>
         </div>
-    </div>
 
     <!-- Liste des Départements -->
     <div class="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
         @forelse($tenantDepartments as $dept)
             @php
                 $style = $accentClasses[$dept->accent ?? 'indigo'] ?? $accentClasses['indigo'];
-                $deptModules = $dept->modules ?? [];
             @endphp
             <div class="flex flex-col justify-between rounded-xl border border-slate-200 bg-white p-5 shadow-sm hover:border-slate-300 transition">
                 <div>
@@ -150,32 +132,6 @@
                         </p>
                     @endif
 
-                    <!-- Modules associés -->
-                    <div class="mt-4 pt-3 border-t border-slate-100">
-                        <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
-                            Modules associés ({{ count($deptModules) }}) :
-                        </p>
-                        @if(empty($deptModules))
-                            <span class="text-[11px] text-slate-400 italic">Aucun module rattaché</span>
-                        @else
-                            <div class="flex flex-wrap gap-1.5">
-                                @foreach($deptModules as $m)
-                                    @php
-                                        $modKey = is_array($m) ? ($m['key'] ?? '') : (is_object($m) ? $m->module_key : '');
-                                        $modLvl = is_array($m) ? ($m['level'] ?? 'write') : (is_object($m) ? $m->default_level : 'write');
-                                        $modDef = $allModules[$modKey] ?? null;
-                                        $modLabel = $modDef['label'] ?? $modKey;
-                                    @endphp
-                                    <span class="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-medium border
-                                        {{ $modLvl === 'write' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-50 text-slate-600 border-slate-200' }}"
-                                          title="{{ $modLabel }} — {{ $modLvl === 'write' ? 'Lecture/Écriture par défaut' : 'Lecture seule par défaut' }}">
-                                        <span>{{ $modLabel }}</span>
-                                        <span class="text-[9px] font-bold opacity-75">[{{ $modLvl === 'write' ? 'L/É' : 'L' }}]</span>
-                                    </span>
-                                @endforeach
-                            </div>
-                        @endif
-                    </div>
                 </div>
 
                 <!-- Pied de carte : Effectif -->
@@ -202,7 +158,7 @@
                 </div>
                 <h3 class="text-sm font-bold text-slate-800">Aucun département configuré</h3>
                 <p class="mt-1 text-xs text-slate-500 max-w-sm mx-auto">
-                    Les départements permettent de regrouper vos modules et de pré-configurer automatiquement les accès des employés.
+                    Les départements rangent le personnel par service ; les droits viennent des rôles.
                 </p>
                 <div class="mt-4">
                     <button type="button" @click="showCreateModal = true"
@@ -299,46 +255,6 @@
                         <label class="block text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1">Description</label>
                         <textarea name="description" rows="2" placeholder="Mission et rôle opérationnel de ce département au sein de l'établissement..."
                                   class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-indigo-500"></textarea>
-                    </div>
-
-                    <!-- Sélection des modules par service -->
-                    <div class="border-t border-slate-200 pt-4">
-                        <div class="flex items-center justify-between mb-3">
-                            <div>
-                                <h4 class="text-[11px] font-bold uppercase tracking-wide text-slate-700">Modules associés à ce département</h4>
-                                <p class="text-[11px] text-slate-500">
-                                    Cochez les modules accessibles par défaut pour les employés de ce département.
-                                </p>
-                            </div>
-                        </div>
-
-                        <div class="space-y-4">
-                            @foreach($modulesByService as $serviceKey => $srvModules)
-                                <div class="rounded-xl border border-slate-200 p-3.5 bg-slate-50/50">
-                                    <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2.5">
-                                        @if($serviceKey === 'app') Service PMS (Wetchah_APP)
-                                        @elseif($serviceKey === 'site') Portail Web Public (Wetchah_SITE)
-                                        @elseif($serviceKey === 'grc') Contrôle de Gestion & Audit (Wetchah_GRC)
-                                        @else Service {{ ucfirst($serviceKey) }}
-                                        @endif
-                                    </p>
-                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                                        @foreach($srvModules as $modKey => $mDef)
-                                            <div class="flex items-center justify-between p-2 rounded-lg bg-white border border-slate-200 hover:border-indigo-200 transition">
-                                                <label class="flex items-center gap-2 cursor-pointer select-none text-xs font-semibold text-slate-800">
-                                                    <input type="checkbox" name="modules[]" value="{{ $modKey }}" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
-                                                    <span>{{ $mDef['label'] }}</span>
-                                                </label>
-                                                <select name="levels[{{ $modKey }}]" class="text-[10px] font-medium border border-slate-200 rounded px-1.5 py-0.5 bg-slate-50 text-slate-700">
-                                                    <option value="write">Lecture / Écriture</option>
-                                                    <option value="read">Lecture seule</option>
-                                                </select>
-                                            </div>
-                                        @endforeach
-                                    </div>
-                                </div>
-                            @endforeach
-                        </div>
                     </div>
                 </div>
 
@@ -440,50 +356,6 @@
                         <label class="block text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1">Description</label>
                         <textarea name="description" x-model="editDept.description" rows="2"
                                   class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-indigo-500"></textarea>
-                    </div>
-
-                    <!-- Modules associés -->
-                    <div class="border-t border-slate-200 pt-4">
-                        <div class="flex items-center justify-between mb-3">
-                            <div>
-                                <h4 class="text-[11px] font-bold uppercase tracking-wide text-slate-700">Modules associés à ce département</h4>
-                                <p class="text-[11px] text-slate-500">
-                                    Cochez ou décochez les modules et ajustez leur niveau d'accès.
-                                </p>
-                            </div>
-                        </div>
-
-                        <div class="space-y-4">
-                            @foreach($modulesByService as $serviceKey => $srvModules)
-                                <div class="rounded-xl border border-slate-200 p-3.5 bg-slate-50/50">
-                                    <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2.5">
-                                        @if($serviceKey === 'app') Service PMS (Wetchah_APP)
-                                        @elseif($serviceKey === 'site') Portail Web Public (Wetchah_SITE)
-                                        @elseif($serviceKey === 'grc') Contrôle de Gestion & Audit (Wetchah_GRC)
-                                        @else Service {{ ucfirst($serviceKey) }}
-                                        @endif
-                                    </p>
-                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                                        @foreach($srvModules as $modKey => $mDef)
-                                            <div class="flex items-center justify-between p-2 rounded-lg bg-white border border-slate-200 hover:border-indigo-200 transition">
-                                                <label class="flex items-center gap-2 cursor-pointer select-none text-xs font-semibold text-slate-800">
-                                                    <input type="checkbox" name="modules[]" value="{{ $modKey }}"
-                                                           :checked="editDept.modules && (editDept.modules['{{ $modKey }}'] !== undefined)"
-                                                           class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
-                                                    <span>{{ $mDef['label'] }}</span>
-                                                </label>
-                                                <select name="levels[{{ $modKey }}]"
-                                                        :value="(editDept.modules && editDept.modules['{{ $modKey }}']) ? editDept.modules['{{ $modKey }}'] : 'write'"
-                                                        class="text-[10px] font-medium border border-slate-200 rounded px-1.5 py-0.5 bg-slate-50 text-slate-700">
-                                                    <option value="write">Lecture / Écriture</option>
-                                                    <option value="read">Lecture seule</option>
-                                                </select>
-                                            </div>
-                                        @endforeach
-                                    </div>
-                                </div>
-                            @endforeach
-                        </div>
                     </div>
                 </div>
 

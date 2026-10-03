@@ -35,7 +35,7 @@ function adminTechnique(): User
     return User::factory()->create(['role' => User::ROLE_TECH_ADMIN, 'is_active' => true]);
 }
 
-test('créer un département passe par l\'API, avec ses modules', function () {
+test('créer un département passe par l\'API, sans modules : il ne donne aucun droit', function () {
     Http::fake(['*' => Http::response(['id' => 12], 201)]);
     $tenant = departmentTestTenant();
 
@@ -44,8 +44,6 @@ test('créer un département passe par l\'API, avec ses modules', function () {
             'name' => 'Réception & Accueil',
             'code' => 'REC',
             'icon' => 'calendar-check',
-            'modules' => ['reservations', 'hebergement'],
-            'levels' => ['reservations' => 'write', 'hebergement' => 'read'],
         ])
         ->assertRedirect()
         ->assertSessionHas('success');
@@ -54,7 +52,7 @@ test('créer un département passe par l\'API, avec ses modules', function () {
         && $r->url() === 'http://meka-erp-hotel-test-app/api/departements'
         && $r->hasHeader('Authorization', 'Bearer jeton-de-service')
         && $r['name'] === 'Réception & Accueil'
-        && $r['modules'] === ['reservations' => 'write', 'hebergement' => 'read']);
+        && ! isset($r['modules']));
 });
 
 test('modifier un département passe par l\'API', function () {
@@ -64,7 +62,6 @@ test('modifier un département passe par l\'API', function () {
     $this->actingAs(adminTechnique())
         ->put(route('tech.establishments.departments.update', ['tenant' => $tenant, 'department' => 3]), [
             'name' => 'Hébergement & Housekeeping',
-            'modules' => ['housekeeping'],
         ])
         ->assertSessionHas('success');
 
