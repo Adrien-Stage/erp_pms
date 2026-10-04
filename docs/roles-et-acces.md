@@ -1,5 +1,9 @@
 # Rôles et accès
 
+> Le **Guide des rôles et des droits**, qui couvre l'application et la console, est
+> dans le dépôt de l'application : `docs/guide-roles-et-droits.md`. Cette page est la
+> référence technique de la console.
+
 ## Trois rôles, trois espaces
 
 La console n'a que **trois rôles**, définis comme constantes sur
