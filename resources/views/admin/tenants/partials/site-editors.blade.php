@@ -46,7 +46,7 @@
             </div>
             <div>
                 <label class="mb-1 block text-[10px] font-bold uppercase tracking-wide text-slate-500">Mot de passe</label>
-                <input type="text" name="password" required minlength="6"
+                <input type="text" name="password" required minlength="8"
                        class="w-full rounded-lg border border-slate-300 px-2.5 py-2 text-xs outline-none focus:border-indigo-500">
             </div>
             <div class="flex items-end">

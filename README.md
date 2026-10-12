@@ -95,7 +95,9 @@ app/
 │  ├─ AdminAuditController.php    Le contrôleur central (TECH + BUSINESS)
 │  ├─ OwnerController.php         Registre des propriétaires
 │  ├─ SiteEditorController.php    Espace éditeur + comptes éditeurs
-│  └─ TenantUserController.php    Employés, écrits directement dans la base du tenant
+│  ├─ TenantUserController.php    Personnel (lecture) et accès au portail GRC
+│  ├─ TenantPermissionMatrixController.php  Droits & rôles : matrice, aperçu, versions
+│  └─ TenantAdminAccountController.php      Comptes administrateurs des établissements
 ├─ Http/Middleware/
 │  └─ EnsureRoleAccess.php        RBAC + isolation multi-tenant (alias « role »)
 ├─ Models/                        Tenant, User, Role, AuditLog, TenantBackup,
@@ -103,13 +105,15 @@ app/
 ├─ Services/
 │  ├─ TenantProvisioningService.php  Toute la logique Docker
 │  ├─ DockerRegistryService.php      Tags et digests GHCR
-│  ├─ TenantDatabase.php             Accès PDO aux bases des établissements
+│  ├─ TenantDatabase.php             Lecture PDO des bases des établissements
+│  ├─ EtablissementApi.php           Canal d'orchestration (ORCHESTRATION_SECRET)
+│  ├─ PermissionMatrixClient.php     Matrice des droits d'un établissement
+│  ├─ TenantDirectoryClient.php      Comptes administrateurs et départements
 │  ├─ TenantBackupService.php        pg_dump / restauration
 │  ├─ BusinessReportingClient.php    Agrégation des API de reporting
 │  └─ BusinessReportExporter.php     Export Excel des rapports
 └─ Support/
-   ├─ SiteContentSchema.php       Schéma déclaratif du CMS
-   └─ TenantRoles.php             Catalogue des rôles de wetchah_app
+   └─ SiteContentSchema.php       Schéma déclaratif du CMS
 ```
 
 Point d'entrée principal des routes : [`routes/web.php`](routes/web.php).

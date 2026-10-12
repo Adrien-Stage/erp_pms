@@ -4,88 +4,67 @@ use App\Models\Tenant;
 use App\Models\User;
 use App\Services\TenantDatabase;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Route;
 
 uses(RefreshDatabase::class);
 
 /**
- * Actions sur les employés d'un établissement.
+ * Le personnel d'un établissement, vu depuis l'ERP.
  *
- * Ces employés vivent dans la base de leur établissement, jointe par PDO. Les
- * tests ci-dessous n'ouvrent pas de conteneur : ils remplacent le service
- * d'accès par un double, pour vérifier les autorisations et le comportement
- * du contrôleur — c'est là que se jouent les erreurs, pas dans le SQL.
+ * La console consulte : les comptes se créent et se modifient dans
+ * l'application, par l'administrateur de l'établissement. Elle n'écrit plus
+ * dans la base du tenant — une écriture directe contournait l'application, qui
+ * ne pouvait ni la valider ni la tracer. Reste l'accès au portail GRC d'un
+ * contrôleur de gestion, dont la base est à part.
  */
 
-function actionTenant(): Tenant
+function actionTenant(array $attributs = []): Tenant
 {
-    return Tenant::create([
+    return Tenant::create(array_merge([
         'name'        => 'Villa Boutanga',
         'slug'        => 'villa-b-' . random_int(1, 99999),
         'db_name'     => 'db_' . random_int(1000, 99999),
         'owner_id'    => User::factory()->create(['role' => User::ROLE_OWNER])->id,
         'is_active'   => true,
         'users_count' => 3,
-    ]);
+    ], $attributs));
 }
 
-/** Double du service : mémorise les écritures au lieu de joindre un conteneur. */
+/** Double du service de lecture : la console ne fait plus que lire. */
 class TenantDatabaseDouble extends TenantDatabase
 {
     public array $employes = [];
-    public array $requetes = [];
     public bool $joignable = true;
+    public int $connexions = 0;
+
+    /** @var array<int, array<string, mixed>> Rôles rattachés à l'employé consulté. */
+    public array $rolesAffectes = [];
+
+    /** @var array<string, string> Restrictions de service de l'employé consulté. */
+    public array $restrictions = [];
 
     public function connect(Tenant $tenant): PDO
+    {
+        // Toute connexion brute serait le signe d'une écriture SQL directe.
+        $this->connexions++;
+        throw new PDOException('Aucune connexion brute attendue');
+    }
+
+    public function users(Tenant $tenant): array
     {
         if (!$this->joignable) {
             throw new PDOException('Conteneur injoignable');
         }
 
-        return new class($this) extends PDO {
-            public function __construct(private $double) {}
-            public function prepare(string $query, array $options = []): PDOStatement|false
-            {
-                $double = $this->double;
-
-                return new class($double, $query) extends PDOStatement {
-                    public function __construct(private $double, private string $query) {}
-                    public function execute(?array $params = null): bool
-                    {
-                        $this->double->requetes[] = ['sql' => $this->query, 'params' => $params];
-                        return true;
-                    }
-                    public function fetch(int $mode = PDO::FETCH_DEFAULT, int $orientation = PDO::FETCH_ORI_NEXT, int $offset = 0): mixed
-                    {
-                        return false;   // aucun doublon d'email
-                    }
-                };
-            }
-            public function query(string $query, ?int $fetchMode = null, mixed ...$fetch): PDOStatement|false
-            {
-                $double = $this->double;
-
-                return new class($double, $query) extends PDOStatement {
-                    public function __construct(private $double, private string $query) {}
-                    public function fetchColumn(int $column = 0): mixed
-                    {
-                        // Deux managers : la suppression du dernier reste testable à part.
-                        return 2;
-                    }
-                };
-            }
-            public function beginTransaction(): bool { return true; }
-            public function commit(): bool { return true; }
-            public function rollBack(): bool { return true; }
-            public function inTransaction(): bool { return false; }
-        };
+        return array_map(fn ($e) => (object) ((array) $e + ['roles' => $this->rolesAffectes, 'module_permissions' => []]), $this->employes);
     }
 
-    public function findUser(Tenant $tenant, int $userId): ?object
+    public function departments(Tenant $tenant): array
     {
-        return $this->employes[$userId] ?? null;
+        return [];
     }
 
-    /** La fiche lit davantage de colonnes : on complète l'employé du double. */
     public function userDetail(Tenant $tenant, int $userId): ?object
     {
         if (!$this->joignable) {
@@ -99,61 +78,15 @@ class TenantDatabaseDouble extends TenantDatabase
         }
 
         return (object) ((array) $employe + [
-            'last_login_at'     => '2026-08-01 09:30:00',
-            'email_verified_at' => null,
-            'created_at'        => '2026-05-12 08:00:00',
-            'updated_at'        => '2026-08-01 09:30:00',
-            'roles'             => $this->rolesAffectes,
-            'module_permissions' => [],
-            'department_id'     => null,
-            'department_name'   => null,
-            'department_code'   => null,
-            'department_slug'   => null,
-            'department_icon'   => null,
-            'department_accent' => null,
+            'last_login_at'      => '2026-08-01 09:30:00',
+            'email_verified_at'  => null,
+            'created_at'         => '2026-05-12 08:00:00',
+            'updated_at'         => '2026-08-01 09:30:00',
+            'roles'              => $this->rolesAffectes,
+            'module_permissions' => $this->restrictions,
+            'department_id'      => null,
+            'department_name'    => null,
         ]);
-    }
-
-    /** @var array<int, array<string, mixed>> Rôles rattachés à l'employé consulté. */
-    public array $rolesAffectes = [];
-
-    /** @var array<int, object> Rôles proposés à l'affectation. */
-    public array $rolesAssignables = [];
-
-    public function assignableRoles(Tenant $tenant): array
-    {
-        return $this->rolesAssignables;
-    }
-
-    public function departments(Tenant $tenant): array
-    {
-        return [
-            (object) [
-                'id' => 1,
-                'name' => 'Direction',
-                'slug' => 'direction',
-                'code' => 'DIR',
-                'description' => null,
-                'icon' => 'briefcase',
-                'accent' => 'indigo',
-                'sort_order' => 1,
-                'is_active' => true,
-                'modules' => [],
-            ],
-        ];
-    }
-
-    public function syncUserPermissions(Tenant $tenant, int $userId, ?int $departmentId, array $modulePermissions): void
-    {
-        // Le test double n'exécute pas de base de tenant ; cette opération n'est
-        // pas utile au contrôle d'autorisation de la fiche.
-    }
-
-    public int $managers = 2;
-
-    public function activeManagerCount(Tenant $tenant): int
-    {
-        return $this->managers;
     }
 }
 
@@ -175,226 +108,132 @@ function employe(int $id, string $nom = 'Serge Mbarga', string $role = 'receptio
     ];
 }
 
-// ── Autorisations ───────────────────────────────────────────────────────────
+function administrateurTechnique(): User
+{
+    return User::factory()->create(['role' => User::ROLE_TECH_ADMIN, 'is_active' => true]);
+}
 
-test('un propriétaire ne gère que les employés de ses propres établissements', function () {
-    $tenant = actionTenant();
-    doubleService([7 => employe(7)]);
+// ── Plus aucune écriture directe ────────────────────────────────────────────
 
-    $etranger = User::factory()->create(['role' => User::ROLE_OWNER, 'is_active' => true]);
-
-    $this->actingAs($etranger)
-        ->post(route('tech.establishments.users.toggle-active', ['tenant' => $tenant, 'user' => 7]));
-
-    // Le middleware « tech_admin » de la route écarte déjà tout propriétaire ;
-    // l'autorisation du contrôleur en est la seconde barrière.
-    expect(app(TenantDatabase::class)->requetes)->toBeEmpty();
+test("la console n'écrit plus de compte dans la base de l'établissement", function () {
+    foreach ([
+        'tech.establishments.users.store', 'tech.establishments.users.update',
+        'tech.establishments.users.toggle-active', 'tech.establishments.users.destroy',
+        'tech.establishments.create-manager', 'tech.establishments.create-controller',
+        'business.establishments.create-manager', 'business.establishments.create-controller',
+    ] as $route) {
+        expect(Route::has($route))->toBeFalse("La route {$route} existe encore.");
+    }
 });
 
-test('un éditeur de contenu ne touche pas aux employés', function () {
-    $tenant = actionTenant();
-    doubleService([7 => employe(7)]);
-
-    $editeur = User::factory()->create([
-        'role' => User::ROLE_SITE_EDITOR, 'tenant_id' => $tenant->id, 'is_active' => true,
-    ]);
-
-    $this->actingAs($editeur)
-        ->delete(route('tech.establishments.users.destroy', ['tenant' => $tenant, 'user' => 7]));
-
-    expect(app(TenantDatabase::class)->requetes)->toBeEmpty();
-});
-
-// ── Activation ─────────────────────────────────────────────────────────────
-
-test('désactiver un employé écrit dans la base de son établissement', function () {
-    $tenant = actionTenant();
-    $double = doubleService([7 => employe(7, 'Serge Mbarga', 'reception', true)]);
-    $admin  = User::factory()->create(['role' => User::ROLE_TECH_ADMIN, 'is_active' => true]);
-
-    $this->actingAs($admin)
-        ->post(route('tech.establishments.users.toggle-active', ['tenant' => $tenant, 'user' => 7]))
-        ->assertRedirect()
-        ->assertSessionHas('success');
-
-    $ecriture = collect($double->requetes)->firstWhere(fn ($r) => str_contains($r['sql'], 'UPDATE users SET is_active'));
-
-    expect($ecriture)->not->toBeNull()
-        // « false » : l'employé était actif, on le désactive.
-        ->and($ecriture['params'])->toBe(['false', 7]);
-});
-
-test('un employé introuvable est signalé sans écriture', function () {
-    $tenant = actionTenant();
-    $double = doubleService([]);   // aucun employé
-    $admin  = User::factory()->create(['role' => User::ROLE_TECH_ADMIN, 'is_active' => true]);
-
-    $this->actingAs($admin)
-        ->post(route('tech.establishments.users.toggle-active', ['tenant' => $tenant, 'user' => 999]))
-        ->assertRedirect()
-        ->assertSessionHas('error');
-
-    expect($double->requetes)->toBeEmpty();
-});
-
-test('une base injoignable donne un message clair plutôt qu\'une erreur brute', function () {
-    $tenant = actionTenant();
-    doubleService([7 => employe(7)], joignable: false);
-    $admin = User::factory()->create(['role' => User::ROLE_TECH_ADMIN, 'is_active' => true]);
-
-    $this->actingAs($admin)
-        ->post(route('tech.establishments.users.toggle-active', ['tenant' => $tenant, 'user' => 7]))
-        ->assertRedirect()
-        ->assertSessionHas('error');
-
-    // Le détail technique n'a pas à remonter à l'écran : ce qui est
-    // actionnable, c'est « démarrez les conteneurs ».
-    expect(session('error'))->toContain('conteneurs');
-});
-
-// ── Suppression ─────────────────────────────────────────────────────────────
-
-test('supprimer un employé le retire de la base du tenant', function () {
-    $tenant = actionTenant();
-    $double = doubleService([7 => employe(7, 'Serge Mbarga', 'reception')]);
-    $admin  = User::factory()->create(['role' => User::ROLE_TECH_ADMIN, 'is_active' => true]);
-
-    $this->actingAs($admin)
-        ->delete(route('tech.establishments.users.destroy', ['tenant' => $tenant, 'user' => 7]))
-        ->assertRedirect()
-        ->assertSessionHas('success');
-
-    expect(collect($double->requetes)->contains(fn ($r) => str_contains($r['sql'], 'DELETE FROM users')))->toBeTrue()
-        // Le compteur dénormalisé suit la suppression.
-        ->and($tenant->fresh()->users_count)->toBe(2);
-});
-
-// ── Modification et accès ─────────────────────────────────────────────────────
-
-test('modifier sans mot de passe ne touche pas au mot de passe', function () {
+test("la liste du personnel renvoie la gestion des comptes à l'administrateur", function () {
     $tenant = actionTenant();
     $double = doubleService([7 => employe(7)]);
-    $admin  = User::factory()->create(['role' => User::ROLE_TECH_ADMIN, 'is_active' => true]);
+    $double->rolesAffectes = [['slug' => 'reception_chief', 'name' => 'Chef de réception', 'module' => 'hebergement', 'level' => null]];
 
-    $this->actingAs($admin)
-        ->post(route('tech.establishments.users.update', ['tenant' => $tenant, 'user' => 7]), [
-            'name' => 'Serge Mbarga', 'email' => 'serge@example.com', 'phone' => '+237677000000',
-            'password' => '',
-        ])
-        ->assertRedirect()
-        ->assertSessionHas('success');
+    $this->actingAs(administrateurTechnique())
+        ->get(route('tech.establishments.show', ['tenant' => $tenant, 'section' => 'users']))
+        ->assertOk()
+        ->assertSee('Serge Mbarga')
+        // L'affectation fait foi, pas la colonne héritée « reception ».
+        ->assertSee('Chef de réception')
+        ->assertSee("se gèrent dans l'application", false)
+        ->assertSee('Comptes administrateurs')
+        ->assertDontSee('Créer un manager')
+        ->assertDontSee('Ajouter un employé');
 
-    $update = collect($double->requetes)->first(fn ($r) => str_contains($r['sql'], 'UPDATE users SET name'));
-
-    expect($update)->not->toBeNull()
-        ->and($update['sql'])->not->toContain('password');
-});
-
-test('les rôles cochés sont écrits dans le pivot avec leur niveau', function () {
-    $tenant = actionTenant();
-    $double = doubleService([7 => employe(7)]);
-    $admin  = User::factory()->create(['role' => User::ROLE_TECH_ADMIN, 'is_active' => true]);
-
-    $this->actingAs($admin)
-        ->post(route('tech.establishments.users.update', ['tenant' => $tenant, 'user' => 7]), [
-            'name' => 'Serge Mbarga', 'email' => 'serge@example.com',
-            'roles'  => [3, 5],
-            'levels' => [3 => 'read', 5 => 'write'],
-        ])
-        ->assertRedirect();
-
-    // Les rôles précédents sont d'abord effacés : l'écran présente toujours
-    // l'ensemble des rôles, donc une case décochée vaut retrait.
-    expect(collect($double->requetes)->contains(fn ($r) => str_contains($r['sql'], 'DELETE FROM role_user')))->toBeTrue();
-
-    $inserts = collect($double->requetes)
-        ->filter(fn ($r) => str_contains($r['sql'], 'INSERT INTO role_user'))
-        ->pluck('params')->values()->all();
-
-    expect($inserts)->toBe([[7, 3, 'read'], [7, 5, 'write']]);
-});
-
-test('un rôle coché sans niveau précisé donne l\'écriture', function () {
-    $tenant = actionTenant();
-    $double = doubleService([7 => employe(7)]);
-    $admin  = User::factory()->create(['role' => User::ROLE_TECH_ADMIN, 'is_active' => true]);
-
-    $this->actingAs($admin)
-        ->post(route('tech.establishments.users.update', ['tenant' => $tenant, 'user' => 7]), [
-            'name' => 'Serge Mbarga', 'email' => 'serge@example.com', 'roles' => [4],
-        ])
-        ->assertRedirect();
-
-    $insert = collect($double->requetes)->first(fn ($r) => str_contains($r['sql'], 'INSERT INTO role_user'));
-
-    expect($insert['params'])->toBe([7, 4, 'write']);
+    expect($double->connexions)->toBe(0);
 });
 
 // ── Fiche détaillée ─────────────────────────────────────────────────────────
 
-test('la fiche d\'un employé affiche ses informations et ses accès', function () {
+test("la fiche montre les rôles, leur niveau et les restrictions, sans rien modifier", function () {
     $tenant = actionTenant();
     $double = doubleService([7 => employe(7)]);
     $double->rolesAffectes = [
-        ['id' => 3, 'slug' => 'reception', 'name' => 'Réception', 'module' => 'hebergement',
+        ['id' => 3, 'slug' => 'reception', 'name' => 'Réceptionniste', 'module' => 'hebergement',
          'description' => 'Arrivées et départs', 'level' => 'read'],
     ];
-    $double->rolesAssignables = [
-        (object) ['id' => 3, 'name' => 'Réception', 'slug' => 'reception', 'description' => 'Arrivées et départs', 'module' => 'hebergement', 'icon' => null],
-        (object) ['id' => 5, 'name' => 'Caisse', 'slug' => 'cashier', 'description' => null, 'module' => 'boutique', 'icon' => null],
-    ];
+    $double->restrictions = ['economat' => 'read', 'restaurant' => 'inherit'];
 
-    $admin = User::factory()->create(['role' => User::ROLE_TECH_ADMIN, 'is_active' => true]);
-
-    $this->actingAs($admin)
+    $this->actingAs(administrateurTechnique())
         ->get(route('tech.establishments.users.show', ['tenant' => $tenant, 'user' => 7]))
         ->assertOk()
         ->assertSee('Serge Mbarga')
         ->assertSee('serge@example.com')
-        ->assertSee('Accès par module')
-        // Le rôle déjà attribué et celui qui ne l'est pas figurent tous deux :
-        // l'écran présente l'ensemble, l'absence de case valant retrait.
-        ->assertSee('Réception')
-        ->assertSee('Caisse');
+        ->assertSee('Réceptionniste')
+        ->assertSee('Lecture seule')
+        ->assertSee('Restrictions de service')
+        ->assertSee('economat')
+        // « inherit » ne retire rien : il n'est pas une restriction.
+        ->assertDontSee('restaurant</span>', false)
+        ->assertDontSee('Supprimer définitivement')
+        ->assertDontSee('name="password"', false);
 });
 
-test('la fiche est accessible pour un manager comme pour tout autre employé', function () {
-    $tenant = actionTenant();
-    $double = doubleService([9 => employe(9, 'Alice Ngo', 'manager')]);
-    $double->managers = 3;
+test("la fiche d'un contrôleur propose l'accès au portail GRC quand le module est actif", function () {
+    $tenant = actionTenant(['modules' => ['grc']]);
+    doubleService([8 => employe(8, 'Paul Atangana', 'controller')]);
 
-    $admin = User::factory()->create(['role' => User::ROLE_TECH_ADMIN, 'is_active' => true]);
-
-    $this->actingAs($admin)
-        ->get(route('tech.establishments.users.show', ['tenant' => $tenant, 'user' => 9]))
+    $this->actingAs(administrateurTechnique())
+        ->get(route('tech.establishments.users.show', ['tenant' => $tenant, 'user' => 8]))
         ->assertOk()
-        ->assertSee('Alice Ngo')
-        ->assertSee('Supprimer définitivement');
+        ->assertSee('Accès au portail GRC')
+        ->assertSee(route('tech.establishments.users.grc', ['tenant' => $tenant, 'user' => 8]), false);
 });
 
-test('le dernier manager ne peut pas être supprimé depuis sa fiche', function () {
-    $tenant = actionTenant();
-    $double = doubleService([9 => employe(9, 'Alice Ngo', 'manager')]);
-    $double->managers = 1;
+test("l'accès GRC est poussé au portail, sans toucher la base de l'établissement", function () {
+    config(['provisioning.reporting_secret' => 'secret-de-service']);
+    Http::fake(['*' => Http::response(['id' => 1], 201)]);
 
-    $admin = User::factory()->create(['role' => User::ROLE_TECH_ADMIN, 'is_active' => true]);
+    $tenant = actionTenant(['modules' => ['grc'], 'docker_grc_container' => 'meka-erp-villa-grc']);
+    $double = doubleService([8 => employe(8, 'Paul Atangana', 'controller')]);
 
-    // Le refus se dit avant le clic plutôt qu'après : le bouton cède la place
-    // à l'explication.
-    $this->actingAs($admin)
-        ->get(route('tech.establishments.users.show', ['tenant' => $tenant, 'user' => 9]))
-        ->assertOk()
-        ->assertSee('Suppression impossible')
-        ->assertDontSee('Supprimer définitivement');
+    $this->actingAs(administrateurTechnique())
+        ->post(route('tech.establishments.users.grc', ['tenant' => $tenant, 'user' => 8]), [
+            'password' => 'portail-solide', 'password_confirmation' => 'portail-solide',
+        ])
+        ->assertSessionHas('success');
+
+    Http::assertSent(fn ($r) => str_starts_with($r->url(), 'http://meka-erp-villa-grc:8000/')
+        && $r['email'] === 'paul@example.com');
+    expect($double->connexions)->toBe(0);
+    $this->assertDatabaseHas('audit_logs', ['event_type' => 'tenant_grc_access']);
+});
+
+test("l'accès GRC exige un mot de passe de huit caractères, confirmé", function () {
+    Http::fake();
+    $tenant = actionTenant(['modules' => ['grc']]);
+    doubleService([8 => employe(8, 'Paul Atangana', 'controller')]);
+
+    $this->actingAs(administrateurTechnique())
+        ->post(route('tech.establishments.users.grc', ['tenant' => $tenant, 'user' => 8]), [
+            'password' => 'court', 'password_confirmation' => 'court',
+        ])
+        ->assertSessionHasErrors('password');
+
+    Http::assertNothingSent();
+});
+
+test('seul un contrôleur de gestion reçoit un accès au portail', function () {
+    Http::fake();
+    $tenant = actionTenant(['modules' => ['grc']]);
+    doubleService([7 => employe(7)]);
+
+    $this->actingAs(administrateurTechnique())
+        ->post(route('tech.establishments.users.grc', ['tenant' => $tenant, 'user' => 7]), [
+            'password' => 'portail-solide', 'password_confirmation' => 'portail-solide',
+        ])
+        ->assertSessionHas('error');
+
+    Http::assertNothingSent();
 });
 
 test('un employé inconnu renvoie à la liste avec un message', function () {
     $tenant = actionTenant();
     doubleService([]);
 
-    $admin = User::factory()->create(['role' => User::ROLE_TECH_ADMIN, 'is_active' => true]);
-
-    $this->actingAs($admin)
+    $this->actingAs(administrateurTechnique())
         ->get(route('tech.establishments.users.show', ['tenant' => $tenant, 'user' => 404]))
         ->assertRedirect()
         ->assertSessionHas('error');
@@ -419,9 +258,7 @@ test('une base injoignable renvoie un message plutôt qu\'une erreur brute', fun
     $tenant = actionTenant();
     doubleService([7 => employe(7)], joignable: false);
 
-    $admin = User::factory()->create(['role' => User::ROLE_TECH_ADMIN, 'is_active' => true]);
-
-    $this->actingAs($admin)
+    $this->actingAs(administrateurTechnique())
         ->get(route('tech.establishments.users.show', ['tenant' => $tenant, 'user' => 7]))
         ->assertRedirect()
         ->assertSessionHas('error');

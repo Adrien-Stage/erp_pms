@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\TenantSecrets;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -49,12 +50,19 @@ class AssistanceSession extends Model
      */
     public function entryUrl(): ?string
     {
-        if (!$this->isLive() || empty(config('assistance.secret'))) {
+        if (!$this->isLive()) {
             return null;
         }
 
         $tenant = $this->tenant;
         if (!$tenant || !$tenant->app_port) {
+            return null;
+        }
+
+        // Signé avec le secret de CET établissement : un jeton ne peut ouvrir
+        // aucun autre établissement, même en lisant leur slug.
+        $secret = app(TenantSecrets::class)->current($tenant, TenantSecrets::ASSISTANCE);
+        if ($secret === '') {
             return null;
         }
 
@@ -66,7 +74,7 @@ class AssistanceSession extends Model
         ];
 
         $encoded   = rtrim(strtr(base64_encode(json_encode($payload)), '+/', '-_'), '=');
-        $signature = hash_hmac('sha256', $encoded, config('assistance.secret'));
+        $signature = hash_hmac('sha256', $encoded, $secret);
 
         $base = 'http://localhost:' . $tenant->app_port;
 
@@ -88,7 +96,8 @@ class AssistanceSession extends Model
         string $authorName,
         User $admin
     ): ?self {
-        if (empty(config('assistance.secret')) || !$tenant->provisioned_at) {
+        if (!$tenant->provisioned_at
+            || app(TenantSecrets::class)->current($tenant, TenantSecrets::ASSISTANCE) === '') {
             return null;
         }
 

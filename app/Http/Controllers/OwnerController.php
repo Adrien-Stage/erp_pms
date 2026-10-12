@@ -95,7 +95,7 @@ class OwnerController extends Controller
             'phone'        => ['nullable', 'string', 'max:30'],
             'company_name' => ['nullable', 'string', 'max:255'],
             'nationality'  => ['nullable', 'string', 'max:100'],
-            'password'     => ['nullable', 'string', 'min:4'],
+            'password'     => ['nullable', 'string', 'min:8'],
         ], [
             'email.unique' => 'Cette adresse est déjà utilisée par un autre compte.',
         ]);

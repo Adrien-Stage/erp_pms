@@ -6,35 +6,27 @@ use App\Models\AuditLog;
 use App\Models\Tenant;
 use App\Services\GrcAccountSync;
 use App\Services\TenantDatabase;
-use App\Support\ModuleCatalog;
-use App\Support\ServiceCatalog;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
-use PDO;
 
 /**
- * Gestion des employés d'un établissement depuis l'ERP.
+ * Le personnel d'un établissement, vu depuis l'ERP.
  *
- * Ces employés vivent dans la base de leur établissement, pas dans celle de
- * l'ERP : écrire ici, c'est écrire dans la base que wetchah_app lit. Il n'y a
- * donc rien à synchroniser — une modification est visible immédiatement côté
- * établissement, et inversement.
+ * La console consulte : les comptes se créent et se modifient dans
+ * l'application, par l'administrateur de l'établissement — le service
+ * informatique —, que la console crée elle-même (Droits & rôles). Elle
+ * n'écrit plus dans la base de l'établissement : une écriture directe
+ * contournait l'application, qui ne pouvait ni la valider ni la tracer.
  *
- * Les accès suivent le modèle de wetchah_app : une table « roles » par
- * établissement, et un pivot « role_user » portant le niveau (lecture ou
- * écriture) module par module.
+ * Reste ici l'accès au portail GRC d'un contrôleur de gestion : le GRC tient
+ * sa propre base, que seule la console alimente.
  */
 class TenantUserController extends Controller
 {
     public function __construct(private TenantDatabase $tenantDb) {}
 
-    /**
-     * L'administrateur technique gère tout ; un propriétaire uniquement ses
-     * propres établissements.
-     */
     private function authorizeTenant(Tenant $tenant): void
     {
         $user = Auth::user();
@@ -44,24 +36,8 @@ class TenantUserController extends Controller
             "Vous n'avez pas l'autorisation de gérer cet établissement.");
     }
 
-    /**
-     * Retour après action.
-     *
-     * Quand l'action part de la fiche d'un employé, on y revient : renvoyer à
-     * la liste ferait perdre le contexte de consultation. La suppression fait
-     * exception — la fiche n'existe plus.
-     */
-    private function retour(Tenant $tenant, ?int $userId = null): RedirectResponse
+    private function liste(Tenant $tenant): RedirectResponse
     {
-        if ($userId !== null
-            && request()->input('return_to') === 'fiche'
-            && Auth::user()->isTechAdmin()) {
-            return redirect()->route('tech.establishments.users.show', [
-                'tenant' => $tenant,
-                'user' => $userId,
-            ]);
-        }
-
         return redirect()->route(
             Auth::user()->isTechAdmin() ? 'tech.establishments.show' : 'business.establishments.show',
             ['tenant' => $tenant, 'section' => 'users']
@@ -69,66 +45,8 @@ class TenantUserController extends Controller
     }
 
     /**
-     * Création d'un nouvel employé pour l'établissement.
-     */
-    public function store(Request $request, Tenant $tenant): RedirectResponse
-    {
-        $this->authorizeTenant($tenant);
-
-        $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:30'],
-            'password' => ['required', 'string', 'min:4'],
-            'role' => ['nullable', 'string', 'max:50'],
-            'department_id' => ['nullable', 'integer'],
-            'roles' => ['nullable', 'array'],
-            'levels' => ['nullable', 'array'],
-            'is_active' => ['nullable'],
-        ]);
-
-        $validated['is_active'] = $request->boolean('is_active', true);
-
-        try {
-            $pdo = $this->tenantDb->connect($tenant);
-            $stmt = $pdo->prepare('SELECT 1 FROM users WHERE email = ?');
-            $stmt->execute([strtolower($validated['email'])]);
-            if ($stmt->fetch()) {
-                return $this->retour($tenant)->with('error', 'Cette adresse email est déjà utilisée par un employé de cet établissement.');
-            }
-
-            $departmentId = ! empty($validated['department_id']) ? (int) $validated['department_id'] : null;
-            $userId = $this->tenantDb->createUser(
-                $tenant,
-                $validated,
-                $validated['roles'] ?? [],
-                $validated['levels'] ?? [],
-                $departmentId
-            );
-
-            // Synchroniser les permissions modulaires si fournies
-            $modulePermissions = (array) $request->input('module_permissions', []);
-            if (! empty($modulePermissions)) {
-                $this->tenantDb->syncUserPermissions($tenant, $userId, $departmentId, $modulePermissions);
-            }
-
-            AuditLog::record(Auth::id(), 'tenant_user_create',
-                "Employé {$validated['name']} ({$validated['email']}) créé dans {$tenant->name}", 'tenant_users',
-                ['user_id' => $userId, 'department_id' => $departmentId]);
-
-            return $this->retour($tenant)->with('success', "L'employé {$validated['name']} a été créé avec succès.");
-        } catch (\Throwable $e) {
-            return $this->retour($tenant)->with('error', "Erreur lors de la création de l'employé : ".$e->getMessage());
-        }
-    }
-
-    /**
-     * Fiche détaillée d'un employé.
-     *
-     * Rassemble sur un seul écran ce qui était éparpillé entre une ligne de
-     * tableau et une modale : identité, état du compte, et surtout le détail
-     * des accès module par module avec leur niveau — l'information qui décide
-     * de ce que cette personne peut réellement faire.
+     * Fiche d'un employé : identité, rôles, département, état du compte et
+     * restrictions de service. En lecture seule.
      */
     public function show(Tenant $tenant, int $user)
     {
@@ -136,252 +54,70 @@ class TenantUserController extends Controller
 
         try {
             $employe = $this->tenantDb->userDetail($tenant, $user);
-
-            if (! $employe) {
-                return $this->retour($tenant)->with('error', 'Cet employé est introuvable dans cet établissement.');
-            }
-
-            $rolesAssignables = collect($this->tenantDb->assignableRoles($tenant));
-            $managersActifs = $this->tenantDb->activeManagerCount($tenant);
-            $departments = collect($this->tenantDb->departments($tenant));
-            $services = ServiceCatalog::all();
-            $groupedModules = ModuleCatalog::groupedByDepartment();
         } catch (\Throwable $e) {
-            return $this->retour($tenant)->with('error', $this->messageErreur($e));
+            Log::warning('Lecture base tenant échouée : ' . $e->getMessage());
+
+            return $this->liste($tenant)->with('error', "Impossible de joindre la base de l'établissement. "
+                . 'Vérifiez que ses conteneurs sont démarrés, puis réessayez.');
         }
 
-        // Retirer le dernier manager fermerait l'administration de
-        // l'établissement depuis wetchah_app : l'écran le dit avant le clic
-        // plutôt qu'après.
-        $dernierManager = $employe->role === 'manager' && $managersActifs <= 1;
-
-        return view('admin.tenants.user', compact(
-            'tenant', 'employe', 'rolesAssignables', 'dernierManager',
-            'departments', 'services', 'groupedModules'
-        ));
-    }
-
-    /** Activation / désactivation d'un employé. */
-    public function toggleActive(Tenant $tenant, int $user): RedirectResponse
-    {
-        $this->authorizeTenant($tenant);
-
-        try {
-            $employe = $this->tenantDb->findUser($tenant, $user);
-
-            if (! $employe) {
-                return $this->retour($tenant)->with('error', 'Cet employé est introuvable dans cet établissement.');
-            }
-
-            $nouvelEtat = ! $employe->is_active;
-
-            $stmt = $this->tenantDb->connect($tenant)
-                ->prepare('UPDATE users SET is_active = ?, updated_at = NOW() WHERE id = ?');
-            $stmt->execute([$nouvelEtat ? 'true' : 'false', $user]);
-        } catch (\Throwable $e) {
-            return $this->retour($tenant, $user)->with('error', $this->messageErreur($e));
+        if (! $employe) {
+            return $this->liste($tenant)->with('error', 'Cet employé est introuvable dans cet établissement.');
         }
 
-        $etat = $nouvelEtat ? 'activé' : 'désactivé';
-        AuditLog::record(Auth::id(), 'tenant_user_toggle_active',
-            "Employé {$employe->name} {$etat} dans {$tenant->name}", 'tenant_users');
+        $estControleur = $employe->role === 'controller'
+            || collect($employe->roles ?? [])->contains(fn ($r) => ($r['slug'] ?? null) === 'controller');
 
-        return $this->retour($tenant, $user)->with('success', "Le compte de {$employe->name} a été {$etat}.");
-    }
-
-    /** Suppression définitive d'un employé de l'établissement. */
-    public function destroy(Tenant $tenant, int $user): RedirectResponse
-    {
-        $this->authorizeTenant($tenant);
-
-        try {
-            $employe = $this->tenantDb->findUser($tenant, $user);
-
-            if (! $employe) {
-                return $this->retour($tenant)->with('error', 'Cet employé est introuvable dans cet établissement.');
-            }
-
-            // Le dernier manager retiré, plus personne ne peut administrer
-            // l'établissement depuis wetchah_app : on refuse.
-            if ($employe->role === 'manager' && $this->compteManagers($tenant) <= 1) {
-                return $this->retour($tenant, $user)->with('error',
-                    "Impossible de supprimer {$employe->name} : c'est le dernier manager de l'établissement. "
-                    .'Créez-en un autre avant de le retirer.');
-            }
-
-            $pdo = $this->tenantDb->connect($tenant);
-            $pdo->prepare('DELETE FROM users WHERE id = ?')->execute([$user]);
-
-            $tenant->update(['users_count' => max(0, $tenant->users_count - 1)]);
-        } catch (\Throwable $e) {
-            return $this->retour($tenant, $user)->with('error', $this->messageErreur($e));
-        }
-
-        AuditLog::record(Auth::id(), 'tenant_user_delete',
-            "Employé {$employe->name} supprimé de {$tenant->name}", 'tenant_users');
-
-        return $this->retour($tenant)->with('success', "Le compte de {$employe->name} a été supprimé.");
+        return view('admin.tenants.user', compact('tenant', 'employe', 'estControleur'));
     }
 
     /**
-     * Modification des informations et des accès.
+     * Donne ou renouvelle l'accès au portail GRC d'un contrôleur de gestion.
      *
-     * Le mot de passe n'est touché que s'il est fourni. Les rôles envoyés
-     * remplacent intégralement ceux de l'employé — l'écran présente toujours
-     * l'ensemble des rôles, donc l'absence d'une case vaut retrait.
+     * Le GRC hache lui-même le mot de passe : il ne peut être reporté qu'au
+     * moment où l'opérateur en saisit un. Rien n'est écrit dans la base de
+     * l'établissement.
      */
-    public function update(Request $request, Tenant $tenant, int $user): RedirectResponse
+    public function grcAccess(Request $request, Tenant $tenant, int $user): RedirectResponse
     {
         $this->authorizeTenant($tenant);
 
-        $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:30'],
-            'password' => ['nullable', 'string', 'min:4'],
-            'role' => ['nullable', 'string', 'max:50'],
-            'department_id' => ['nullable', 'integer'],
-            'module_permissions' => ['nullable', 'array'],
-            'roles' => ['nullable', 'array'],
-            'roles.*' => ['integer'],
-            'levels' => ['nullable', 'array'],
-            'levels.*' => ['in:read,write'],
+        $valide = $request->validate([
+            'password' => ['required', 'string', 'min:8', 'max:255', 'confirmed'],
         ]);
 
+        if (! $tenant->hasGrc()) {
+            return back()->with('error', "Le module GRC n'est pas activé pour cet établissement.");
+        }
+
         try {
-            $employe = $this->tenantDb->findUser($tenant, $user);
-
-            if (! $employe) {
-                return $this->retour($tenant)->with('error', 'Cet employé est introuvable dans cet établissement.');
-            }
-
-            $pdo = $this->tenantDb->connect($tenant);
-
-            // Un email en doublon empêcherait la connexion de l'employé.
-            $stmt = $pdo->prepare('SELECT 1 FROM users WHERE email = ? AND id <> ?');
-            $stmt->execute([$validated['email'], $user]);
-            if ($stmt->fetch()) {
-                return $this->retour($tenant, $user)
-                    ->with('error', 'Cette adresse est déjà utilisée par un autre employé de cet établissement.');
-            }
-
-            $pdo->beginTransaction();
-
-            if (! empty($validated['password'])) {
-                $stmt = $pdo->prepare('UPDATE users SET name = ?, email = ?, phone = ?, password = ?, updated_at = NOW() WHERE id = ?');
-                $stmt->execute([
-                    $validated['name'], $validated['email'], $validated['phone'] ?? null,
-                    Hash::make($validated['password']), $user,
-                ]);
-            } else {
-                $stmt = $pdo->prepare('UPDATE users SET name = ?, email = ?, phone = ?, updated_at = NOW() WHERE id = ?');
-                $stmt->execute([$validated['name'], $validated['email'], $validated['phone'] ?? null, $user]);
-            }
-
-            // Rôle principal : colonne historique, encore lue par wetchah_app
-            // pour les utilisateurs sans entrée dans le pivot.
-            if (! empty($validated['role'])) {
-                $pdo->prepare('UPDATE users SET role = ? WHERE id = ?')
-                    ->execute([$validated['role'], $user]);
-            }
-
-            $this->remplacerRoles($pdo, $user, $validated['roles'] ?? [], $validated['levels'] ?? []);
-
-            $pdo->commit();
-
-            // Enregistrement du département et de la matrice des surcharges modulaires
-            $departmentId = ! empty($validated['department_id']) ? (int) $validated['department_id'] : null;
-            $modulePermissions = (array) $request->input('module_permissions', []);
-            $this->tenantDb->syncUserPermissions($tenant, $user, $departmentId, $modulePermissions);
+            $employe = $this->tenantDb->userDetail($tenant, $user);
         } catch (\Throwable $e) {
-            if (isset($pdo) && $pdo->inTransaction()) {
-                $pdo->rollBack();
-            }
-
-            return $this->retour($tenant, $user)->with('error', $this->messageErreur($e));
+            return back()->with('error', "Impossible de joindre la base de l'établissement.");
         }
 
-        AuditLog::record(Auth::id(), 'tenant_user_update',
-            "Employé {$validated['name']} modifié dans {$tenant->name}", 'tenant_users');
+        $estControleur = $employe && ($employe->role === 'controller'
+            || collect($employe->roles ?? [])->contains(fn ($r) => ($r['slug'] ?? null) === 'controller'));
 
-        // Le GRC tient sa propre base : une modification faite ici n'y existe
-        // pas tant qu'elle n'y a pas été poussée. C'est ce qui produisait le
-        // symptôme « compte mis à jour » côté ERP et « utilisateur inexistant »
-        // à la connexion au portail.
-        //
-        // Le report exige le mot de passe en clair, que le GRC hache lui-même :
-        // il n'est donc possible qu'au moment où l'opérateur en saisit un. Une
-        // modification de profil seule ne peut pas être propagée, et c'est dit
-        // plutôt que tu.
-        $message = "Les accès de {$validated['name']} ont été enregistrés.";
-        $estControleur = ($validated['role'] ?? $employe->role ?? null) === 'controller';
-
-        if ($estControleur && $tenant->hasGrc()) {
-            $sync = app(GrcAccountSync::class);
-
-            if (! empty($validated['password'])) {
-                $message .= $sync->message($sync->push($tenant, [
-                    'email' => $validated['email'],
-                    'password' => $validated['password'],
-                    'full_name' => $validated['name'],
-                    'phone' => $validated['phone'] ?? null,
-                    'previous_email' => $employe->email ?? null,
-                ]));
-            } else {
-                $message .= ' Le module GRC conserve le mot de passe précédent :'
-                    .' saisissez-en un nouveau pour y reporter ce compte.';
-            }
+        if (! $estControleur) {
+            return back()->with('error', "Seul un contrôleur de gestion reçoit un accès au portail GRC.");
         }
 
-        return $this->retour($tenant, $user)->with('success', $message);
-    }
+        $sync = app(GrcAccountSync::class);
+        $reporte = $sync->push($tenant, [
+            'email'     => $employe->email,
+            'password'  => $valide['password'],
+            'full_name' => $employe->name,
+            'phone'     => $employe->phone ?? null,
+        ]);
 
-    /**
-     * Remplace les rôles de l'employé par ceux transmis, avec leur niveau.
-     *
-     * @param  array<int, int>  $roleIds
-     * @param  array<int, string>  $levels  niveau par identifiant de rôle
-     */
-    private function remplacerRoles(PDO $pdo, int $userId, array $roleIds, array $levels): void
-    {
-        try {
-            $pdo->prepare('DELETE FROM role_user WHERE user_id = ?')->execute([$userId]);
+        AuditLog::record(Auth::id(), 'tenant_grc_access',
+            "Accès au portail GRC de {$employe->name} ({$employe->email}) pour {$tenant->name} — "
+                . ($reporte ? 'reporté' : 'échec'),
+            'tenant_users', ['user_id' => $employe->id]);
 
-            if (empty($roleIds)) {
-                return;
-            }
-
-            $insert = $pdo->prepare(
-                'INSERT INTO role_user (user_id, role_id, level, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())'
-            );
-
-            foreach ($roleIds as $roleId) {
-                // Défaut en écriture : c'est le comportement attendu quand on
-                // coche un rôle sans préciser, et la lecture seule est le
-                // choix explicite.
-                $niveau = $levels[$roleId] ?? 'write';
-                $insert->execute([$userId, (int) $roleId, $niveau]);
-            }
-        } catch (\PDOException $e) {
-            // Établissement antérieur au multi-rôles : la colonne « role »
-            // mise à jour plus haut reste sa seule source d'autorisation.
-        }
-    }
-
-    private function compteManagers(Tenant $tenant): int
-    {
-        $stmt = $this->tenantDb->connect($tenant)
-            ->query("SELECT COUNT(*) FROM users WHERE role = 'manager' AND is_active = true");
-
-        return (int) $stmt->fetchColumn();
-    }
-
-    /** Message lisible : l'échec vient presque toujours du conteneur arrêté. */
-    private function messageErreur(\Throwable $e): string
-    {
-        Log::warning('Écriture base tenant échouée : '.$e->getMessage());
-
-        return "Impossible de joindre la base de l'établissement. "
-            .'Vérifiez que ses conteneurs sont démarrés, puis réessayez.';
+        return back()->with($reporte ? 'success' : 'error', $reporte
+            ? "Accès au portail GRC de {$employe->name} enregistré."
+            : "Le portail GRC n'a pas pu être joint : l'accès n'a pas été enregistré. Vérifiez que le module est démarré, puis réessayez.");
     }
 }

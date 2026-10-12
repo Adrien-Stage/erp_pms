@@ -8,7 +8,10 @@ use RuntimeException;
 
 class TenantProvisioningService
 {
-    public function __construct(private DockerRegistryService $registry)
+    public function __construct(
+        private DockerRegistryService $registry,
+        private TenantSecrets $secrets,
+    )
     {
     }
 
@@ -302,7 +305,10 @@ class TenantProvisioningService
 
                     $lastLine = $this->derniereLigneLisible($chunk);
                     if ($lastLine !== '') {
-                        $tail = $lastLine;
+                        // Conserve le statut détaillé si la nouvelle ligne n'est qu'un identifiant nu de couche
+                        if (!preg_match('/^[a-f0-9]{6,}:\s*$/i', $lastLine) || $tail === '') {
+                            $tail = $lastLine;
+                        }
                     }
                 }
             }
@@ -341,11 +347,11 @@ class TenantProvisioningService
                 return [false, $buffer, "durée maximale atteinte ({$hardCap}s)"];
             }
 
-            // Battement de cœur toutes les ~12 s.
-            if ($now - $lastBeat >= 12) {
+            // Battement de cœur toutes les ~5 s (actualisé en place sur une seule ligne dans l'interface).
+            if ($now - $lastBeat >= 5) {
                 $elapsed = $now - $start;
                 $suffix  = $tail !== '' ? " · {$tail}" : '';
-                $log('image', "⏳ Téléchargement en cours… ({$elapsed}s){$suffix}", 'info');
+                $log('image_progress', "⏳ Téléchargement en cours… ({$elapsed}s){$suffix}", 'info');
                 $lastBeat = $now;
             }
         }
@@ -592,9 +598,8 @@ class TenantProvisioningService
 
     private function generateDockerCompose(Tenant $tenant, string $imageRef, ?string $webImageRef, ?string $grcImageRef = null, ?callable $log = null): string
     {
-        $baseDir     = rtrim(config('provisioning.tenants_base_path'), '/\\');
-        $composeDir  = $baseDir . '/.compose';
-        $composePath = $composeDir . '/' . $tenant->slug . '.yml';
+        $composePath = $tenant->composePath();
+        $composeDir  = dirname($composePath);
 
         if (!is_dir($composeDir) && !mkdir($composeDir, 0777, true) && !is_dir($composeDir)) {
             throw new RuntimeException("Impossible de créer le répertoire : {$composeDir}");
@@ -628,18 +633,26 @@ class TenantProvisioningService
         // n'ont jamais pu être json_decode() correctement).
         $settingsJson = $this->yamlSingleQuoteEscape(json_encode($settings));
         $modulesJson  = $this->yamlSingleQuoteEscape(json_encode($tenant->modules ?? []));
-        // Secret partagé pms <-> tenant pour vérifier les jetons d'assistance
-        // (Support > Mode assistance). Injecté ici pour que le container
-        // dispose de la même clé que celle qui signe les jetons côté pms.
-        $assistanceSecret = (string) config('assistance.secret');
+        // Secret de signature des jetons d'assistance (Support > Mode
+        // assistance), propre à cet établissement : la console signe avec,
+        // l'application vérifie avec. Voir TenantSecrets.
+        $assistanceSecret = $this->secrets->forCompose($composePath, TenantSecrets::ASSISTANCE);
         // Clés VAPID communes pour les notifications Web Push des tenants
         // (identifient l'éditeur de l'application, pas l'établissement).
         $vapidSubject = (string) env('VAPID_SUBJECT', 'mailto:admin@meka-erp.local');
         $vapidPublic  = (string) env('VAPID_PUBLIC_KEY', '');
         $vapidPrivate = (string) env('VAPID_PRIVATE_KEY', '');
-        // Secret de service pour que la console business de pms consomme
-        // l'API de reporting (données financières) de cet établissement.
-        $reportingSecret = (string) env('REPORTING_SECRET', '');
+        // Secret de service de cet établissement : il garde son API de
+        // reporting (données financières) et le provisioning des comptes de
+        // son GRC. Jamais partagé avec un autre établissement. Voir TenantSecrets.
+        $reportingSecret = $this->secrets->forCompose($composePath, TenantSecrets::REPORTING);
+        // Canal d'administration (droits, comptes administrateurs,
+        // départements) : remis à l'application seule. Le GRC, qui reçoit le
+        // secret de reporting, ne doit pas pouvoir s'y créer un compte.
+        $orchestrationSecret = $this->secrets->forCompose($composePath, TenantSecrets::ORCHESTRATION);
+        // La console, jointe par son nom sur le réseau Docker : l'application
+        // lui transmet la trace des interventions de son administrateur.
+        $consoleContainer = config('provisioning.cms_container', 'wetchah_erp-app');
         // Messagerie sortante, mutualisée pour toute la plateforme comme les
         // clés VAPID : l'acheminement (compte Resend, relais SMTP) appartient à
         // l'éditeur, alors que l'adresse *affichée* au client relève de chaque
@@ -693,6 +706,8 @@ class TenantProvisioningService
       VAPID_PUBLIC_KEY: "{$vapidPublic}"
       VAPID_PRIVATE_KEY: "{$vapidPrivate}"
       REPORTING_SECRET: "{$reportingSecret}"
+      ORCHESTRATION_SECRET: "{$orchestrationSecret}"
+      ERP_API_URL: "http://{$consoleContainer}"
       MAIL_MAILER: '{$mailMailer}'
       RESEND_API_KEY: '{$resendKey}'
       MAIL_SCHEME: '{$mailScheme}'

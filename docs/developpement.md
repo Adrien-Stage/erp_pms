@@ -103,7 +103,9 @@ app/
 │  │  ├─ AdminAuditController.php   TECH + BUSINESS + provisioning + backups + CMS
 │  │  ├─ OwnerController.php        Registre des propriétaires
 │  │  ├─ SiteEditorController.php   Espace éditeur + comptes éditeurs
-│  │  └─ TenantUserController.php   Employés, écrits dans la base du tenant
+│  │  ├─ TenantUserController.php   Personnel (lecture) et accès au portail GRC
+│  │  ├─ TenantPermissionMatrixController.php  Droits & rôles d'un établissement
+│  │  └─ TenantAdminAccountController.php      Comptes administrateurs
 │  └─ Middleware/
 │     ├─ EnsureRoleAccess.php       RBAC + isolation multi-tenant (alias « role »)
 │     ├─ AdminOnly.php              Alias « admin »
@@ -111,8 +113,7 @@ app/
 ├─ Models/                          7 modèles
 ├─ Services/                        Toute la logique métier
 └─ Support/
-   ├─ SiteContentSchema.php         Schéma déclaratif du CMS
-   └─ TenantRoles.php               Catalogue des rôles de wetchah_app
+   └─ SiteContentSchema.php         Schéma déclaratif du CMS
 ```
 
 ### Conventions observées
@@ -204,7 +205,6 @@ Recensée ici pour éviter les fausses pistes et les « corrections » malencont
 | **Code mort** | `AiToolsService` (jamais appelé), `CheckOutService` et `LoyaltyService` (liés dans `AppServiceProvider`, jamais résolus) |
 | **`pms-db` inutilisé** | Service PostgreSQL déclaré dans le Compose ; l'application tourne sur SQLite. Bloc `provisioning.postgres` référencé nulle part |
 | **Documents racine obsolètes** | `INSTRUCTIONS_PROVISIONING.md`, `provisioning-guide.md`, `context.md`, `scenario.md`, `plan1.md`… décrivent des états passés |
-| **Mot de passe propriétaire `min:4`** | Très faible pour un compte donnant accès à des données financières |
 | **Pas de health check périodique** | La santé des établissements n'est évaluée qu'à la demande |
 | **`storeTenant()` : validation `db_name`** | Unicité vérifiée côté console, pas côté PostgreSQL |
 

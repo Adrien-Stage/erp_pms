@@ -75,7 +75,9 @@
         ownerEmail: '',
         ownerPhone: '',
         ownerCompany: '',
-        ownerPassword: 'owner',
+        // Tiré au hasard à l'ouverture : un mot de passe par défaut connu de
+        // tous ouvrirait le compte du propriétaire à n'importe qui.
+        ownerPassword: '{{ \Illuminate\Support\Str::password(12, symbols: false) }}',
         ownerNationality: 'Camerounaise',
         
         // Step 1: Owner Info (Existing)
@@ -381,9 +383,9 @@
                                 <div class="flex justify-between items-center">
                                     <label for="owner_password" class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase">Mot de passe temporaire <span class="text-red-400">*</span></label>
                                 </div>
-                                <input type="text" id="owner_password" name="owner_password" x-model="ownerPassword"
+                                <input type="text" id="owner_password" name="owner_password" x-model="ownerPassword" minlength="8"
                                        class="mt-1.5 block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 font-mono outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition">
-                                <p class="text-[9px] text-slate-400 mt-1">Par défaut : <code class="font-bold">owner</code>. L'utilisateur pourra le modifier ultérieurement.</p>
+                                <p class="text-[9px] text-slate-400 mt-1">Tiré au hasard, 8 caractères au moins : transmettez-le au propriétaire, qui pourra le modifier.</p>
                             </div>
                         </div>
                     </div>

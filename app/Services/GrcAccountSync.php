@@ -33,9 +33,9 @@ class GrcAccountSync
             return null;
         }
 
-        $secret = (string) config('provisioning.reporting_secret');
+        $secret = app(TenantSecrets::class)->current($tenant, TenantSecrets::REPORTING);
         if ($secret === '') {
-            Log::warning("[GRC] REPORTING_SECRET non configuré : compte non reporté pour {$tenant->slug}.");
+            Log::warning("[GRC] Aucun secret de service connu : compte non reporté pour {$tenant->slug}.");
             return false;
         }
 
