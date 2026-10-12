@@ -75,6 +75,7 @@
             <p class="mt-1 text-sm font-bold text-slate-700">Portés par les rôles</p>
             <p class="mt-0.5 text-[11px] text-slate-500">Voir l'onglet Droits &amp; rôles</p>
         </div>
+    </div>
 
     <!-- Liste des Départements -->
     <div class="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
