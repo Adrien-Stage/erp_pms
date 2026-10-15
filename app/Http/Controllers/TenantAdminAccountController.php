@@ -71,6 +71,8 @@ class TenantAdminAccountController extends Controller
             return $this->retour($tenant)->withInput($request->except('password'))->with('error', $resultat['message']);
         }
 
+        app(\App\Services\TenantDatabase::class)->syncUsersCount($tenant);
+
         return $this->retour($tenant)
             ->with('success', "Compte administrateur de {$valide['name']} créé.")
             ->with('identifiants', $genere ? ['email' => strtolower($valide['email']), 'password' => $genere] : null);
@@ -113,6 +115,8 @@ class TenantAdminAccountController extends Controller
         if (!$resultat['ok']) {
             return $this->retour($tenant)->with('error', $resultat['message']);
         }
+
+        app(\App\Services\TenantDatabase::class)->syncUsersCount($tenant);
 
         return $this->retour($tenant)
             ->with('success', "Compte administrateur {$nom} : {$libelle}.")

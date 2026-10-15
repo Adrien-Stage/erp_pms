@@ -71,6 +71,9 @@ class AdminAuditController extends Controller
 
         // Établissements (SQLite)
         $tenants = Tenant::orderBy('name')->get();
+        if (in_array($activeTab, ['tenants', 'establishments', 'dashboard'], true)) {
+            app(TenantDatabase::class)->syncUsersCountForTenants($tenants);
+        }
         $allUsers = User::orderBy('name')->get();
 
         // Statistiques d'administration
@@ -270,22 +273,27 @@ class AdminAuditController extends Controller
         $tenantUsers = collect();
         $tenantDepartments = collect();
 
-        if ($section === 'users' || $section === 'modules' || $section === 'departments') {
-            try {
-                $tenantDb = app(TenantDatabase::class);
+        try {
+            $tenantDb = app(TenantDatabase::class);
 
-                if ($section === 'users' || $section === 'departments') {
-                    $tenantUsers = collect($tenantDb->users($tenant));
+            if ($section === 'users' || $section === 'departments') {
+                $tenantUsers = collect($tenantDb->users($tenant));
 
-                    // users_count est un compteur dénormalisé
-                    if ($tenant->users_count !== $tenantUsers->count()) {
-                        $tenant->update(['users_count' => $tenantUsers->count()]);
-                    }
+                // users_count est un compteur dénormalisé
+                if ($tenant->users_count !== $tenantUsers->count()) {
+                    $tenant->update(['users_count' => $tenantUsers->count()]);
+                    $tenant->users_count = $tenantUsers->count();
                 }
+            } else {
+                $tenantDb->syncUsersCount($tenant);
+            }
 
+            if ($section === 'users' || $section === 'modules' || $section === 'departments') {
                 $tenantDepartments = collect($tenantDb->departments($tenant));
-            } catch (\Exception $e) {
-                Log::warning("Could not fetch tenant users/departments for {$tenant->name}: ".$e->getMessage());
+            }
+        } catch (\Exception $e) {
+            Log::warning("Could not fetch tenant users/departments for {$tenant->name}: ".$e->getMessage());
+            if ($section === 'users' || $section === 'departments') {
                 session()->now('error', "Impossible de se connecter à la base de données de l'établissement : ".$e->getMessage());
             }
         }
@@ -1277,6 +1285,7 @@ class AdminAuditController extends Controller
 
         try {
             $resultat = $demo->install($tenant, $log);
+            app(TenantDatabase::class)->syncUsersCount($tenant);
 
             AuditLog::record(
                 Auth::id(),
@@ -1327,6 +1336,7 @@ class AdminAuditController extends Controller
 
         try {
             $resultat = $demo->purge($tenant, $log);
+            app(TenantDatabase::class)->syncUsersCount($tenant);
 
             AuditLog::record(
                 Auth::id(),
@@ -1895,10 +1905,17 @@ class AdminAuditController extends Controller
                 }
             }
 
-            // ── Réservations du jour (base du tenant, si joignable) ──────
+            // ── Réservations et utilisateurs (base du tenant, si joignable) ──────
             if ($tenant->provisioned_at && $health['db_status'] === 'running') {
                 try {
                     $pdo = $this->connectToTenantDatabase($tenant);
+
+                    $usersCount = (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
+                    $usersTotal += ($usersCount - $row['users_count']);
+                    $row['users_count'] = $usersCount;
+                    if ($tenant->users_count !== $usersCount) {
+                        $tenant->update(['users_count' => $usersCount]);
+                    }
 
                     $row['bookings_today'] = (int) $pdo->query(
                         'SELECT COUNT(*) FROM bookings WHERE created_at::date = CURRENT_DATE'
@@ -1911,7 +1928,7 @@ class AdminAuditController extends Controller
                     $bookingsToday += $row['bookings_today'];
                     $arrivalsToday += $row['arrivals_today'];
                 } catch (\Exception $e) {
-                    $alerts[] = ['level' => 'warning', 'tenant' => $tenant->name, 'message' => 'Base injoignable pour la lecture des réservations.'];
+                    $alerts[] = ['level' => 'warning', 'tenant' => $tenant->name, 'message' => 'Base injoignable pour la lecture des réservations et utilisateurs.'];
                 }
             }
 
@@ -2330,6 +2347,10 @@ class AdminAuditController extends Controller
         // Charger uniquement les établissements appartenant à ce propriétaire
         $tenants = $user->tenants()->orderBy('name')->get();
 
+        if (in_array($activeTab, ['tenants', 'establishments', 'dashboard'], true)) {
+            app(TenantDatabase::class)->syncUsersCountForTenants($tenants);
+        }
+
         return view('admin.dashboard', compact('activeTab', 'tenants'));
     }
 
@@ -2354,16 +2375,22 @@ class AdminAuditController extends Controller
         }
 
         $tenantUsers = collect();
-        if ($section === 'users') {
-            try {
+        try {
+            $tenantDb = app(TenantDatabase::class);
+            if ($section === 'users') {
                 // Avec leurs affectations : la colonne héritée users.role peut
                 // être périmée.
-                $tenantUsers = collect(app(TenantDatabase::class)->users($tenant));
+                $tenantUsers = collect($tenantDb->users($tenant));
 
                 if ($tenant->users_count !== $tenantUsers->count()) {
                     $tenant->update(['users_count' => $tenantUsers->count()]);
+                    $tenant->users_count = $tenantUsers->count();
                 }
-            } catch (\Exception $e) {
+            } else {
+                $tenantDb->syncUsersCount($tenant);
+            }
+        } catch (\Exception $e) {
+            if ($section === 'users') {
                 session()->now('error', "Impossible de se connecter à l'établissement : ".$e->getMessage());
             }
         }

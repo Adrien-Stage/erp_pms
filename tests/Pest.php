@@ -20,10 +20,8 @@ pest()->extend(TestCase::class)
         // dépôt fraîchement cloné, puisque public/build et public/hot sont
         // tous deux ignorés par git. Chaque test rendant une vue repart alors
         // en 500, pour une raison étrangère à ce qu'il vérifie.
-        //
-        // La compilation reste contrôlée là où elle compte : l'image de
-        // production exécute « npm run build ».
         $this->withoutVite();
+        $this->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class);
     })
  // ->use(Illuminate\Foundation\Testing\RefreshDatabase::class)
     ->in('Feature');

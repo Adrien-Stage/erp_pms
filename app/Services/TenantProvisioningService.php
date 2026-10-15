@@ -144,6 +144,12 @@ class TenantProvisioningService
             'provisioned_at'        => now(),
         ]);
 
+        try {
+            app(\App\Services\TenantDatabase::class)->syncUsersCount($tenant);
+        } catch (\Throwable $e) {
+            // Ne bloque pas la fin du provisioning si la base n'est pas encore prête
+        }
+
         $log('done', "✅ Établissement « {$tenant->name} » provisionné et opérationnel sur le port {$tenant->app_port}", 'success');
     }
 

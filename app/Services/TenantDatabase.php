@@ -152,6 +152,79 @@ class TenantDatabase
         }, $users);
     }
 
+    /**
+     * Nombre total d'utilisateurs/employés enregistrés dans la base de l'établissement.
+     */
+    public function countUsers(Tenant $tenant): int
+    {
+        $pdo = $this->connect($tenant);
+
+        return (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
+    }
+
+    /**
+     * Synchronise le compteur dénormalisé « users_count » d'un établissement depuis sa base.
+     */
+    public function syncUsersCount(Tenant $tenant): int
+    {
+        try {
+            $count = $this->countUsers($tenant);
+            if ($tenant->users_count !== $count) {
+                $tenant->update(['users_count' => $count]);
+                $tenant->users_count = $count;
+            }
+
+            return $count;
+        } catch (\Throwable $e) {
+            return (int) ($tenant->users_count ?? 0);
+        }
+    }
+
+    /**
+     * Synchronise en lot le compteur d'utilisateurs pour une collection d'établissements.
+     * Ne tente la connexion que pour les containers DB actuellement en cours d'exécution
+     * pour éviter tout blocage ou timeout PDO sur les containers arrêtés.
+     */
+    public function syncUsersCountForTenants(iterable $tenants): void
+    {
+        $runningContainers = $this->getRunningContainers();
+
+        foreach ($tenants as $tenant) {
+            if (! $tenant->provisioned_at) {
+                continue;
+            }
+
+            $dbContainer = $tenant->docker_db_container ?: ('meka-erp-'.$tenant->slug.'-db');
+
+            // Si la liste des conteneurs actifs est disponible et que ce conteneur n'en fait pas partie, ignorer
+            if ($runningContainers !== null && ! in_array($dbContainer, $runningContainers, true)) {
+                continue;
+            }
+
+            $this->syncUsersCount($tenant);
+        }
+    }
+
+    /**
+     * Renvoie la liste des conteneurs Docker en cours d'exécution, ou null si Docker n'est pas accessible.
+     *
+     * @return array<string>|null
+     */
+    public function getRunningContainers(): ?array
+    {
+        try {
+            $output = shell_exec('docker ps --filter "status=running" --format "{{.Names}}" 2>/dev/null');
+            if ($output === null) {
+                return null;
+            }
+
+            $lines = array_filter(array_map('trim', explode("\n", (string) $output)));
+
+            return array_values($lines);
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
 
     /**
      * Fiche complète d'un employé : identité, département, rôles et permissions modulaires.
