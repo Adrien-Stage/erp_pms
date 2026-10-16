@@ -61,6 +61,11 @@ Route::middleware(['auth', 'role:tech_admin'])->prefix('tech')->name('tech.')->g
     Route::get('/support/assistance', [AdminAuditController::class, 'assistanceList'])->name('support.assistance.list');
     Route::post('/support/assistance', [AdminAuditController::class, 'assistanceOpen'])->name('support.assistance.open');
     Route::post('/support/assistance/{session}/revoke', [AdminAuditController::class, 'assistanceRevoke'])->name('support.assistance.revoke');
+    // Onglet Système : mise à jour du code par git pull (console dont le code est un dépôt)
+    Route::get('/code', [\App\Http\Controllers\CodeUpdateController::class, 'etat'])->name('code.etat');
+    Route::post('/code/verifier', [\App\Http\Controllers\CodeUpdateController::class, 'verifier'])->name('code.verifier');
+    Route::post('/code/mettre-a-jour', [\App\Http\Controllers\CodeUpdateController::class, 'lancer'])->name('code.lancer');
+    Route::get('/code/statut', [\App\Http\Controllers\CodeUpdateController::class, 'statut'])->name('code.statut');
     // Sélecteur de dossier du serveur (formulaire de création d'un établissement)
     Route::get('/directories', [\App\Http\Controllers\ServerDirectoryController::class, 'index'])->name('directories.index');
     Route::post('/directories', [\App\Http\Controllers\ServerDirectoryController::class, 'store'])->name('directories.store');

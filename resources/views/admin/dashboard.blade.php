@@ -3459,6 +3459,116 @@
                 </p>
             </div>
 
+        @elseif($activeTab === 'system' && $isTech)
+            {{-- ================= SYSTÈME : MISE À JOUR DU CODE ================= --}}
+            <script>
+                window.miseAJourCode = function (cfg) {
+                    return {
+                        etat: null, verif: null, journal: [], statut: null, erreur: '', occupe: false, minuteur: null,
+                        async init() { await this.charger(); const s = await this.lireStatut(); if (s && s.statut.etat === 'en_cours') { this.occupe = true; this.suivre(); } },
+                        async appel(url, methode) {
+                            const r = await fetch(url, { method: methode || 'GET', headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': cfg.csrf } });
+                            return { ok: r.ok, data: await r.json().catch(() => ({})) };
+                        },
+                        async charger() { this.etat = (await this.appel(cfg.etat)).data; },
+                        async verifier() {
+                            this.erreur = ''; this.occupe = true; this.verif = null;
+                            const r = await this.appel(cfg.verifier, 'POST');
+                            this.occupe = false;
+                            if (!r.ok || r.data.ok === false) { this.erreur = r.data.message || 'Vérification impossible.'; return; }
+                            this.verif = r.data;
+                        },
+                        async lancer() {
+                            this.erreur = ''; this.journal = []; this.occupe = true;
+                            const r = await this.appel(cfg.lancer, 'POST');
+                            if (!r.ok) { this.erreur = r.data.message || 'Lancement impossible.'; this.occupe = false; return; }
+                            this.suivre();
+                        },
+                        async lireStatut() { const r = await this.appel(cfg.statut); if (r.ok) { this.statut = r.data.statut; this.journal = r.data.lignes; } return r.ok ? r.data : null; },
+                        suivre() {
+                            clearInterval(this.minuteur);
+                            this.minuteur = setInterval(async () => {
+                                const s = await this.lireStatut();
+                                if (s && s.statut.etat === 'termine') { clearInterval(this.minuteur); this.occupe = false; this.verif = null; await this.charger(); }
+                            }, 2000);
+                        },
+                    };
+                };
+            </script>
+
+            <p class="text-[10px] font-bold tracking-widest text-indigo-600 uppercase">SYSTÈME</p>
+            <div class="mt-2 border-b border-slate-200 pb-4">
+                <h1 class="text-2xl font-extrabold tracking-tight text-slate-800 font-heading">Mise à jour du code</h1>
+                <p class="text-xs text-slate-500 mt-1">Tire les nouveautés de la branche sur laquelle tourne cette console, applique les migrations et vide les caches.</p>
+            </div>
+
+            <div class="mt-6 max-w-3xl space-y-5"
+                 x-data="miseAJourCode({ etat: '{{ route('tech.code.etat') }}', verifier: '{{ route('tech.code.verifier') }}', lancer: '{{ route('tech.code.lancer') }}', statut: '{{ route('tech.code.statut') }}', csrf: '{{ csrf_token() }}' })">
+
+                <div x-show="!etat" class="rounded-xl border border-slate-200 bg-white p-5 text-xs text-slate-400">Lecture du dépôt…</div>
+
+                {{-- Console embarquée dans une image : pas de dépôt --}}
+                <template x-if="etat && !etat.depot">
+                    <div class="rounded-xl border border-amber-200 bg-amber-50 p-5 text-xs text-amber-900 space-y-2">
+                        <p class="font-bold">Le code de cette console est dans l'image Docker, pas dans un dépôt git.</p>
+                        <p>Une mise à jour se fait en reconstruisant l'image : sur le serveur, <code class="bg-white px-1 rounded">git pull</code>, puis <code class="bg-white px-1 rounded">erp build</code> et <code class="bg-white px-1 rounded">erp up -d</code> (guide de déploiement, §9.1).</p>
+                    </div>
+                </template>
+
+                <template x-if="etat && etat.depot">
+                    <div class="space-y-5">
+                        <div class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                            <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 p-5 text-xs">
+                                <div><dt class="text-[10px] font-bold tracking-wider text-slate-400 uppercase">Branche</dt>
+                                    <dd class="mt-1 font-mono text-sm text-slate-800" x-text="etat.branche || '(aucune : HEAD détaché)'"></dd></div>
+                                <div><dt class="text-[10px] font-bold tracking-wider text-slate-400 uppercase">Suit</dt>
+                                    <dd class="mt-1 font-mono text-sm text-slate-800" x-text="etat.amont || 'aucune branche distante'"></dd></div>
+                                <div class="sm:col-span-2"><dt class="text-[10px] font-bold tracking-wider text-slate-400 uppercase">Version installée</dt>
+                                    <dd class="mt-1 text-slate-800"><span class="font-mono" x-text="etat.commit ? etat.commit.hash : ''"></span>
+                                        <span x-text="etat.commit ? ' — ' + etat.commit.message : ''"></span>
+                                        <span class="text-slate-400" x-text="etat.commit ? ' (' + etat.commit.date + ')' : ''"></span></dd></div>
+                                <div class="sm:col-span-2"><dt class="text-[10px] font-bold tracking-wider text-slate-400 uppercase">Dépôt</dt>
+                                    <dd class="mt-1 font-mono text-slate-600 break-all" x-text="etat.remote"></dd></div>
+                            </dl>
+                            <div x-show="etat.modifies && etat.modifies.length" class="border-t border-amber-200 bg-amber-50 px-5 py-3 text-xs text-amber-900">
+                                <p class="font-bold">Des fichiers du code ont été modifiés à la main : la mise à jour refusera de les écraser.</p>
+                                <ul class="mt-1 font-mono"><template x-for="l in etat.modifies.slice(0, 6)" :key="l"><li x-text="l"></li></template></ul>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-3 border-t border-slate-100 bg-slate-50 px-5 py-3">
+                                <button type="button" @click="verifier()" :disabled="occupe || !etat.amont"
+                                        class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40 cursor-pointer">Vérifier les nouveautés</button>
+                                <button type="button" @click="lancer()" :disabled="occupe || !etat.amont || etat.detache"
+                                        class="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 disabled:opacity-40 cursor-pointer">Mettre à jour le code (git pull)</button>
+                                <span x-show="occupe" class="text-xs text-slate-500">En cours…</span>
+                            </div>
+                        </div>
+
+                        <p x-show="erreur" x-text="erreur" class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs font-semibold text-red-700"></p>
+
+                        <template x-if="verif">
+                            <div class="rounded-xl border border-slate-200 bg-white p-5 text-xs shadow-sm">
+                                <p x-show="verif.derriere === 0" class="font-bold text-emerald-700">Le code est à jour.</p>
+                                <div x-show="verif.derriere > 0">
+                                    <p class="font-bold text-indigo-700"><span x-text="verif.derriere"></span> nouveau(x) commit(s) disponible(s) :</p>
+                                    <ul class="mt-2 space-y-1">
+                                        <template x-for="c in verif.commits" :key="c[0]">
+                                            <li><span class="font-mono text-slate-500" x-text="c[0]"></span> <span x-text="c[1]"></span> <span class="text-slate-400" x-text="'(' + c[2] + ')'"></span></li>
+                                        </template>
+                                    </ul>
+                                    <p x-show="verif.devant > 0" class="mt-2 font-semibold text-amber-700">Attention : <span x-text="verif.devant"></span> commit(s) local(aux) absent(s) du dépôt — la mise à jour sera refusée (branche divergente).</p>
+                                </div>
+                            </div>
+                        </template>
+
+                        <div x-show="journal.length" class="rounded-xl bg-slate-950 p-4 font-mono text-[11px] leading-relaxed text-slate-300">
+                            <template x-for="(l, i) in journal" :key="i">
+                                <p :class="{ 'text-emerald-400': l.n === 'ok', 'text-amber-300': l.n === 'warn', 'text-red-400': l.n === 'erreur' }"><span class="text-slate-500" x-text="l.h"></span> <span x-text="l.m"></span></p>
+                            </template>
+                            <p x-show="statut && statut.etat === 'termine'" class="mt-2 font-bold" :class="statut && statut.ok ? 'text-emerald-400' : 'text-red-400'" x-text="statut && statut.ok ? 'Terminé.' : 'Échec : voir ci-dessus.'"></p>
+                        </div>
+                    </div>
+                </template>
+            </div>
         @elseif($activeTab !== 'audit')
             <!-- Placeholder Layout for other tabs -->
             <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] mt-6">
