@@ -72,6 +72,7 @@ dans **[docs/installation.md](docs/installation.md)**.
 |---|---|
 | **[Architecture](docs/architecture.md)** | Vue d'ensemble, conteneurs, réseau, flux de données, modèle de données |
 | **[Installation](docs/installation.md)** | Déploiement de la console chez un client, de zéro à opérationnel |
+| **[Déploiement sur serveur Ubuntu + Portainer](docs/deploiement-serveur-ubuntu-portainer.md)** | Mise en production sur un serveur : pile Portainer, secrets, sauvegardes, mises à jour |
 | **[Configuration](docs/configuration.md)** | Référence de toutes les variables d'environnement et fichiers `config/` |
 | **[Provisioning](docs/provisioning.md)** | Cycle de vie d'un établissement : création, mise à jour, suppression |
 | **[Rôles et accès](docs/roles-et-acces.md)** | RBAC, les trois espaces, gestion des comptes, isolation multi-tenant |
