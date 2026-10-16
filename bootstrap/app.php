@@ -21,6 +21,14 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('backups:run')->everyMinute()->withoutOverlapping();
     })
     ->withMiddleware(function (Middleware $middleware): void {
+        // Derrière un reverse proxy HTTPS, sans ceci Laravel croit parler en HTTP :
+        // URL d'assets et redirections repartent en http:// (contenu mixte).
+        // TRUSTED_PROXIES = « * » ou une liste d'adresses séparées par des virgules ;
+        // laissé vide, rien ne change.
+        if (($proxies = trim((string) env('TRUSTED_PROXIES', ''))) !== '') {
+            $middleware->trustProxies(at: $proxies === '*' ? '*' : array_map('trim', explode(',', $proxies)));
+        }
+
         $middleware->web(append: [
             \App\Http\Middleware\TrackUserOnlineStatus::class,
         ]);

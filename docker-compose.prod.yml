@@ -1,0 +1,97 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# WeTchah ERP — déploiement sur un serveur (Ubuntu + Docker, pilotable depuis
+# Portainer). Voir docs/deploiement-serveur-ubuntu-portainer.md.
+#
+# Différences avec docker-compose.yml, qui reste celui du poste de développement :
+#   - aucun bind mount du code : l'image est autonome (assets compilés, vendor/
+#     et node_modules/ dans l'image) ;
+#   - la base SQLite et storage/ vivent dans un volume nommé ;
+#   - aucune base PostgreSQL ni service vite : la console n'en utilise pas ;
+#   - toute la configuration arrive par variables d'environnement (pas de .env) :
+#     dans Portainer, ce sont celles de la pile.
+#
+# Réseau partagé avec les établissements, à créer une fois sur l'hôte :
+#     docker network create pms
+# ─────────────────────────────────────────────────────────────────────────────
+name: wetchah-erp
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile
+    image: wetchah-erp:${ERP_VERSION:-latest}
+    container_name: wetchah_erp-app
+    restart: unless-stopped
+    ports:
+      - "${ERP_PORT:-8080}:80"
+    volumes:
+      # storage/ (journaux, sauvegardes des établissements, cache) et la base SQLite.
+      - erp_storage:/var/www/html/storage
+      # La console pilote Docker : accès au socket = accès root sur l'hôte.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Les Compose des établissements, écrits ici par la console puis lus par le
+      # démon Docker de l'hôte : le chemin DOIT être identique des deux côtés.
+      - ${TENANTS_BASE_PATH:-/var/wetchah/tenants}:${TENANTS_BASE_PATH:-/var/wetchah/tenants}
+    environment:
+      APP_NAME: "WeTchah ERP"
+      APP_ENV: production
+      APP_DEBUG: "false"
+      # Obligatoire. À générer :  docker run --rm wetchah-erp:latest php artisan key:generate --show
+      APP_KEY: ${APP_KEY:?APP_KEY est obligatoire}
+      APP_URL: ${APP_URL:-http://localhost:8080}
+      APP_LOCALE: fr
+      APP_FALLBACK_LOCALE: fr
+      APP_TIMEZONE: ${TZ:-Africa/Douala}
+      TZ: ${TZ:-Africa/Douala}
+      LOG_CHANNEL: stack
+      LOG_STACK: single
+      LOG_LEVEL: ${LOG_LEVEL:-warning}
+      DB_CONNECTION: sqlite
+      DB_DATABASE: /var/www/html/storage/database/database.sqlite
+      SESSION_DRIVER: file
+      SESSION_SECURE_COOKIE: ${SESSION_SECURE_COOKIE:-false}
+      CACHE_STORE: file
+      QUEUE_CONNECTION: database
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
+      # Sur un serveur, l'entrypoint n'ouvre pas le socket Docker à tous les
+      # utilisateurs de la machine : l'appartenance au groupe suffit.
+      ERP_OUVRIR_SOCKET_DOCKER: "0"
+      # Provisioning des établissements
+      TENANTS_BASE_PATH: ${TENANTS_BASE_PATH:-/var/wetchah/tenants}
+      TENANTS_PUBLIC_HOST: ${TENANTS_PUBLIC_HOST:-localhost}
+      REGISTRY_IMAGE: ${REGISTRY_IMAGE:-ghcr.io/adrien-stage/villa_b}
+      REGISTRY_IMAGE_WEB: ${REGISTRY_IMAGE_WEB:-ghcr.io/clyde237/site_villab}
+      CMS_CONTAINER_NAME: wetchah_erp-app
+      DOCKER_NETWORK: pms
+      PORT_RANGE_APP_START: ${PORT_RANGE_APP_START:-8081}
+      REPORTING_SECRET: ${REPORTING_SECRET:-}
+      ASSISTANCE_SECRET: ${ASSISTANCE_SECRET:-}
+      BACKUPS_HOST_PATH: ${BACKUPS_HOST_PATH:-}
+      # Notifications Web Push (clés de l'éditeur, communes à tous les établissements)
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      # Messagerie
+      MAIL_MAILER: ${MAIL_MAILER:-log}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:-no-reply@exemple.com}
+      MAIL_FROM_NAME: "WeTchah ERP"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost/login"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      pms:
+        # Les sites d'établissements déjà déployés joignent le CMS par cet ancien nom.
+        aliases:
+          - MEKA_ERP-app
+
+networks:
+  pms:
+    external: true
+
+volumes:
+  erp_storage:

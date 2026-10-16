@@ -27,12 +27,32 @@ if [ -S "$DOCKER_SOCK" ]; then
         fi
     fi
 
-    # Garantir que www-data peut accéder au socket
-    chmod 666 "$DOCKER_SOCK" 2>/dev/null || true
+    # Garantir que www-data peut accéder au socket.
+    #
+    # Le chmod 666 ouvre le socket À TOUS les utilisateurs de la machine hôte
+    # (le montage transmet le vrai socket sous Linux). Il est conservé par défaut
+    # — Docker Desktop en a besoin — mais un serveur le désactive avec
+    # ERP_OUVRIR_SOCKET_DOCKER=0 : l'alignement du groupe ci-dessus suffit.
+    if [ "${ERP_OUVRIR_SOCKET_DOCKER:-1}" = "1" ]; then
+        chmod 666 "$DOCKER_SOCK" 2>/dev/null || true
+    fi
 
     echo "✅ Socket Docker accessible par www-data (GID: $SOCK_GID)"
 else
     echo "⚠️  Socket Docker non trouvé — les commandes Docker ne fonctionneront pas."
+fi
+
+# ── Base SQLite hors du code ──────────────────────────────────────────────────
+# En production la base vit dans un volume (DB_DATABASE absolu, sous storage/) :
+# le dossier doit exister et appartenir à www-data, car SQLite écrit ses fichiers
+# -wal, -shm et -journal À CÔTÉ de la base, pas dedans. Sans effet quand
+# DB_DATABASE n'est pas défini (développement : database/database.sqlite).
+if [ "${DB_CONNECTION:-}" = "sqlite" ] && [ -n "${DB_DATABASE:-}" ] && [ "${DB_DATABASE#/}" != "$DB_DATABASE" ]; then
+    mkdir -p "$(dirname "$DB_DATABASE")"
+    touch "$DB_DATABASE"
+    chown www-data:www-data "$(dirname "$DB_DATABASE")" "$DB_DATABASE" 2>/dev/null || true
+    chmod 775 "$(dirname "$DB_DATABASE")" 2>/dev/null || true
+    chmod 664 "$DB_DATABASE" 2>/dev/null || true
 fi
 
 # ── Permissions storage / cache ───────────────────────────────────────────────
