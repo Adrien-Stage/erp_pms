@@ -42,17 +42,29 @@ else
     echo "⚠️  Socket Docker non trouvé — les commandes Docker ne fonctionneront pas."
 fi
 
-# ── Base SQLite hors du code ──────────────────────────────────────────────────
-# En production la base vit dans un volume (DB_DATABASE absolu, sous storage/) :
-# le dossier doit exister et appartenir à www-data, car SQLite écrit ses fichiers
-# -wal, -shm et -journal À CÔTÉ de la base, pas dedans. Sans effet quand
-# DB_DATABASE n'est pas défini (développement : database/database.sqlite).
-if [ "${DB_CONNECTION:-}" = "sqlite" ] && [ -n "${DB_DATABASE:-}" ] && [ "${DB_DATABASE#/}" != "$DB_DATABASE" ]; then
-    mkdir -p "$(dirname "$DB_DATABASE")"
-    touch "$DB_DATABASE"
-    chown www-data:www-data "$(dirname "$DB_DATABASE")" "$DB_DATABASE" 2>/dev/null || true
-    chmod 775 "$(dirname "$DB_DATABASE")" 2>/dev/null || true
-    chmod 664 "$DB_DATABASE" 2>/dev/null || true
+# ── Base SQLite ───────────────────────────────────────────────────────────────
+# SQLite écrit ses fichiers -wal, -shm et -journal À CÔTÉ de la base : le DOSSIER
+# doit être inscriptible par www-data, pas seulement le fichier. Sans cela, la
+# connexion échoue sur « attempt to write a readonly database ».
+if [ "${DB_CONNECTION:-}" = "sqlite" ]; then
+    if [ -n "${DB_DATABASE:-}" ] && [ "${DB_DATABASE#/}" != "$DB_DATABASE" ]; then
+        # Production : chemin absolu, dans un volume Docker qui appartient à www-data.
+        mkdir -p "$(dirname "$DB_DATABASE")"
+        touch "$DB_DATABASE"
+        chown www-data:www-data "$(dirname "$DB_DATABASE")" "$DB_DATABASE" 2>/dev/null || true
+        chmod 775 "$(dirname "$DB_DATABASE")" 2>/dev/null || true
+        chmod 664 "$DB_DATABASE" 2>/dev/null || true
+    else
+        # Développement : database/database.sqlite, dans le dossier du dépôt monté depuis
+        # l'hôte. Le fichier est ignoré par git, donc absent d'un clone neuf ; le dossier
+        # appartient à l'utilisateur de l'hôte. Un chown le lui retirerait : on ouvre les
+        # droits à la place (poste de développement seulement, jamais en production).
+        BASE_DEV="/var/www/html/${DB_DATABASE:-database/database.sqlite}"
+        mkdir -p "$(dirname "$BASE_DEV")"
+        touch "$BASE_DEV"
+        chmod 777 "$(dirname "$BASE_DEV")" 2>/dev/null || true
+        chmod 666 "$BASE_DEV" "$BASE_DEV"-wal "$BASE_DEV"-shm "$BASE_DEV"-journal 2>/dev/null || true
+    fi
 fi
 
 # ── Permissions storage / cache ───────────────────────────────────────────────
