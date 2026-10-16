@@ -16,6 +16,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Adresse publique du serveur
+    |--------------------------------------------------------------------------
+    | Nom ou adresse IP sous lesquels un navigateur atteint les établissements
+    | (leurs ports sont publiés sur l'hôte). « localhost » convient en
+    | développement ; sur un serveur distant, y mettre son nom DNS ou son IP.
+    | Sert aux liens « Ouvrir », à l'APP_URL et à l'ORIGIN des établissements,
+    | et à l'URL d'entrée du mode assistance.
+    */
+    'public_host' => env('TENANTS_PUBLIC_HOST', 'localhost'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Image Docker du template applicatif (registre)
     |--------------------------------------------------------------------------
     | Image publiée automatiquement par la CI du repo villa_b (GitHub Actions

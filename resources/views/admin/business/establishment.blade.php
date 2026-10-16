@@ -139,7 +139,7 @@
                         @if($tenant->docker_status === 'running' && $tenant->app_port)
                         <div>
                             <dt class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Lien d'accès à l'application</dt>
-                            <a href="http://localhost:{{ $tenant->app_port }}" target="_blank" class="text-sm font-mono text-indigo-600 hover:text-indigo-800 hover:underline">http://localhost:{{ $tenant->app_port }}</a>
+                            <a href="{{ \App\Support\PublicUrl::origin() }}:{{ $tenant->app_port }}" target="_blank" class="text-sm font-mono text-indigo-600 hover:text-indigo-800 hover:underline">{{ \App\Support\PublicUrl::origin() }}:{{ $tenant->app_port }}</a>
                         </div>
                         @endif
                         @if($tenant->hasGrc())

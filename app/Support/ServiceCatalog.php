@@ -130,6 +130,6 @@ class ServiceCatalog
     public static function serviceUrl(Tenant $tenant, string $serviceKey): ?string
     {
         $port = self::resolvedPort($tenant, $serviceKey);
-        return $port ? "http://localhost:{$port}" : null;
+        return \App\Support\PublicUrl::forPort($port);
     }
 }
