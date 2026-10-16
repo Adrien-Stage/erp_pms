@@ -56,7 +56,7 @@ return [
     | Provisionnée en 4e container ("grc") uniquement pour les établissements
     | avec le module "grc" actif.
     */
-    'registry_image_grc' => env('REGISTRY_IMAGE_GRC', 'ghcr.io/wetchah/wetchah_grc'),
+    'registry_image_grc' => env('REGISTRY_IMAGE_GRC', 'ghcr.io/clyde237/wetchah_grc'),
 
     /*
     |--------------------------------------------------------------------------

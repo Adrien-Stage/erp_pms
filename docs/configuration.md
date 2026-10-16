@@ -13,6 +13,7 @@ plus important : il décrit d'où viennent les images et où vivent les établis
 | `TENANTS_BASE_PATH` | `/var/meka-erp/tenants` | **Chemin absolu sur la machine hôte** où sont écrits les Compose générés (sous-dossier `.compose/`) |
 | `REGISTRY_IMAGE` | `ghcr.io/adrien-stage/villa_b` | Image de l'application établissement (`wetchah_app`) |
 | `REGISTRY_IMAGE_WEB` | `ghcr.io/clyde237/site_villab` | Image du site vitrine (`wetchah_site`) |
+| `REGISTRY_IMAGE_GRC` | `ghcr.io/clyde237/wetchah_grc` | Image du module de contrôle de gestion (GRC) |
 | `CMS_CONTAINER_NAME` | `wetchah_erp-app` | Nom du conteneur de la console, injecté comme `CMS_API_URL` dans les conteneurs web |
 | `DOCKER_NETWORK` | `pms` | Réseau Docker partagé — créé automatiquement s'il n'existe pas |
 | `REPORTING_SECRET` | *(vide)* | **Ancien secret commun**, relu seulement pour reconnaître les établissements qui ne l'ont pas encore quitté. Chaque établissement reçoit désormais le sien |

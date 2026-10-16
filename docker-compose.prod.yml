@@ -62,6 +62,7 @@ services:
       TENANTS_PUBLIC_HOST: ${TENANTS_PUBLIC_HOST:-localhost}
       REGISTRY_IMAGE: ${REGISTRY_IMAGE:-ghcr.io/adrien-stage/villa_b}
       REGISTRY_IMAGE_WEB: ${REGISTRY_IMAGE_WEB:-ghcr.io/clyde237/site_villab}
+      REGISTRY_IMAGE_GRC: ${REGISTRY_IMAGE_GRC:-ghcr.io/clyde237/wetchah_grc}
       CMS_CONTAINER_NAME: wetchah_erp-app
       DOCKER_NETWORK: pms
       PORT_RANGE_APP_START: ${PORT_RANGE_APP_START:-8081}
