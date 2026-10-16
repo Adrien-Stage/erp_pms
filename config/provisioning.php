@@ -12,7 +12,7 @@ return [
     | Windows/WSL2 exemple : /c/Users/user/Herd/tenants
     | Linux exemple         : /home/ubuntu/meka-erp/tenants
     */
-    'tenants_base_path' => env('TENANTS_BASE_PATH', '/var/meka-erp/tenants'),
+    'tenants_base_path' => env('TENANTS_BASE_PATH', '/var/wetchah/tenants'),
 
     /*
     |--------------------------------------------------------------------------

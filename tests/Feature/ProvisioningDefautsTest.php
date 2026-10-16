@@ -24,3 +24,15 @@ test("un dossier des établissements non inscriptible donne un message qui dit q
 
     expect($appeler)->toThrow(RuntimeException::class, 'sudo chown 33:33');
 });
+
+test("le dossier des établissements par défaut est celui que monte le docker-compose", function () {
+    // Sans cela, la console écrivait dans /var/meka-erp/tenants — absent du conteneur :
+    // « mkdir(): Permission denied » à la première création.
+    $compose = file_get_contents(base_path('docker-compose.yml'));
+    $defaut = '${TENANTS_BASE_PATH:-/var/wetchah/tenants}';
+
+    expect($compose)->toContain("- {$defaut}:{$defaut}")
+        ->and($compose)->toContain("TENANTS_BASE_PATH: {$defaut}");
+    // phpunit.xml impose un dossier de test : on lit la valeur par défaut dans le fichier de config.
+    expect(file_get_contents(base_path('config/provisioning.php')))->toContain("env('TENANTS_BASE_PATH', '/var/wetchah/tenants')");
+});
