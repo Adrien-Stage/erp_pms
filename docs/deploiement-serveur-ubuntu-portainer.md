@@ -1,5 +1,7 @@
 # Déploiement de l'ERP sur un serveur Ubuntu avec Docker et Portainer
 
+> **Version pas à pas, sans jargon : [GUIDE_DEPLOIEMENT_ERP_WETCHAH.pdf](GUIDE_DEPLOIEMENT_ERP_WETCHAH.pdf)** — mêmes étapes, avec captures, cas d'usage et dépannage. Le présent document en est la référence technique.
+
 Ce guide installe la console WeTchah ERP sur un **serveur Ubuntu** où **Docker** et
 **Portainer** sont déjà installés, de la machine nue jusqu'au premier établissement
 créé. Il se lit dans l'ordre ; chaque étape se termine par une vérification.
@@ -379,24 +381,11 @@ dans le volume (`/var/www/html/storage/database/database.sqlite`).
 ### 7.2 Le compte administrateur
 
 ```bash
-docker exec -it wetchah_erp-app php artisan tinker
+docker exec -it -u www-data wetchah_erp-app php artisan erp:creer-admin
 ```
 
-Dans l'invite, adapter le nom, l'adresse et **choisir un mot de passe fort** :
-
-```php
-App\Models\User::create([
-    'name'      => 'Nom Prénom',
-    'email'     => 'admin@exemple.com',
-    'password'  => Hash::make('<mot de passe fort>'),
-    'role'      => App\Models\User::ROLE_TECH_ADMIN,
-    'is_active' => true,
-]);
-```
-
-Quitter avec `exit`. *(La commande `tinker` conserve l'historique : si le mot de passe
-doit rester secret, vider `~/.config/psysh/psysh_history` dans le conteneur après
-coup, ou changer le mot de passe depuis l'interface à la première connexion.)*
+La commande demande le nom, l'adresse e-mail et le mot de passe (12 caractères minimum, saisi deux fois, non affiché).
+`--reinitialiser` change le mot de passe d'un compte existant. Pas de `tinker` : il garde l'historique des commandes.
 
 ---
 
@@ -473,8 +462,8 @@ Une fois terminé :
 > jour à la main dans Portainer désynchronise la console. Portainer reste idéal pour
 > **lire** : journaux, état, consommation.
 
-Les volumes de chaque établissement s'appellent `meka_erp_<slug>_pgdata` et
-`meka_erp_<slug>_storage`. **Ne jamais les supprimer** depuis Portainer (« Volumes »).
+Les volumes de chaque établissement s'appellent `meka-erp-<slug>_meka_erp_<slug>_pgdata` et
+`meka-erp-<slug>_meka_erp_<slug>_storage`. **Ne jamais les supprimer** depuis Portainer (« Volumes »).
 
 ---
 
@@ -526,8 +515,12 @@ Il faut donc sauvegarder **hors du serveur** quatre éléments :
 |---|---|---|
 | Volume `wetchah-erp_erp_storage` | Docker | Base SQLite de la console (établissements, comptes, **mots de passe des bases**), journaux, **sauvegardes des établissements** |
 | `/var/wetchah/tenants` | hôte | Les Compose des établissements : leurs `APP_KEY` et secrets. **Perdus, ils rendent les données chiffrées irrécupérables** |
-| Volumes `meka_erp_<slug>_pgdata` / `_storage` | Docker | Les données réelles de chaque hôtel (en plus des dumps de la console) |
+| Volumes `meka-erp-<slug>_meka_erp_<slug>_pgdata` / `_storage` | Docker | Les données réelles de chaque hôtel (en plus des dumps de la console) |
 | La valeur de `APP_KEY` et les clés VAPID | gestionnaire de mots de passe | Sans `APP_KEY`, la base SQLite de la console n'est plus lisible |
+
+### Tout en une commande
+
+`scripts/sauvegarder-erp.sh` fait les trois copies ci-dessous (base, volume, dossier des établissements) et garde les 14 dernières ; voir son en-tête pour la planifier avec `cron`.
 
 ### Sauvegarde à chaud de la base de la console
 
