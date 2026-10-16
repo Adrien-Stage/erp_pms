@@ -10,7 +10,7 @@ plus important : il décrit d'où viennent les images et où vivent les établis
 
 | Variable | Défaut | Rôle |
 |---|---|---|
-| `TENANTS_BASE_PATH` | `/var/meka-erp/tenants` | **Chemin absolu sur la machine hôte** où sont écrits les Compose générés (sous-dossier `.compose/`) |
+| `TENANTS_BASE_PATH` | `/var/wetchah/tenants` | **Chemin absolu sur la machine hôte** où sont écrits les Compose générés (sous-dossier `.compose/`) |
 | `REGISTRY_IMAGE` | `ghcr.io/adrien-stage/villa_b` | Image de l'application établissement (`wetchah_app`) |
 | `REGISTRY_IMAGE_WEB` | `ghcr.io/clyde237/site_villab` | Image du site vitrine (`wetchah_site`) |
 | `REGISTRY_IMAGE_GRC` | `ghcr.io/clyde237/wetchah_grc` | Image du module de contrôle de gestion (GRC) |
