@@ -601,6 +601,18 @@ l'image et recrée le conteneur. Lancer ensuite la migration (commande ci-dessus
 Le retour arrière demande alors de rebâtir depuis un commit précédent : pour des
 versions numérotées, préférer la méthode B.
 
+### 12.2 bis Pile d'essai : le bouton « Mettre à jour le code »
+
+Quand le code de la console est un dépôt git monté dans le conteneur (`docker-compose.yml`), l'onglet **Systeme** du
+tableau de bord TECH affiche la branche, la version et l'adresse du dépôt, et propose **Vérifier les nouveautés** puis
+**Mettre à jour le code (git pull)** : `git fetch`, `git pull --ff-only` sur la branche courante, recompilation des
+écrans si besoin, `migrate --force`, vidage des caches, relance du planificateur — en tâche de fond, journal suivi par la
+page. Git s'exécute en tant que propriétaire du dossier `.git` (`docker exec -u`), comme si la commande était tapée à la main.
+
+Le bouton refuse : fichiers suivis modifiés, HEAD détaché, branche sans suivi ou divergente. Il ne met pas les
+dépendances à jour (`composer.lock` modifié : avertissement, reconstruire l'image). Sur la pile de production, `.git`
+n'est pas dans l'image : l'onglet l'explique et renvoie à 12.1.
+
 ### 12.3 Revenir en arrière
 
 Méthode B : remettre l'ancienne valeur de `ERP_VERSION` dans la pile et
