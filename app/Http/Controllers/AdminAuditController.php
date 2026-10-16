@@ -259,7 +259,7 @@ class AdminAuditController extends Controller
         return redirect()
             ->route('tech.establishments.show', $tenant)
             ->with('start_provisioning', true)
-            ->with('success', "Établissement \u00ab {$tenant->name} \u00bb créé. Le provisioning Docker va démarrer.");
+            ->with('success', "Établissement « {$tenant->name} » créé. Le provisioning Docker va démarrer.");
     }
 
     public function showTenant(Tenant $tenant)
