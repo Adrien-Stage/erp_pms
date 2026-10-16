@@ -492,6 +492,124 @@
                     </div>
                 </div>
 
+                {{-- Dossier des docker-compose de l'établissement : choisi sur le serveur --}}
+                <script>
+                    window.dirPicker = function (cfg) {
+                        return {
+                            ouvert: false, chargement: false, erreur: '', nouveau: '', creation: false,
+                            valeur: cfg.valeur || '', defaut: cfg.defaut,
+                            courant: null,
+                            async aller(chemin) {
+                                this.chargement = true; this.erreur = '';
+                                try {
+                                    const url = cfg.url + (chemin ? '?path=' + encodeURIComponent(chemin) : '');
+                                    const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+                                    const d = await r.json();
+                                    if (!r.ok) { this.erreur = d.message || 'Dossier illisible.'; return; }
+                                    this.courant = d;
+                                } catch (e) { this.erreur = 'Le serveur ne répond pas.'; }
+                                finally { this.chargement = false; }
+                            },
+                            async parcourir() { this.ouvert = true; await this.aller(this.valeur || ''); if (this.erreur) { this.erreur = ''; await this.aller(''); } },
+                            choisir() { this.valeur = this.courant.path; this.ouvert = false; },
+                            async creer() {
+                                if (!this.nouveau.trim()) return;
+                                this.erreur = '';
+                                const r = await fetch(cfg.url, { method: 'POST', headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': cfg.csrf }, body: JSON.stringify({ path: this.courant.path, name: this.nouveau.trim() }) });
+                                const d = await r.json();
+                                if (!r.ok) { this.erreur = d.message || (d.errors ? Object.values(d.errors)[0][0] : 'Création impossible.'); return; }
+                                this.courant = d; this.nouveau = ''; this.creation = false;
+                            },
+                        };
+                    };
+                </script>
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden"
+                     x-data="dirPicker({ url: '{{ route('tech.directories.index') }}', csrf: '{{ csrf_token() }}', defaut: @js(config('provisioning.tenants_base_path')), valeur: @js(old('compose_base_path', '')) })"
+                     @keydown.escape.window="ouvert = false">
+                    <div class="bg-slate-900 px-6 py-4 flex items-center gap-3">
+                        <div class="rounded-lg bg-amber-600/20 p-2">
+                            <svg class="h-5 w-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
+                            </svg>
+                        </div>
+                        <div>
+                            <h2 class="text-sm font-bold text-white tracking-wide">Dossier des établissements</h2>
+                            <p class="text-[10px] text-slate-400">Où la console range le fichier docker-compose de cet établissement</p>
+                        </div>
+                    </div>
+                    <div class="p-6 space-y-3">
+                        <label for="compose_base_path" class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase">Dossier sur le serveur</label>
+                        <div class="flex gap-2">
+                            <input type="text" id="compose_base_path" name="compose_base_path" x-model="valeur" :placeholder="'Par défaut : ' + defaut" autocomplete="off"
+                                   class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 font-mono outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
+                            <button type="button" @click="parcourir()"
+                                    class="shrink-0 inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer">
+                                Parcourir…
+                            </button>
+                        </div>
+                        <p class="text-[9px] text-slate-400">Laissez vide pour utiliser le dossier par défaut. Le chemin est celui vu par la console (dans Docker, un dossier monté ou un volume) : un dossier hors de tout montage disparaît quand la console est recréée, avec les clés de l'établissement.</p>
+                        @error('compose_base_path')<p class="text-[11px] font-semibold text-red-600">{{ $message }}</p>@enderror
+                    </div>
+
+                    {{-- Fenêtre de navigation --}}
+                    <div x-show="ouvert" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4" role="dialog" aria-modal="true" aria-label="Choisir un dossier">
+                        <div class="w-full max-w-xl rounded-xl bg-white shadow-2xl overflow-hidden" @click.outside="ouvert = false">
+                            <div class="bg-slate-900 px-5 py-3 flex items-center justify-between">
+                                <h3 class="text-sm font-bold text-white">Choisir un dossier du serveur</h3>
+                                <button type="button" @click="ouvert = false" class="text-slate-400 hover:text-white text-lg leading-none cursor-pointer" aria-label="Fermer">&times;</button>
+                            </div>
+                            <div class="p-5 space-y-3">
+                                <template x-if="courant">
+                                    <div class="flex items-center gap-2">
+                                        <button type="button" @click="aller(courant.parent)" :disabled="!courant.parent"
+                                                class="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40 cursor-pointer" title="Dossier parent">&uarr; Remonter</button>
+                                        <code class="flex-1 truncate rounded bg-slate-100 px-2.5 py-1.5 text-xs text-slate-700" x-text="courant.path"></code>
+                                    </div>
+                                </template>
+                                <p x-show="erreur" x-text="erreur" class="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs font-semibold text-red-700"></p>
+                                <div class="h-64 overflow-y-auto rounded-lg border border-slate-200">
+                                    <p x-show="chargement" class="p-4 text-xs text-slate-400">Chargement…</p>
+                                    <template x-if="courant && !chargement">
+                                        <ul class="divide-y divide-slate-100">
+                                            <template x-for="d in courant.directories" :key="d.path">
+                                                <li>
+                                                    <button type="button" @click="aller(d.path)" class="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-slate-700 hover:bg-indigo-50 cursor-pointer">
+                                                        <span class="truncate font-mono" x-text="d.name + '/'"></span>
+                                                        <span x-show="!d.writable" class="ml-2 shrink-0 text-[10px] text-slate-400">lecture seule</span>
+                                                    </button>
+                                                </li>
+                                            </template>
+                                            <li x-show="courant.directories.length === 0" class="px-3 py-4 text-xs text-slate-400">Aucun sous-dossier.</li>
+                                            <li x-show="courant.truncated" class="px-3 py-2 text-[10px] text-slate-400">Liste tronquée : tapez le chemin à la main.</li>
+                                        </ul>
+                                    </template>
+                                </div>
+                                <template x-if="courant">
+                                    <div class="space-y-2">
+                                        <p x-show="!courant.writable" class="text-[11px] font-semibold text-amber-700">La console ne peut pas écrire ici : choisissez un autre dossier, ou <code>sudo chown 33:33</code> sur celui-ci.</p>
+                                        <p x-show="courant.writable && !courant.persistent" class="text-[11px] font-semibold text-amber-700">Ce dossier n'est pas monté depuis l'hôte : il disparaîtra quand la console sera recréée. Préférez un dossier monté ou un volume.</p>
+                                        <div class="flex items-center gap-2" x-show="courant.writable">
+                                            <button type="button" x-show="!creation" @click="creation = true" class="text-xs font-bold text-indigo-600 hover:underline cursor-pointer">+ Nouveau dossier ici</button>
+                                            <template x-if="creation">
+                                                <div class="flex flex-1 gap-2">
+                                                    <input type="text" x-model="nouveau" @keydown.enter.prevent="creer()" placeholder="nom-du-dossier"
+                                                           class="flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-mono outline-none focus:border-indigo-500">
+                                                    <button type="button" @click="creer()" class="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-bold text-white cursor-pointer">Créer</button>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                            <div class="flex justify-end gap-2 border-t border-slate-100 bg-slate-50 px-5 py-3">
+                                <button type="button" @click="ouvert = false" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer">Annuler</button>
+                                <button type="button" @click="choisir()" :disabled="!courant || !courant.writable"
+                                        class="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 disabled:opacity-40 cursor-pointer">Choisir ce dossier</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
 <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                     <div class="bg-slate-900 px-6 py-4 flex items-center gap-3">
                         <div class="rounded-lg bg-blue-600/20 p-2">
