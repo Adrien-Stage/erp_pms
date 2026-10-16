@@ -40,7 +40,7 @@ en quatre volets validés par
 | Volet | Champs | Notes |
 |---|---|---|
 | **Propriétaire** | Nouveau (nom, e-mail, téléphone, société, nationalité, mot de passe) ou existant | Un nouveau propriétaire est créé avec le rôle `owner` |
-| **Technique** | `db_name`, `app_port`, `db_username`, `db_password`, `db_port` | `db_name` et `app_port` sont **uniques** entre établissements |
+| **Technique** | `db_name`, `app_port`, `db_username`, `db_password`, `db_port`, `compose_base_path` (facultatif) | `db_name` et `app_port` sont **uniques** entre établissements. `compose_base_path` : dossier où est écrit le compose de cet établissement (`<dossier>/.compose/<slug>.yml`), choisi par un navigateur de dossiers **du serveur** (bouton « Parcourir… ») ; vide, c'est `TENANTS_BASE_PATH`. Il doit exister, être inscriptible par `www-data` et, dans Docker, être monté depuis l'hôte (la console avertit sinon) |
 | **Établissement** | `name`, `slug`, pays, ville, `currency`, adresse, téléphone, e-mail, logo | Le `slug` est **unique** et détermine tout le nommage Docker |
 | **Apparence & modules** | 7 couleurs de thème (`#RRGGBB`), cases des modules | `website` force `api` |
 

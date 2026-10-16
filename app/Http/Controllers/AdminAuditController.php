@@ -143,6 +143,19 @@ class AdminAuditController extends Controller
             'db_port' => ['nullable', 'string', 'max:10'],
             'docker_app_container' => ['nullable', 'string', 'max:255'],
             'docker_db_container' => ['nullable', 'string', 'max:255'],
+            'compose_base_path' => ['nullable', 'string', 'max:255', function ($attribute, $value, $fail) {
+                if ($value === null || $value === '') {
+                    return;
+                }
+                try {
+                    $reel = app(\App\Services\DirectoryBrowser::class)->normaliser($value);
+                } catch (\InvalidArgumentException $e) {
+                    return $fail($e->getMessage());
+                }
+                if (!is_writable($reel)) {
+                    $fail("La console ne peut pas écrire dans {$reel} : donnez-lui ce dossier (sudo chown 33:33 {$reel}) ou choisissez-en un autre.");
+                }
+            }],
 
             // Source du template applicatif (toujours GitHub)
 
@@ -236,6 +249,7 @@ class AdminAuditController extends Controller
             'db_username' => $request->db_username ?? 'pms',
             'db_password' => $request->db_password ?? 'secret',
             'app_port' => $request->app_port,
+            'compose_base_path' => $request->filled('compose_base_path') ? (rtrim(realpath($request->compose_base_path) ?: $request->compose_base_path, '/') ?: '/') : null,
             'db_port' => $request->db_port ?? 5434,
             'docker_app_container' => 'meka-erp-'.$request->slug.'-app',
             'docker_db_container' => 'meka-erp-'.$request->slug.'-db',

@@ -61,6 +61,9 @@ Route::middleware(['auth', 'role:tech_admin'])->prefix('tech')->name('tech.')->g
     Route::get('/support/assistance', [AdminAuditController::class, 'assistanceList'])->name('support.assistance.list');
     Route::post('/support/assistance', [AdminAuditController::class, 'assistanceOpen'])->name('support.assistance.open');
     Route::post('/support/assistance/{session}/revoke', [AdminAuditController::class, 'assistanceRevoke'])->name('support.assistance.revoke');
+    // Sélecteur de dossier du serveur (formulaire de création d'un établissement)
+    Route::get('/directories', [\App\Http\Controllers\ServerDirectoryController::class, 'index'])->name('directories.index');
+    Route::post('/directories', [\App\Http\Controllers\ServerDirectoryController::class, 'store'])->name('directories.store');
     Route::get('/support/{tenant}/diagnostic', [AdminAuditController::class, 'supportDiagnostic'])->name('support.diagnostic');
 
     // Tickets remontés par le personnel des établissements depuis wetchah_app :

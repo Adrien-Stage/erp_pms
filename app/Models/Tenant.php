@@ -34,6 +34,7 @@ class Tenant extends Model
         'db_port',
         'web_port',
         'grc_port',
+        'compose_base_path', // dossier des docker-compose de cet établissement (vide : TENANTS_BASE_PATH)
 
         // Modules & Features
         'api_enabled',
@@ -72,7 +73,13 @@ class Tenant extends Model
      */
     public function composePath(): string
     {
-        return rtrim(config('provisioning.tenants_base_path'), '/\\') . '/.compose/' . $this->slug . '.yml';
+        return $this->baseDir() . '/.compose/' . $this->slug . '.yml';
+    }
+
+    /** Dossier choisi à la création, sinon TENANTS_BASE_PATH. */
+    public function baseDir(): string
+    {
+        return rtrim($this->compose_base_path ?: config('provisioning.tenants_base_path'), '/\\');
     }
 
     /**

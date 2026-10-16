@@ -1365,8 +1365,7 @@ YAML;
         $slug = $tenant->slug;
         $log('delete', "Suppression de l'établissement « {$tenant->name} » (slug: {$slug})");
 
-        $baseDir     = rtrim(config('provisioning.tenants_base_path'), '/\\');
-        $composePath = $baseDir . '/.compose/' . $slug . '.yml';
+        $composePath = $tenant->composePath();
 
         $log('docker', "Arrêt et destruction des conteneurs et volumes…", 'info');
 
