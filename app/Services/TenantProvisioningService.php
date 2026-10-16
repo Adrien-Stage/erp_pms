@@ -607,8 +607,8 @@ class TenantProvisioningService
         $composePath = $tenant->composePath();
         $composeDir  = dirname($composePath);
 
-        if (!is_dir($composeDir) && !mkdir($composeDir, 0777, true) && !is_dir($composeDir)) {
-            throw new RuntimeException("Impossible de créer le répertoire : {$composeDir}");
+        if (!is_dir($composeDir) && !@mkdir($composeDir, 0777, true) && !is_dir($composeDir)) {
+            throw new RuntimeException("Impossible de créer le répertoire : {$composeDir} — le dossier parent doit appartenir à l'utilisateur www-data (sudo chown 33:33 " . dirname($composeDir) . ").");
         }
 
         $appContainer = 'meka-erp-' . $tenant->slug . '-app';
