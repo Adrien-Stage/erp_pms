@@ -154,3 +154,17 @@ test('a non-admin user cannot view tenant management dashboard', function () {
     $response->assertStatus(403);
 });
 
+
+test("le message de création d'un établissement affiche ses guillemets, pas leur code", function () {
+    $admin = User::factory()->create(['role' => User::ROLE_TECH_ADMIN, 'is_active' => true]);
+
+    $this->actingAs($admin)->post(route('tech.establishments.store'), [
+        'owner_type' => 'new',
+        'owner_name' => 'Jean Kamga', 'owner_email' => 'jk@exemple.cm', 'owner_nationality' => 'Camerounaise',
+        'owner_password' => 'mot-de-passe-1',
+        'db_name' => 'hotel_test_db', 'app_port' => 18150,
+        'name' => 'Hôtel Test', 'slug' => 'hotel-test', 'currency' => 'XAF',
+    ])->assertRedirect();
+
+    expect(session('success'))->toBe("Établissement « Hôtel Test » créé. Le provisioning Docker va démarrer.");
+});

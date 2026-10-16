@@ -607,8 +607,8 @@ class TenantProvisioningService
         $composePath = $tenant->composePath();
         $composeDir  = dirname($composePath);
 
-        if (!is_dir($composeDir) && !mkdir($composeDir, 0777, true) && !is_dir($composeDir)) {
-            throw new RuntimeException("Impossible de créer le répertoire : {$composeDir}");
+        if (!is_dir($composeDir) && !@mkdir($composeDir, 0777, true) && !is_dir($composeDir)) {
+            throw new RuntimeException("Impossible de créer le répertoire : {$composeDir} — le dossier parent doit appartenir à l'utilisateur www-data (sudo chown 33:33 " . dirname($composeDir) . ").");
         }
 
         $appContainer = 'meka-erp-' . $tenant->slug . '-app';
@@ -625,7 +625,7 @@ class TenantProvisioningService
         // de base à asset()/config('app.url') pour que les images (chambres,
         // logo...) exposées à un service externe comme le site vitrine
         // pointent vers une URL réellement joignable, pas le hostname interne.
-        $appUrl       = 'http://localhost:' . $appPort;
+        $appUrl       = \App\Support\PublicUrl::origin() . ':' . $appPort;
         $currency     = $tenant->currency ?? 'XAF';
         // Le logo importé côté admin reste côté admin (storage propre à erp_pms) :
         // pas de lien inter-conteneurs. Le manager importe son propre logo depuis
@@ -771,6 +771,7 @@ YAML;
             $webContainer = 'meka-erp-' . $tenant->slug . '-web';
             $webPort      = $tenant->web_port ?? ($appPort + 1000);
             $cmsContainer = config('provisioning.cms_container', 'MEKA_ERP-app');
+            $publicOrigin = \App\Support\PublicUrl::origin();
 
             $services[] = <<<YAML
   {$webContainer}:
@@ -786,7 +787,7 @@ YAML;
       # Origine publique du site (navigateur) : requise par adapter-node
       # SvelteKit pour valider les POST de formulaire (protection CSRF),
       # sinon toute soumission est rejetée en "cross-site".
-      ORIGIN: "http://localhost:{$webPort}"
+      ORIGIN: "{$publicOrigin}:{$webPort}"
     depends_on:
       - {$appContainer}
     networks:

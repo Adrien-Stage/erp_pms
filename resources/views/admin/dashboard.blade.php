@@ -394,15 +394,15 @@
                                     </div>
                                     <div class="flex justify-between items-center">
                                         <span class="text-slate-400">Lien d'accès :</span>
-                                        <a href="http://localhost:{{ $tenant->app_port }}" target="_blank" class="font-semibold text-indigo-600 hover:text-indigo-850 hover:underline font-mono text-[10px] truncate max-w-[150px]" title="http://localhost:{{ $tenant->app_port }}">
-                                            localhost:{{ $tenant->app_port }}
+                                        <a href="{{ \App\Support\PublicUrl::origin() }}:{{ $tenant->app_port }}" target="_blank" class="font-semibold text-indigo-600 hover:text-indigo-850 hover:underline font-mono text-[10px] truncate max-w-[150px]" title="http://localhost:{{ $tenant->app_port }}">
+                                            {{ \App\Support\PublicUrl::host() }}:{{ $tenant->app_port }}
                                         </a>
                                     </div>
                                     @if($tenant->hasGrc())
                                         <div class="flex justify-between items-center">
                                             <span class="text-slate-400">Portail GRC :</span>
                                             <a href="{{ $tenant->grcUrl() }}" target="_blank" class="font-semibold text-teal-600 hover:text-teal-800 hover:underline font-mono text-[10px] truncate max-w-[150px]" title="{{ $tenant->grcUrl() }}">
-                                                localhost:{{ $tenant->resolvedGrcPort() }} ↗
+                                                {{ \App\Support\PublicUrl::host() }}:{{ $tenant->resolvedGrcPort() }} ↗
                                             </a>
                                         </div>
                                     @endif
@@ -450,7 +450,7 @@
                                     Gérer
                                 </a>
                                 <a
-                                    href="http://localhost:{{ $tenant->app_port }}"
+                                    href="{{ \App\Support\PublicUrl::origin() }}:{{ $tenant->app_port }}"
                                     target="_blank"
                                     class="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-indigo-750 transition shadow-sm"
                                 >
@@ -958,7 +958,7 @@
                                                         <p class="font-mono text-[10px] text-slate-400" x-text="e.slug"></p>
                                                     </td>
                                                     <td class="px-3 py-3 text-center">
-                                                        <a :href="'http://localhost:' + e.app_port" target="_blank" class="inline-flex items-center gap-1 hover:opacity-80 transition" :title="'Ouvrir l\'application sur le port ' + e.app_port">
+                                                        <a :href="'{{ \App\Support\PublicUrl::origin() }}:' + e.app_port" target="_blank" class="inline-flex items-center gap-1 hover:opacity-80 transition" :title="'Ouvrir l\'application sur le port ' + e.app_port">
                                                             <span class="inline-block h-2.5 w-2.5 rounded-full" :class="dot(e.app_status)"></span>
                                                         </a>
                                                     </td>
@@ -967,7 +967,7 @@
                                                     </td>
                                                     <td class="px-3 py-3 text-center">
                                                         <template x-if="e.has_website">
-                                                            <a :href="'http://localhost:' + (e.web_port || (e.app_port ? e.app_port + 1000 : ''))" target="_blank"
+                                                            <a :href="'{{ \App\Support\PublicUrl::origin() }}:' + (e.web_port || (e.app_port ? e.app_port + 1000 : ''))" target="_blank"
                                                                class="inline-flex items-center gap-1 hover:opacity-80 transition"
                                                                :title="'Ouvrir le site vitrine (port ' + (e.web_port || (e.app_port ? e.app_port + 1000 : '')) + ')'">
                                                                 <span class="inline-block h-2.5 w-2.5 rounded-full" :class="dot(e.web_status)"></span>
@@ -979,7 +979,7 @@
                                                     </td>
                                                     <td class="px-3 py-3 text-center">
                                                         <template x-if="e.has_grc">
-                                                            <a :href="'http://localhost:' + (e.grc_port || (e.app_port ? e.app_port + 2000 : 8085))" target="_blank"
+                                                            <a :href="'{{ \App\Support\PublicUrl::origin() }}:' + (e.grc_port || (e.app_port ? e.app_port + 2000 : 8085))" target="_blank"
                                                                class="inline-flex items-center gap-1 hover:opacity-80 transition"
                                                                :title="'Ouvrir Wetchah_GRC (port ' + (e.grc_port || (e.app_port ? e.app_port + 2000 : 8085)) + ')'">
                                                                 <span class="inline-block h-2.5 w-2.5 rounded-full" :class="dot(e.grc_status)"></span>
@@ -995,7 +995,7 @@
                                                     <td class="px-5 py-3 text-right">
                                                         <div class="flex items-center justify-end gap-2.5">
                                                             <template x-if="e.has_grc">
-                                                                <a :href="'http://localhost:' + (e.grc_port || (e.app_port ? e.app_port + 2000 : 8085))" target="_blank"
+                                                                <a :href="'{{ \App\Support\PublicUrl::origin() }}:' + (e.grc_port || (e.app_port ? e.app_port + 2000 : 8085))" target="_blank"
                                                                    class="font-bold text-[11px] text-teal-600 hover:text-teal-850 hover:underline inline-flex items-center gap-0.5"
                                                                    title="Ouvrir Wetchah_GRC">
                                                                     <span>GRC</span>

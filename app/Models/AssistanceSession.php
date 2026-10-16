@@ -76,7 +76,7 @@ class AssistanceSession extends Model
         $encoded   = rtrim(strtr(base64_encode(json_encode($payload)), '+/', '-_'), '=');
         $signature = hash_hmac('sha256', $encoded, $secret);
 
-        $base = 'http://localhost:' . $tenant->app_port;
+        $base = \App\Support\PublicUrl::origin() . ':' . $tenant->app_port;
 
         return $base . '/assistance/enter?token=' . $encoded . '.' . $signature;
     }

@@ -13,9 +13,11 @@ plus important : il décrit d'où viennent les images et où vivent les établis
 | `TENANTS_BASE_PATH` | `/var/meka-erp/tenants` | **Chemin absolu sur la machine hôte** où sont écrits les Compose générés (sous-dossier `.compose/`) |
 | `REGISTRY_IMAGE` | `ghcr.io/adrien-stage/villa_b` | Image de l'application établissement (`wetchah_app`) |
 | `REGISTRY_IMAGE_WEB` | `ghcr.io/clyde237/site_villab` | Image du site vitrine (`wetchah_site`) |
+| `REGISTRY_IMAGE_GRC` | `ghcr.io/clyde237/wetchah_grc` | Image du module de contrôle de gestion (GRC) |
 | `CMS_CONTAINER_NAME` | `wetchah_erp-app` | Nom du conteneur de la console, injecté comme `CMS_API_URL` dans les conteneurs web |
 | `DOCKER_NETWORK` | `pms` | Réseau Docker partagé — créé automatiquement s'il n'existe pas |
 | `REPORTING_SECRET` | *(vide)* | **Ancien secret commun**, relu seulement pour reconnaître les établissements qui ne l'ont pas encore quitté. Chaque établissement reçoit désormais le sien |
+| `TENANTS_PUBLIC_HOST` | `localhost` | **Nom ou IP du serveur tel que vu par un navigateur.** Sert aux liens « Ouvrir », à l'`APP_URL` et à l'`ORIGIN` des établissements et à l'URL du mode assistance. À renseigner sur tout serveur distant |
 | `PORT_RANGE_APP_START` | `8081` | Premier port applicatif **suggéré** dans le formulaire |
 | `PORT_RANGE_DB_START` | `5434` | Premier port de base suggéré |
 | `PULL_STALL_TIMEOUT` | `120` | Secondes sans progression au-delà desquelles un `docker pull` est considéré bloqué |
@@ -97,6 +99,17 @@ PostgreSQL des établissements.
 
 > Le `docker-compose.yml` déclare bien un service `db` (PostgreSQL 16, port 5433),
 > mais l'application ne s'y connecte pas. Voir [Architecture — dette connue](architecture.md#points-de-dette-connus).
+
+## Déploiement sur serveur
+
+Variables utilisées par [`docker-compose.prod.yml`](../docker-compose.prod.yml) (voir
+[Déploiement sur serveur Ubuntu + Portainer](deploiement-serveur-ubuntu-portainer.md)).
+
+| Variable | Défaut | Rôle |
+|---|---|---|
+| `DB_DATABASE` | `database/database.sqlite` | Chemin **absolu** de la base SQLite quand elle vit dans un volume (`/var/www/html/storage/database/database.sqlite`) : l'entrypoint crée le dossier et le fichier |
+| `TRUSTED_PROXIES` | *(vide)* | `*` ou liste d'adresses de reverse proxies : Laravel lit alors `X-Forwarded-Proto` et produit des URL en `https://` |
+| `ERP_OUVRIR_SOCKET_DOCKER` | `1` | `0` : l'entrypoint n'exécute pas `chmod 666` sur le socket Docker de l'hôte. À mettre à `0` sur un serveur |
 
 ## Application
 

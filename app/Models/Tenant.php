@@ -104,7 +104,7 @@ class Tenant extends Model
      */
     public function grcUrl(): string
     {
-        return 'http://localhost:' . $this->resolvedGrcPort();
+        return \App\Support\PublicUrl::forPort($this->resolvedGrcPort());
     }
 
     /**
@@ -112,7 +112,7 @@ class Tenant extends Model
      */
     public function appUrl(): ?string
     {
-        return $this->app_port ? 'http://localhost:' . $this->app_port : null;
+        return \App\Support\PublicUrl::forPort($this->app_port);
     }
 
     /**
@@ -121,6 +121,6 @@ class Tenant extends Model
     public function websiteUrl(): ?string
     {
         $port = $this->web_port ?: ($this->app_port ? $this->app_port + 1000 : null);
-        return $port ? 'http://localhost:' . $port : null;
+        return \App\Support\PublicUrl::forPort($port);
     }
 }

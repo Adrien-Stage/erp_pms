@@ -80,6 +80,13 @@ RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/warmup.sh
 # la lancer sans le dépôt.
 COPY . .
 
+# ── Assets front ─────────────────────────────────────────────────────────────
+# public/build/ est ignoré par git : sans cette étape, toute page rendue par
+# Blade répond 500 (« Vite manifest not found ») sur une image qui tourne sans
+# le dépôt monté — c'est le cas en production. En développement, le bind mount
+# recouvre ce dossier par celui de l'hôte, rien ne change.
+RUN npm run build
+
 # Arborescence d'exécution : .dockerignore exclut le contenu de storage/, ces
 # répertoires doivent donc être recréés pour que l'image tienne debout seule.
 RUN mkdir -p storage/framework/views storage/framework/cache/data \

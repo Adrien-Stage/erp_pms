@@ -3,6 +3,10 @@
 Ce guide décrit le déploiement de la console d'administration chez un client, de
 zéro jusqu'au premier établissement créé.
 
+> **Sur un serveur** (Ubuntu, Docker, Portainer), suivre plutôt
+> [Déploiement sur serveur Ubuntu + Portainer](deploiement-serveur-ubuntu-portainer.md) :
+> il part d'une pile de production, sans code monté depuis l'hôte.
+
 ## Prérequis
 
 | Élément | Version | Pourquoi |

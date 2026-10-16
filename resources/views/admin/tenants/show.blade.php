@@ -1365,7 +1365,7 @@
                                 </div>
                                 <div>
                                     <span class="text-slate-450 font-semibold">Port applicatif (Hôte) :</span>
-                                    <a href="http://localhost:{{ $tenant->app_port }}" target="_blank" class="font-mono bg-slate-50 border border-slate-200 px-2 py-0.5 rounded ml-2 text-indigo-600 hover:text-indigo-800 hover:underline">{{ $tenant->app_port }}</a>
+                                    <a href="{{ \App\Support\PublicUrl::origin() }}:{{ $tenant->app_port }}" target="_blank" class="font-mono bg-slate-50 border border-slate-200 px-2 py-0.5 rounded ml-2 text-indigo-600 hover:text-indigo-800 hover:underline">{{ $tenant->app_port }}</a>
                                 </div>
                                 <div>
                                     <span class="text-slate-450 font-semibold">Port PostgreSQL (Hôte) :</span>

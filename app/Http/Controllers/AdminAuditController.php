@@ -259,7 +259,7 @@ class AdminAuditController extends Controller
         return redirect()
             ->route('tech.establishments.show', $tenant)
             ->with('start_provisioning', true)
-            ->with('success', "Établissement \u00ab {$tenant->name} \u00bb créé. Le provisioning Docker va démarrer.");
+            ->with('success', "Établissement « {$tenant->name} » créé. Le provisioning Docker va démarrer.");
     }
 
     public function showTenant(Tenant $tenant)
@@ -1426,8 +1426,8 @@ class AdminAuditController extends Controller
             'has_website' => in_array('website', $tenant->modules ?? [], true),
             'has_grc' => in_array('grc', $tenant->modules ?? [], true),
             'modules' => $tenant->modules ?? [],
-            'app_url' => $tenant->app_port ? 'http://localhost:'.$tenant->app_port : null,
-            'grc_url' => $tenant->grc_port ? 'http://localhost:'.$tenant->grc_port : null,
+            'app_url' => \App\Support\PublicUrl::forPort($tenant->app_port),
+            'grc_url' => \App\Support\PublicUrl::forPort($tenant->grc_port),
             'image_tag' => $tenant->docker_image_tag,
             'web_image_tag' => $tenant->web_image_tag,
             'grc_image_tag' => $tenant->grc_image_tag,
