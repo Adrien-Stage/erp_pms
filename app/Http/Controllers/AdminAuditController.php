@@ -445,7 +445,7 @@ class AdminAuditController extends Controller
         // n'envoie rien → le module disparaît de la liste (désactivation). On filtre
         // par intersection plutôt qu'avec Rule::in : une entrée vide/parasite ne doit
         // pas faire échouer toute la requête et laisser la désactivation sans effet.
-        $allowed = ['restaurant', 'shop', 'housekeeping', 'discussions', 'analytics', 'ledger', 'api', 'website', 'grc'];
+        $allowed = \App\Support\ModuleCatalog::TOGGLE_KEYS;
         $modules = array_values(array_intersect($allowed, (array) $request->input('modules', [])));
 
         $modules = $this->applyModuleDependencies($modules);

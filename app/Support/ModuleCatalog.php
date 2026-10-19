@@ -33,7 +33,7 @@ class ModuleCatalog
      * passé par le sélecteur : tout est actif chez lui.
      */
     public const TOGGLE_KEYS = [
-        'restaurant', 'shop', 'housekeeping', 'discussions',
+        'restaurant', 'shop', 'housekeeping', 'technique', 'discussions',
         'analytics', 'ledger', 'api', 'website', 'grc',
     ];
 
@@ -459,6 +459,37 @@ class ModuleCatalog
                 'tips' => [
                     'Le personnel de ménage ne voit aucun montant dans l\'application — les données financières lui sont masquées.',
                     'C\'est ce module qui pilote le statut de propreté des chambres, plus la rubrique Chambres.',
+                ],
+            ],
+
+            'technique' => [
+                'label'   => 'Technique & maintenance',
+                'tagline' => 'Demandes d\'intervention de tout l\'hôtel, affectation aux techniciens, suivi jusqu\'à la réparation, pièces employées.',
+                'icon'    => 'wrench',
+                'accent'  => 'amber',
+                'type'    => 'optionnel',
+                'key'     => 'technique',
+                'entry'   => 'Lanceur › Technique ; bouton « Intervention » de la barre du haut pour tout le personnel',
+                'roles'   => ['tech_manager', 'technician', 'manager', 'tout le personnel (demandes)'],
+                'screens' => [
+                    ['label' => 'Tableau technique', 'path' => '/technique', 'desc' => 'Demandes à prendre, mes interventions, en cours, terminées de la semaine.'],
+                    ['label' => 'Demandes d\'intervention', 'path' => '/technique/demandes', 'desc' => 'Toutes les demandes pour le service ; les siennes et celles de son service pour les autres.'],
+                    ['label' => 'Demander une intervention', 'path' => '/technique/demandes/nouvelle', 'desc' => 'Chambre ou lieu, spécialité, priorité ; la chambre peut être retirée de la vente.'],
+                    ['label' => 'Fiche d\'une demande', 'path' => '/technique/demandes/{demande}', 'desc' => 'Affecter, prendre, commencer, pièces du dépôt, terminer avec compte rendu, rouvrir, historique.'],
+                    ['label' => 'Équipe & spécialités', 'path' => '/technique/equipe', 'desc' => 'Spécialités de chaque technicien (plomberie, CFO, CFA, froid, climatisation…) et charge en cours.'],
+                    ['label' => 'Dépôt technique', 'path' => '/technique/depot', 'desc' => 'Pièces du service, livrées par l\'économat, et ce qu\'en ont pris les interventions.'],
+                ],
+                'guide' => [
+                    ['title' => 'Créer l\'équipe', 'body' => 'Donnez le rôle « Responsable technique » au chef du service et « Technicien de maintenance » à l\'équipe, puis réglez les spécialités de chacun dans Équipe & spécialités.'],
+                    ['title' => 'Créer le dépôt technique', 'body' => 'L\'économe crée un dépôt pour le service « Technique / Maintenance » ; les réquisitions du service y sont livrées et les interventions y prennent leurs pièces.'],
+                    ['title' => 'Recevoir les demandes', 'body' => 'Tout le personnel demande une intervention depuis le bouton « Intervention ». Un problème signalé par le housekeeping devient une demande. Le responsable et les techniciens de la spécialité sont alertés.'],
+                    ['title' => 'Affecter ou prendre', 'body' => 'Le responsable affecte la demande (et peut la requalifier) ; un technicien disponible peut aussi prendre une demande libre.'],
+                    ['title' => 'Intervenir et clore', 'body' => 'Le technicien commence, porte les pièces employées, puis termine avec un compte rendu. La chambre retirée de la vente repasse au ménage ; le demandeur est prévenu et peut rouvrir pendant 7 jours.'],
+                ],
+                'tips' => [
+                    'Les pièces employées passent en charge du service où l\'on a réparé (hébergement pour une chambre, restauration pour la cuisine).',
+                    'Une chambre occupée n\'est jamais retirée de la vente par une demande : elle reste au client.',
+                    'La maintenance préventive (plans récurrents par équipement) viendra dans une étape suivante.',
                 ],
             ],
 

@@ -18,7 +18,7 @@
     $services = [
         'it' => 'Informatique', 'direction' => 'Direction', 'hebergement' => 'Hébergement',
         'housekeeping' => 'Housekeeping', 'restaurant' => 'Restaurant', 'boutique' => 'Boutique',
-        'economat' => 'Économat', 'comptabilite' => 'Finances', 'controle' => 'Contrôle',
+        'economat' => 'Économat', 'technique' => 'Technique', 'comptabilite' => 'Finances', 'controle' => 'Contrôle',
     ];
     $groupeDe = fn (array $r): string => $r['level'] === null ? 'controle' : ($r['module'] ?? 'autre');
     $colonnes = $roles

@@ -1031,6 +1031,14 @@
                             'service' => 'Application PMS',
                             'service_badge' => 'bg-indigo-50 text-indigo-700 border-indigo-200',
                         ],
+                        'technique'    => [
+                            'label' => 'Technique & Maintenance',
+                            'desc' => 'Demandes d\'intervention de tout l\'hôtel (plomberie, CFO, CFA, froid, climatisation…), affectation aux techniciens, pièces du dépôt technique.',
+                            'icon' => 'wrench',
+                            'dept' => 'Technique / Maintenance',
+                            'service' => 'Application PMS',
+                            'service_badge' => 'bg-indigo-50 text-indigo-700 border-indigo-200',
+                        ],
                         'shop'         => [
                             'label' => 'Boutique & Point de Vente',
                             'desc' => 'Catalogue articles, encaissement au comptoir, caisse boutique et stocks dédiés.',
