@@ -35,7 +35,7 @@ class ServiceCatalog
                 'db_port_key'       => 'db_port',
                 'modules'           => [
                     'hebergement', 'reservations', 'clients', 'housekeeping',
-                    'restaurant', 'portail', 'shop', 'economat',
+                    'restaurant', 'portail', 'shop', 'economat', 'technique',
                     'comptabilite', 'ledger', 'analytics', 'utilisateurs',
                     'parametres', 'pwa', 'discussions', 'api', 'ai',
                 ],

@@ -19,6 +19,7 @@ class DepartmentCatalog
     public const DEPT_IT           = 'informatique_it';
     public const DEPT_QUALITE      = 'qualite_controle';
     public const DEPT_BOUTIQUE     = 'boutique_commerce';
+    public const DEPT_TECHNIQUE    = 'technique_maintenance';
 
     public static function all(): array
     {
@@ -141,6 +142,19 @@ class DepartmentCatalog
                 'sort_order'  => 9,
                 'default_modules' => [
                     'shop', 'economat', 'discussions',
+                ],
+            ],
+
+            self::DEPT_TECHNIQUE => [
+                'code'        => 'TEC',
+                'slug'        => self::DEPT_TECHNIQUE,
+                'name'        => 'Technique / Maintenance',
+                'description' => 'Interventions de maintenance de l\'hôtel : plomberie, électricité courant fort et courant faible, froid, climatisation et ventilation.',
+                'icon'        => 'wrench',
+                'accent'      => 'orange',
+                'sort_order'  => 10,
+                'default_modules' => [
+                    'technique', 'economat', 'discussions',
                 ],
             ],
         ];

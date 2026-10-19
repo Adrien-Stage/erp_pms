@@ -119,6 +119,7 @@
             restaurant: true,
             shop: true,
             housekeeping: true,
+            technique: false,
             discussions: true,
             analytics: true,
             accounting: true,
@@ -975,6 +976,18 @@
                                     <span class="text-xs font-bold text-slate-800">Module Housekeeping</span>
                                     <p class="text-[10px] text-slate-500 leading-relaxed">
                                         Planification du nettoyage des chambres, attribution des tâches aux valets et statut de propreté.
+                                    </p>
+                                </div>
+                            </label>
+
+                            <!-- Module: Technique -->
+                            <label class="relative flex items-start gap-4 rounded-xl border p-4 cursor-pointer select-none transition hover:bg-slate-50 duration-200"
+                                :class="modules.technique ? 'border-indigo-600 ring-2 ring-indigo-50 bg-indigo-50/10' : 'border-slate-200'">
+                                <input type="checkbox" name="modules[technique]" x-model="modules.technique" class="mt-1 h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500 shrink-0">
+                                <div class="space-y-1">
+                                    <span class="text-xs font-bold text-slate-800">Module Technique & Maintenance</span>
+                                    <p class="text-[10px] text-slate-500 leading-relaxed">
+                                        Demandes d'intervention de tout l'hôtel, techniciens par spécialité, pièces du dépôt technique.
                                     </p>
                                 </div>
                             </label>
