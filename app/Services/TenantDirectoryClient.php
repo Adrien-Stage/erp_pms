@@ -32,6 +32,17 @@ class TenantDirectoryClient
         return $this->envoyer($tenant, 'PATCH', "/api/comptes/administrateurs/{$compte}", $donnees);
     }
 
+    /**
+     * L'identité de l'établissement — nom, coordonnées, devise, pays,
+     * couleurs : la console la tient, l'application la reçoit.
+     *
+     * @return array{ok: bool, message: string}
+     */
+    public function modifierEtablissement(Tenant $tenant, array $donnees): array
+    {
+        return $this->envoyer($tenant, 'PUT', '/api/etablissement', $donnees);
+    }
+
     /** @return array{ok: bool, message: string, id?: int} */
     public function creerDepartement(Tenant $tenant, array $donnees): array
     {

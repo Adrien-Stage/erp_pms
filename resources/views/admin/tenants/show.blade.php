@@ -318,6 +318,13 @@
                 </div>
             @endif
 
+            @if(session('warning'))
+                <div class="mb-6 rounded-lg bg-amber-50 border border-amber-200 p-4 text-xs font-bold text-amber-900 shadow-sm flex items-center gap-2" role="alert">
+                    <svg class="h-4 w-4 text-amber-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
+                    <span>{{ session('warning') }}</span>
+                </div>
+            @endif
+
             @if($errors->any())
                 <div class="mb-6 rounded-lg bg-red-50 border border-red-200 p-4 shadow-sm">
                     <ul class="list-disc list-inside text-xs text-red-700 space-y-0.5">
