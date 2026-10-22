@@ -359,7 +359,7 @@ class AdminAuditController extends Controller
         return $pdo;
     }
 
-    public function updateTenant(Request $request, Tenant $tenant)
+    public function updateTenant(Request $request, Tenant $tenant, \App\Services\TenantDirectoryClient $annuaire)
     {
         $user = Auth::user();
         if (! $user || ! $user->isTechAdmin()) {
@@ -424,7 +424,31 @@ class AdminAuditController extends Controller
             ['tenant_id' => $tenant->id, 'champs' => array_keys($request->except(['_token', '_method', 'slug']))]
         );
 
-        return back()->with('success', 'Établissement mis à jour.');
+        // L'application affiche ces informations (en-têtes, factures,
+        // éditions, couleurs) sans pouvoir les modifier : elle les reçoit
+        // d'ici. Le logo reste celui que la direction importe chez elle.
+        if ($tenant->provisioned_at === null) {
+            return back()->with('success', "Établissement mis à jour. L'application les recevra au prochain enregistrement, une fois provisionnée.");
+        }
+
+        $envoi = $annuaire->modifierEtablissement($tenant, [
+            'name'     => $tenant->name,
+            'address'  => $tenant->address,
+            'phone'    => $tenant->phone,
+            'email'    => $tenant->email,
+            'currency' => $tenant->currency,
+            'country'  => $settings['country'] ?? null,
+            'theme'    => $settings['theme'] ?? [],
+            'auteur'   => $user->name,
+        ]);
+
+        if (! $envoi['ok']) {
+            return back()
+                ->with('success', 'Établissement mis à jour dans la console.')
+                ->with('warning', "L'application de l'établissement n'a pas reçu ces informations : {$envoi['message']} Enregistrez de nouveau la fiche pour les lui renvoyer.");
+        }
+
+        return back()->with('success', "Établissement mis à jour, dans la console et dans l'application.");
     }
 
     /**
