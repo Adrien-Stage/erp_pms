@@ -20,6 +20,10 @@ services:
     build:
       context: .
       dockerfile: docker/app/Dockerfile
+      # Le commit dont l'image est faite : posé par la mise à jour de l'onglet
+      # Système (vide pour un « erp build » tapé à la main).
+      labels:
+        org.wetchah.erp.commit: ${ERP_COMMIT:-}
     image: wetchah-erp:${ERP_VERSION:-latest}
     container_name: wetchah_erp-app
     restart: unless-stopped
@@ -69,6 +73,8 @@ services:
       REPORTING_SECRET: ${REPORTING_SECRET:-}
       ASSISTANCE_SECRET: ${ASSISTANCE_SECRET:-}
       BACKUPS_HOST_PATH: ${BACKUPS_HOST_PATH:-}
+      # Où la mise à jour de l'onglet Système range sa sauvegarde (étape 1, §9.1).
+      ERP_SAUVEGARDES: ${ERP_SAUVEGARDES:-/srv/sauvegardes}
       # Notifications Web Push (clés de l'éditeur, communes à tous les établissements)
       VAPID_SUBJECT: ${VAPID_SUBJECT:-}
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}

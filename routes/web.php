@@ -66,6 +66,11 @@ Route::middleware(['auth', 'role:tech_admin'])->prefix('tech')->name('tech.')->g
     Route::post('/code/verifier', [\App\Http\Controllers\CodeUpdateController::class, 'verifier'])->name('code.verifier');
     Route::post('/code/mettre-a-jour', [\App\Http\Controllers\CodeUpdateController::class, 'lancer'])->name('code.lancer');
     Route::get('/code/statut', [\App\Http\Controllers\CodeUpdateController::class, 'statut'])->name('code.statut');
+    // Onglet Système : mise à jour de la console de production (guide, §9.1), dans un conteneur à part
+    Route::get('/serveur', [\App\Http\Controllers\ServerUpdateController::class, 'etat'])->name('serveur.etat');
+    Route::post('/serveur/verifier', [\App\Http\Controllers\ServerUpdateController::class, 'verifier'])->name('serveur.verifier');
+    Route::post('/serveur/mettre-a-jour', [\App\Http\Controllers\ServerUpdateController::class, 'lancer'])->name('serveur.lancer');
+    Route::get('/serveur/statut', [\App\Http\Controllers\ServerUpdateController::class, 'statut'])->name('serveur.statut');
     // Sélecteur de dossier du serveur (formulaire de création d'un établissement)
     Route::get('/directories', [\App\Http\Controllers\ServerDirectoryController::class, 'index'])->name('directories.index');
     Route::post('/directories', [\App\Http\Controllers\ServerDirectoryController::class, 'store'])->name('directories.store');
