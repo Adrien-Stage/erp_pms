@@ -363,13 +363,38 @@ class MiseAJourServeur
                 ...["Annulez-les (git checkout -- FICHIER) ou mettez-les de côté (git stash), puis relancez (guide, §9.4)."]);
         }
 
+        // Un correctif appliqué à la main sur ce serveur (commit absent du
+        // dépôt) n'arrête plus la mise à jour : « git pull --rebase » le replace
+        // par-dessus la nouvelle version, ou le retire si l'équipe l'a publié
+        // entre-temps (guide, §9.1 étape 2).
+        $correctifs = (int) trim($git(['rev-list', '--count', '@{upstream}..HEAD'])[1]);
+        if ($correctifs > 0) {
+            $log('info', "La branche est en avance de {$correctifs} commit(s) sur " . trim($amont) . " : un correctif appliqué sur ce serveur, qui sera replacé par-dessus la nouvelle version.");
+        }
+
         $avant = trim($git(['rev-parse', 'HEAD'])[1]);
-        $log('info', 'Téléchargement du nouveau code (git pull --ff-only)…');
-        [$code, $sortie, $err] = $git(['pull', '--ff-only'], 600);
+        $log('info', 'Téléchargement du nouveau code (git pull --rebase)…');
+        [$code, $sortie, $err] = $git(['pull', '--rebase'], 600);
         if ($code !== 0) {
+            // Un rebasage arrêté sur un conflit laisserait le dépôt à moitié
+            // réécrit : on l'annule, tout revient exactement comme avant.
+            if ($this->rebasageEnCours($o['code'])) {
+                $git(['rebase', '--abort']);
+
+                return $echec(2, "Le correctif gardé sur ce serveur et la nouvelle version modifient les mêmes lignes (CONFLIT) : la mise à jour s'arrête.",
+                    "Le rebasage a été annulé (git rebase --abort) : le code est revenu exactement à son état d'avant, la console n'est pas touchée.",
+                    'Reportez le correctif dans le dépôt, ou retirez-le du serveur, puis relancez (guide, §9.4).');
+            }
+
             return $echec(2, CodeUpdater::expliquerErreur($err ?: $sortie));
         }
         $apres = trim($git(['rev-parse', 'HEAD'])[1]);
+        if ($correctifs > 0 && $avant !== $apres) {
+            $restants = (int) trim($git(['rev-list', '--count', '@{upstream}..HEAD'])[1]);
+            $log('ok', $restants > 0
+                ? "Rebasage réussi : {$restants} correctif(s) local(aux) replacé(s) par-dessus la nouvelle version."
+                : "Rebasage réussi : le correctif local a été publié par l'équipe entre-temps, il est retiré.");
+        }
 
         if ($avant === $apres) {
             if (!$this->codeEnAttente($o, $apres)) {
@@ -562,6 +587,12 @@ class MiseAJourServeur
             @chown($disque->path(self::DOSSIER . '/' . $fichier), 33);
             @chgrp($disque->path(self::DOSSIER . '/' . $fichier), 33);
         }
+    }
+
+    /** « git pull --rebase » s'est-il arrêté au milieu d'un rebasage (conflit) ? */
+    private function rebasageEnCours(string $dossier): bool
+    {
+        return is_dir($dossier . '/.git/rebase-merge') || is_dir($dossier . '/.git/rebase-apply');
     }
 
     /** Le code téléchargé n'est pas celui de l'image en service : une mise à jour précédente s'est arrêtée en route. */

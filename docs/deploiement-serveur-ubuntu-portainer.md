@@ -621,7 +621,7 @@ Sur une console installée en ligne de commande (raccourci `erp`, fichier de ré
 | Étape | Ce que fait la console | S'arrête si… |
 |---|---|---|
 | 1 | `scripts/sauvegarder-erp.sh` vers `ERP_SAUVEGARDES` (défaut `/srv/sauvegardes`), note `ERP_VERSION`, mesure la place libre | la sauvegarde échoue, moins de 5 Go libres |
-| 2 | `git pull --ff-only` sur la branche courante, en tant que propriétaire du dépôt | fichiers modifiés, HEAD détaché, branche sans suivi ou divergente, échec réseau ou d'identification |
+| 2 | `git pull --rebase` sur la branche courante, en tant que propriétaire du dépôt : un correctif appliqué sur le serveur (commit absent du dépôt) est replacé par-dessus la nouvelle version, ou retiré s'il a été publié | fichiers modifiés, HEAD détaché, branche sans suivi, conflit entre le correctif et la nouvelle version (le rebasage est annulé, `git rebase --abort` : le code revient à son état d'avant), échec réseau ou d'identification |
 | 3 | compare `.env.production.example` au fichier de réglages | un réglage manque : le journal le nomme, avec son commentaire |
 | 4 | remplace la ligne `ERP_VERSION` par la date et l'heure (fuseau `TZ`) | — |
 | 5 | `docker compose … build`, l'image étiquetée du commit (`org.wetchah.erp.commit`) | échec : l'ancien numéro est remis, la console n'est pas touchée |
