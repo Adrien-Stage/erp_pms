@@ -3494,12 +3494,78 @@
                         },
                     };
                 };
+
+                // Console de production : la mise à jour tourne dans un conteneur à part,
+                // qui survit au redémarrage de la console (étape 6). La page suit son
+                // journal et se reconnecte seule quand la nouvelle version répond.
+                window.miseAJourServeur = function (cfg) {
+                    return {
+                        ctx: null, etapes: {}, verif: null, statut: null, journal: [], detail: '', erreur: '',
+                        occupe: false, verification: false, jeton: '', voirDetail: false, horsLigne: false, minuteur: null,
+                        async init() {
+                            await this.charger();
+                            const s = await this.lireStatut();
+                            if (s && s.statut.etat === 'en_cours') { this.occupe = true; this.suivre(); }
+                        },
+                        async appel(url, methode, corps) {
+                            const r = await fetch(url, { method: methode || 'GET', headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': cfg.csrf }, body: corps ? JSON.stringify(corps) : undefined });
+                            return { ok: r.ok, data: await r.json().catch(() => ({})) };
+                        },
+                        async charger() { const r = await this.appel(cfg.etat); if (r.ok) { this.ctx = r.data.contexte; this.etapes = r.data.etapes; } },
+                        async verifier() {
+                            this.erreur = ''; this.verif = null; this.occupe = true; this.verification = true;
+                            try {
+                                const r = await this.appel(cfg.verifier, 'POST', { jeton: this.jeton });
+                                if (!r.ok || r.data.ok === false) { this.erreur = r.data.message || 'Vérification impossible.'; return; }
+                                this.verif = r.data;
+                            } catch (e) { this.erreur = 'Vérification impossible : la console ne répond pas.'; }
+                            finally { this.occupe = false; this.verification = false; }
+                        },
+                        async lancer() {
+                            if (!confirm("Lancer la mise à jour de la console ?\n\nSauvegarde, téléchargement du code, fabrication de la nouvelle version (quelques minutes à une demi-heure), puis redémarrage : la console sera indisponible une à deux minutes. Les hôtels continuent de tourner.")) return;
+                            this.erreur = ''; this.verif = null; this.journal = []; this.detail = ''; this.occupe = true;
+                            const r = await this.appel(cfg.lancer, 'POST', { jeton: this.jeton });
+                            this.jeton = '';
+                            if (!r.ok) { this.erreur = r.data.message || 'Lancement impossible.'; this.occupe = false; return; }
+                            this.statut = { etat: 'en_cours', etape: 0 };
+                            this.suivre();
+                        },
+                        async lireStatut() {
+                            try {
+                                const r = await this.appel(cfg.statut);
+                                if (!r.ok) throw new Error();
+                                this.horsLigne = false;
+                                this.statut = r.data.statut; this.journal = r.data.lignes; this.detail = r.data.detail;
+                                return r.data;
+                            } catch (e) {
+                                // Pendant l'étape 6, la console redémarre : on attend qu'elle réponde.
+                                if (this.occupe) this.horsLigne = true;
+                                return null;
+                            }
+                        },
+                        suivre() {
+                            clearInterval(this.minuteur);
+                            this.minuteur = setInterval(async () => {
+                                const s = await this.lireStatut();
+                                if (s && s.statut.etat === 'termine') { clearInterval(this.minuteur); this.occupe = false; await this.charger(); }
+                            }, 2000);
+                        },
+                        etatEtape(n) {
+                            const s = this.statut;
+                            if (!s || s.etat === 'inactif') return 'attente';
+                            const e = s.etape || 0;
+                            if (n < e) return 'ok';
+                            if (n === e) return s.etat === 'en_cours' ? 'cours' : (s.ok ? 'ok' : 'erreur');
+                            return s.etat === 'termine' && s.rien_a_faire ? 'saute' : 'attente';
+                        },
+                    };
+                };
             </script>
 
             <p class="text-[10px] font-bold tracking-widest text-indigo-600 uppercase">SYSTÈME</p>
             <div class="mt-2 border-b border-slate-200 pb-4">
                 <h1 class="text-2xl font-extrabold tracking-tight text-slate-800 font-heading">Mise à jour du code</h1>
-                <p class="text-xs text-slate-500 mt-1">Tire les nouveautés de la branche sur laquelle tourne cette console, applique les migrations et vide les caches.</p>
+                <p class="text-xs text-slate-500 mt-1">Installe les nouveautés du dépôt sur cette console. Poste d'essai : git pull, migrations, caches. Serveur de production : les huit étapes du guide de déploiement (§9.1), de la sauvegarde à la vérification.</p>
             </div>
 
             <div class="mt-6 max-w-3xl space-y-5"
@@ -3507,11 +3573,112 @@
 
                 <div x-show="!etat" class="rounded-xl border border-slate-200 bg-white p-5 text-xs text-slate-400">Lecture du dépôt…</div>
 
-                {{-- Console embarquée dans une image : pas de dépôt --}}
+                {{-- Console de production : le code est dans l'image. Les huit étapes du guide (§9.1), lancées d'un bouton. --}}
                 <template x-if="etat && !etat.depot">
-                    <div class="rounded-xl border border-amber-200 bg-amber-50 p-5 text-xs text-amber-900 space-y-2">
-                        <p class="font-bold">Le code de cette console est dans l'image Docker, pas dans un dépôt git.</p>
-                        <p>Une mise à jour se fait en reconstruisant l'image : sur le serveur, <code class="bg-white px-1 rounded">git pull</code>, puis <code class="bg-white px-1 rounded">erp build</code> et <code class="bg-white px-1 rounded">erp up -d</code> (guide de déploiement, §9.1).</p>
+                    <div class="space-y-5"
+                         x-data="miseAJourServeur({ etat: '{{ route('tech.serveur.etat') }}', verifier: '{{ route('tech.serveur.verifier') }}', lancer: '{{ route('tech.serveur.lancer') }}', statut: '{{ route('tech.serveur.statut') }}', csrf: '{{ csrf_token() }}' })">
+
+                        <div x-show="!ctx" class="rounded-xl border border-slate-200 bg-white p-5 text-xs text-slate-400">Lecture de la console…</div>
+
+                        <template x-if="ctx && !ctx.disponible">
+                            <div class="rounded-xl border border-amber-200 bg-amber-50 p-5 text-xs text-amber-900 space-y-2">
+                                <p class="font-bold">Cette console ne peut pas se mettre à jour seule.</p>
+                                <p x-text="ctx.raison"></p>
+                            </div>
+                        </template>
+
+                        <template x-if="ctx && ctx.disponible">
+                            <div class="space-y-5">
+                                <div class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                                    <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 p-5 text-xs">
+                                        <div><dt class="text-[10px] font-bold tracking-wider text-slate-400 uppercase">Version en service</dt>
+                                            <dd class="mt-1 font-mono text-sm text-slate-800" x-text="ctx.version === 'latest' ? 'latest (pas de numéro)' : ctx.version"></dd></div>
+                                        <div><dt class="text-[10px] font-bold tracking-wider text-slate-400 uppercase">Commit de l'image</dt>
+                                            <dd class="mt-1 font-mono text-sm text-slate-800" x-text="ctx.commit_image ? ctx.commit_image.substring(0, 7) : 'inconnu (image fabriquée à la main)'"></dd></div>
+                                        <div><dt class="text-[10px] font-bold tracking-wider text-slate-400 uppercase">Dossier du code</dt>
+                                            <dd class="mt-1 font-mono text-slate-600 break-all" x-text="ctx.code"></dd></div>
+                                        <div><dt class="text-[10px] font-bold tracking-wider text-slate-400 uppercase">Fichier de réglages</dt>
+                                            <dd class="mt-1 font-mono text-slate-600 break-all" x-text="ctx.reglages"></dd></div>
+                                        <div class="sm:col-span-2"><dt class="text-[10px] font-bold tracking-wider text-slate-400 uppercase">Sauvegarde avant mise à jour</dt>
+                                            <dd class="mt-1 font-mono text-slate-600 break-all" x-text="ctx.sauvegardes"></dd></div>
+                                    </dl>
+                                    <div class="border-t border-slate-100 px-5 py-3">
+                                        <label for="jeton-github" class="block text-[10px] font-bold tracking-wider text-slate-400 uppercase">Jeton GitHub <span class="normal-case font-normal tracking-normal">(dépôt privé seulement — utilisé pour cette fois, jamais conservé)</span></label>
+                                        <input id="jeton-github" type="password" x-model="jeton" autocomplete="off" spellcheck="false" :disabled="occupe"
+                                               placeholder="Laisser vide si l'adresse du dépôt porte déjà son jeton, ou si le dépôt est public"
+                                               class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-xs focus:border-indigo-500 focus:outline-none">
+                                    </div>
+                                    <div class="flex flex-wrap items-center gap-3 border-t border-slate-100 bg-slate-50 px-5 py-3">
+                                        <button type="button" @click="verifier()" :disabled="occupe"
+                                                class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40 cursor-pointer">Vérifier les nouveautés</button>
+                                        <button type="button" @click="lancer()" :disabled="occupe"
+                                                class="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 disabled:opacity-40 cursor-pointer">Mettre à jour la console</button>
+                                        <span x-show="occupe" class="text-xs text-slate-500" x-text="verification ? 'Vérification…' : 'Mise à jour en cours — vous pouvez quitter la page, elle reprendra où elle en est.'"></span>
+                                    </div>
+                                </div>
+
+                                <p x-show="erreur" x-text="erreur" class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs font-semibold text-red-700"></p>
+
+                                <template x-if="verif">
+                                    <div class="rounded-xl border border-slate-200 bg-white p-5 text-xs shadow-sm space-y-2">
+                                        <p class="text-slate-600">Branche <span class="font-mono font-bold" x-text="verif.branche"></span> (suit <span class="font-mono" x-text="verif.amont"></span>) — code sur le serveur : <span class="font-mono" x-text="verif.commit.hash"></span> <span x-text="verif.commit.message"></span></p>
+                                        <p x-show="verif.derriere === 0 && !verif.a_reprendre" class="font-bold text-emerald-700">La console est à jour : rien à faire.</p>
+                                        <p x-show="verif.derriere === 0 && verif.a_reprendre" class="font-bold text-indigo-700">Le code est déjà téléchargé mais pas encore en service (mise à jour précédente interrompue) : relancez la mise à jour pour la terminer.</p>
+                                        <div x-show="verif.derriere > 0">
+                                            <p class="font-bold text-indigo-700"><span x-text="verif.derriere"></span> nouveauté(s) à installer :</p>
+                                            <ul class="mt-2 space-y-1">
+                                                <template x-for="c in verif.commits" :key="c[0]">
+                                                    <li><span class="font-mono text-slate-500" x-text="c[0]"></span> <span x-text="c[1]"></span> <span class="text-slate-400" x-text="'(' + c[2] + ')'"></span></li>
+                                                </template>
+                                            </ul>
+                                        </div>
+                                        <p x-show="verif.devant > 0" class="font-semibold text-amber-700">Le serveur a <span x-text="verif.devant"></span> commit(s) absent(s) du dépôt : la mise à jour s'arrêtera à l'étape 2 (guide, §9.4).</p>
+                                        <div x-show="verif.modifies && verif.modifies.length" class="font-semibold text-amber-700">Des fichiers du code ont été modifiés sur le serveur : la mise à jour s'arrêtera à l'étape 2.
+                                            <ul class="mt-1 font-mono font-normal"><template x-for="l in (verif.modifies || []).slice(0, 6)" :key="l"><li x-text="l"></li></template></ul></div>
+                                        <p x-show="verif.reglages_absents && verif.reglages_absents.length" class="font-semibold text-amber-700">La nouvelle version attend des réglages absents de votre fichier : <span class="font-mono" x-text="(verif.reglages_absents || []).join(', ')"></span>. Ajoutez-les avant de lancer (étape 3).</p>
+                                        <p x-show="verif.espace_libre !== null" :class="verif.espace_libre < 5 * 1024 ** 3 ? 'font-semibold text-red-700' : 'text-slate-500'"
+                                           x-text="'Place libre pour Docker : ' + (verif.espace_libre / 1024 ** 3).toFixed(1).replace('.', ',') + ' Go' + (verif.espace_libre < 5 * 1024 ** 3 ? ' — il faut plus de 5 Go (guide, §9.6).' : '.')"></p>
+                                    </div>
+                                </template>
+
+                                <div x-show="horsLigne" class="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3 text-xs font-semibold text-indigo-800">
+                                    La console redémarre sur la nouvelle version (étape 6) : une à deux minutes. La page se reconnecte seule ; les hôtels ne sont pas touchés.
+                                </div>
+
+                                <template x-if="statut && statut.etat !== 'inactif'">
+                                    <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                                        <ol class="space-y-1.5 text-xs">
+                                            <template x-for="(libelle, n) in etapes" :key="n">
+                                                <li class="flex items-center gap-2">
+                                                    <span class="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
+                                                          :class="{ 'bg-emerald-100 text-emerald-700': etatEtape(+n) === 'ok', 'bg-indigo-600 text-white animate-pulse': etatEtape(+n) === 'cours', 'bg-red-100 text-red-700': etatEtape(+n) === 'erreur', 'bg-slate-100 text-slate-400': ['attente', 'saute'].includes(etatEtape(+n)) }"
+                                                          x-text="etatEtape(+n) === 'ok' ? '✓' : (etatEtape(+n) === 'erreur' ? '!' : n)"></span>
+                                                    <span :class="etatEtape(+n) === 'attente' || etatEtape(+n) === 'saute' ? 'text-slate-400' : 'text-slate-800 font-semibold'" x-text="'Étape ' + n + ' — ' + libelle"></span>
+                                                </li>
+                                            </template>
+                                        </ol>
+                                        <p x-show="statut.etat === 'termine' && statut.ok && !statut.rien_a_faire" class="mt-4 rounded-lg bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-800">
+                                            Console mise à jour : <span class="font-mono" x-text="(statut.ancienne || 'latest') + ' → ' + statut.nouvelle"></span>.
+                                            <button type="button" @click="window.location.reload()" class="ml-2 underline cursor-pointer">Recharger la page</button>
+                                        </p>
+                                        <p x-show="statut.etat === 'termine' && statut.rien_a_faire" class="mt-4 rounded-lg bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-800">Déjà à jour : rien de nouveau, la mise à jour s'est arrêtée à l'étape 2.</p>
+                                        <p x-show="statut.etat === 'termine' && !statut.ok" class="mt-4 rounded-lg bg-red-50 px-4 py-3 text-xs font-semibold text-red-700"
+                                           x-text="statut.interrompue ? 'La mise à jour s\'est interrompue sans finir (serveur redémarré ou conteneur arrêté). Relancez-la : elle reprendra.' : 'La mise à jour s\'est arrêtée à l\'étape ' + statut.etape + ' : lisez le journal ci-dessous.' + (statut.etape < 6 ? ' La console tourne toujours sur l\'ancienne version.' : '')"></p>
+                                    </div>
+                                </template>
+
+                                <div x-show="journal.length" class="rounded-xl bg-slate-950 p-4 font-mono text-[11px] leading-relaxed text-slate-300">
+                                    <template x-for="(l, i) in journal" :key="i">
+                                        <p :class="{ 'text-emerald-400': l.n === 'ok', 'text-amber-300': l.n === 'warn', 'text-red-400': l.n === 'erreur', 'mt-2 font-bold text-indigo-300': l.n === 'etape' }"><span class="text-slate-500" x-text="l.h"></span> <span x-text="l.m"></span></p>
+                                    </template>
+                                </div>
+
+                                <div x-show="detail">
+                                    <button type="button" @click="voirDetail = !voirDetail" class="text-xs font-semibold text-slate-500 hover:text-slate-800 cursor-pointer" x-text="voirDetail ? 'Masquer le détail des commandes' : 'Afficher le détail des commandes (dernières lignes)'"></button>
+                                    <pre x-show="voirDetail" x-text="detail" class="mt-2 max-h-96 overflow-auto rounded-xl bg-slate-900 p-4 text-[10px] leading-snug text-slate-400 whitespace-pre-wrap"></pre>
+                                </div>
+                            </div>
+                        </template>
                     </div>
                 </template>
 

@@ -74,7 +74,7 @@ class CodeUpdater
     {
         [$code, , $err] = $this->git(['fetch', '--prune'], 90);
         if ($code !== 0) {
-            return ['ok' => false, 'message' => $this->expliquerErreur($err)];
+            return ['ok' => false, 'message' => self::expliquerErreur($err)];
         }
 
         [$c, $compte] = $this->git(['rev-list', '--left-right', '--count', 'HEAD...@{upstream}']);
@@ -144,7 +144,7 @@ class CodeUpdater
         $log('info', "{$verif['derriere']} nouveau(x) commit(s) à appliquer (git pull --ff-only)…");
         [$code, $sortie, $err] = $this->git(['pull', '--ff-only'], 180);
         if ($code !== 0) {
-            $log('erreur', $this->expliquerErreur($err ?: $sortie));
+            $log('erreur', self::expliquerErreur($err ?: $sortie));
             return false;
         }
         $apres = $this->sortie(['rev-parse', 'HEAD']);
@@ -265,7 +265,8 @@ class CodeUpdater
         return [$p->getExitCode() ?? 1, $p->getOutput(), $p->getErrorOutput()];
     }
 
-    private function expliquerErreur(string $erreur): string
+    /** Ce que dit git, traduit en ce qu'il faut faire. Sert aussi à la mise à jour de production. */
+    public static function expliquerErreur(string $erreur): string
     {
         $erreur = trim($erreur);
         return match (true) {

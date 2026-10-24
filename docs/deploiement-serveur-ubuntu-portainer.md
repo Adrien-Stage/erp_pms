@@ -611,7 +611,44 @@ page. Git s'exécute en tant que propriétaire du dossier `.git` (`docker exec -
 
 Le bouton refuse : fichiers suivis modifiés, HEAD détaché, branche sans suivi ou divergente. Il ne met pas les
 dépendances à jour (`composer.lock` modifié : avertissement, reconstruire l'image). Sur la pile de production, `.git`
-n'est pas dans l'image : l'onglet l'explique et renvoie à 12.1.
+n'est pas dans l'image : l'onglet propose alors la mise à jour de production (12.2 ter).
+
+### 12.2 ter Production : le bouton « Mettre à jour la console »
+
+Sur une console installée en ligne de commande (raccourci `erp`, fichier de réglages hors du dépôt), l'onglet
+**Systeme** déroule les huit étapes du guide (§9.1 du PDF), dans le même ordre, sans terminal :
+
+| Étape | Ce que fait la console | S'arrête si… |
+|---|---|---|
+| 1 | `scripts/sauvegarder-erp.sh` vers `ERP_SAUVEGARDES` (défaut `/srv/sauvegardes`), note `ERP_VERSION`, mesure la place libre | la sauvegarde échoue, moins de 5 Go libres |
+| 2 | `git pull --ff-only` sur la branche courante, en tant que propriétaire du dépôt | fichiers modifiés, HEAD détaché, branche sans suivi ou divergente, échec réseau ou d'identification |
+| 3 | compare `.env.production.example` au fichier de réglages | un réglage manque : le journal le nomme, avec son commentaire |
+| 4 | remplace la ligne `ERP_VERSION` par la date et l'heure (fuseau `TZ`) | — |
+| 5 | `docker compose … build`, l'image étiquetée du commit (`org.wetchah.erp.commit`) | échec : l'ancien numéro est remis, la console n'est pas touchée |
+| 6 | `docker compose … up -d` | — |
+| 7 | `migrate --force` dans la nouvelle console | erreur : le journal renvoie au retour en arrière (12.3) avec le nom de la sauvegarde |
+| 8 | attend l'état `healthy` et vérifie l'image en service | `unhealthy`, délai dépassé, mauvaise image |
+
+**Comment.** La console ne peut pas se reconstruire depuis son propre conteneur : l'étape 6 le remplace. Elle lance
+donc un conteneur à part, `wetchah_erp-maj` (même image, commande `erp:mettre-a-jour-serveur`), qui monte le socket
+Docker, le dossier du fichier de réglages, le dossier du code, le dossier des sauvegardes et celui des établissements
+**aux mêmes chemins que sur l'hôte**, ainsi que le volume `storage` de la console. Il écrit son journal dans
+`storage/app/private/mise-a-jour-serveur/` : la page le suit, se reconnecte seule pendant le redémarrage et reprend
+où elle en était, même fermée puis rouverte.
+
+Les chemins de l'hôte sont lus sur les étiquettes que `docker compose` pose sur le conteneur de la console
+(`project.working_dir`, `project.config_files`, `project.environment_file`) : rien à configurer. Une console installée
+depuis Portainer (dossier `/data/compose/…`) n'est pas prise en charge : l'onglet renvoie à 12.2.
+
+**Reprise.** Si une mise à jour s'arrête après avoir téléchargé le code (réglage manquant, fabrication ratée), la
+suivante voit que le code n'est pas celui de l'image en service et reprend à l'étape 3 au lieu de dire « déjà à jour ».
+
+**Dépôt privé.** Un jeton GitHub peut être saisi pour la mise à jour en cours : il passe par une variable
+d'environnement lue par l'assistant d'identification de git, n'apparaît ni dans la commande ni dans le journal, et le
+fichier qui le transmet est effacé dès sa lecture. Sinon, mettre le jeton dans l'adresse du dépôt (12.2 bis).
+
+**Première fois.** La console qui tourne doit déjà contenir cette fonction : la mise à jour qui l'apporte se fait
+une dernière fois à la main (12.1).
 
 ### 12.3 Revenir en arrière
 

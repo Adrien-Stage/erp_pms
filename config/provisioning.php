@@ -69,6 +69,10 @@ return [
     */
     'cms_container' => env('CMS_CONTAINER_NAME', 'wetchah_erp-app'),
 
+    // Dossier de l'hôte où la mise à jour de la console range sa sauvegarde
+    // (étape 1 du guide, §9.1) — le même que scripts/sauvegarder-erp.sh.
+    'sauvegardes_console' => env('ERP_SAUVEGARDES', '/srv/sauvegardes'),
+
     /*
     |--------------------------------------------------------------------------
     | Secret de service de l'API de reporting business
