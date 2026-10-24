@@ -3632,7 +3632,7 @@
                                                 </template>
                                             </ul>
                                         </div>
-                                        <p x-show="verif.devant > 0" class="font-semibold text-amber-700">Le serveur a <span x-text="verif.devant"></span> commit(s) absent(s) du dépôt : la mise à jour s'arrêtera à l'étape 2 (guide, §9.4).</p>
+                                        <p x-show="verif.devant > 0" class="font-semibold text-amber-700">Le serveur garde <span x-text="verif.devant"></span> correctif(s) absent(s) du dépôt : la mise à jour les replacera par-dessus la nouvelle version (git pull --rebase), ou les retirera s'ils ont été publiés. En cas de conflit, elle s'arrête à l'étape 2 sans rien changer (guide, §9.4).</p>
                                         <div x-show="verif.modifies && verif.modifies.length" class="font-semibold text-amber-700">Des fichiers du code ont été modifiés sur le serveur : la mise à jour s'arrêtera à l'étape 2.
                                             <ul class="mt-1 font-mono font-normal"><template x-for="l in (verif.modifies || []).slice(0, 6)" :key="l"><li x-text="l"></li></template></ul></div>
                                         <p x-show="verif.reglages_absents && verif.reglages_absents.length" class="font-semibold text-amber-700">La nouvelle version attend des réglages absents de votre fichier : <span class="font-mono" x-text="(verif.reglages_absents || []).join(', ')"></span>. Ajoutez-les avant de lancer (étape 3).</p>

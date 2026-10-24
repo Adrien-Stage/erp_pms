@@ -210,6 +210,61 @@ test('des fichiers modifiés sur le serveur arrêtent l\'étape 2 avant le pull'
         ->and(implode("\n", array_column($vues, 'cmd')))->not->toContain('git pull');
 });
 
+test('un correctif appliqué sur le serveur est replacé par-dessus la nouvelle version (git pull --rebase)', function () {
+    $avance = ['1', '1'];
+    $m = serveurFactice(serveurNominal($this, [
+        'git rev-list --count' => function () use (&$avance) { return [0, array_shift($avance) . "\n", '']; },
+        'git pull' => [0, "Rebasage et mise à jour de refs/heads/main avec succès.\n", ''],
+    ]), $vues);
+
+    [$r, $texte] = deroulerMaj($m, $this->opts);
+
+    $commandes = array_column($vues, 'cmd');
+    expect($r['ok'])->toBeTrue()->and($r['etape'])->toBe(8)
+        ->and($commandes)->toContain('git pull --rebase')->not->toContain('git pull --ff-only')
+        ->and($texte)->toContain('en avance de 1 commit')
+        ->and($texte)->toContain('1 correctif(s) local(aux) replacé(s)');
+});
+
+test("un correctif publié entre-temps par l'équipe est retiré par le rebasage", function () {
+    $avance = ['1', '0'];
+    $m = serveurFactice(serveurNominal($this, [
+        'git rev-list --count' => function () use (&$avance) { return [0, array_shift($avance) . "\n", '']; },
+    ]));
+
+    [$r, $texte] = deroulerMaj($m, $this->opts);
+
+    expect($r['ok'])->toBeTrue()->and($texte)->toContain('publié par l\'équipe entre-temps, il est retiré');
+});
+
+test('un conflit entre le correctif local et la nouvelle version annule le rebasage et arrête l\'étape 2', function () {
+    $code = $this->code;
+    $m = serveurFactice(serveurNominal($this, [
+        'git rev-list --count' => [0, "1\n", ''],
+        // git s'arrête au milieu du rebasage, comme sur un vrai conflit.
+        'git pull' => function () use ($code) {
+            mkdir($code . '/.git/rebase-merge');
+
+            return [1, '', "CONFLIT (contenu) : Conflit de fusion dans app/Services/X.php\n"];
+        },
+        'git rebase --abort' => function () use ($code) {
+            rmdir($code . '/.git/rebase-merge');
+
+            return [0, '', ''];
+        },
+    ]), $vues);
+
+    [$r, $texte] = deroulerMaj($m, $this->opts);
+
+    $commandes = array_column($vues, 'cmd');
+    expect($r['ok'])->toBeFalse()->and($r['etape'])->toBe(2)
+        ->and($commandes)->toContain('git rebase --abort')
+        ->and(implode("\n", $commandes))->not->toContain(' build')
+        ->and($texte)->toContain('CONFLIT')->and($texte)->toContain("état d'avant")->and($texte)->toContain('§9.4')
+        ->and(is_dir($this->code . '/.git/rebase-merge'))->toBeFalse()
+        ->and(file_get_contents($this->reglages))->toContain('ERP_VERSION=2026-10-01-0930');
+});
+
 test('moins de 5 Go libres : arrêt à l\'étape 1', function () {
     $m = serveurFactice(serveurNominal($this, ['df -Pk' => [0, "Filesystem 1024-blocks Used Available Capacity Mounted on\noverlay 100 90 2000000 99% /\n", '']]), $vues);
 
@@ -252,7 +307,7 @@ test('le jeton GitHub passe par une variable, jamais dans la commande', function
 
     deroulerMaj($m, $this->opts, 'ghp_jetonSecret1234567890');
 
-    $pull = collect($vues)->first(fn ($v) => $v['cmd'] === 'git pull --ff-only');
+    $pull = collect($vues)->first(fn ($v) => $v['cmd'] === 'git pull --rebase');
     expect($pull['env']['GIT_JETON'])->toBe('ghp_jetonSecret1234567890')
         ->and(implode(' ', $pull['brut']))->not->toContain('ghp_jetonSecret')
         ->and(implode(' ', $pull['brut']))->toContain('credential.helper');
