@@ -1,5 +1,6 @@
 {
-    "_comment": "Personnel fictif de l'hôtel : chaque service a au moins deux personnes, chaque rôle du PMS au moins une. Toutes les adresses sont sur le domaine réservé demo.wetchah.test (StaffSeeder::DOMAINE) : aucun courrier ne part, et c'est le marqueur qu'utilise la purge. Le mot de passe, commun à tous ces comptes, est tiré au hasard par la console pour chaque établissement et n'est jamais écrit ici. L'administrateur n'en fait pas partie : il vient du provisioning.",
+    "_comment": "Personnel fictif de l'hôtel : chaque service a au moins deux personnes, chaque rôle du PMS au moins une. Toutes les adresses sont sur le domaine réservé demo.wetchah.test (StaffSeeder::DOMAINE) : aucun courrier ne part, et c'est le marqueur qu'utilise la purge. Un seul mot de passe pour tous ces comptes, ci-dessous ; relancer l'installation le remet sur les comptes existants. L'administrateur n'en fait pas partie : il vient du provisioning.",
+    "password": "Test@2026",
     "staff": [
         { "name": "Jean-Paul Mbida", "email": "jean-paul.mbida@demo.wetchah.test", "phone": "+237 670 10 20 30", "team": "Direction", "role": "manager", "title": "Directeur général", "department": "direction_generale" },
         { "name": "Christelle Ngo Ndjock", "email": "christelle.ngo-ndjock@demo.wetchah.test", "phone": "+237 670 11 23 30", "team": "Direction", "role": "manager", "title": "Directrice des opérations", "department": "direction_generale" },

@@ -2,6 +2,7 @@
 
 namespace Demo\Seeders;
 
+use Demo\Registre;
 use PDO;
 
 /**
@@ -19,6 +20,9 @@ abstract class AbstractModuleSeeder
 {
     /** Colonnes réellement présentes, par table — mémoïsé par instance. */
     private array $colonnesConnues = [];
+
+    /** Le registre des lignes créées existe-t-il ? Absent hors installation. */
+    private ?bool $registre = null;
 
     public function __construct(
         protected PDO $pdo,
@@ -61,8 +65,14 @@ abstract class AbstractModuleSeeder
         );
         $this->lier($stmt, array_values($valeurs));
         $stmt->execute();
+        $id = (int) $stmt->fetchColumn();
 
-        return (int) $stmt->fetchColumn();
+        // Tout ce que le jeu crée est inscrit : c'est ce que la purge retirera.
+        if ($this->registre ??= Registre::existe($this->pdo)) {
+            Registre::noter($this->pdo, $table, $id);
+        }
+
+        return $id;
     }
 
     /**
