@@ -29,7 +29,9 @@ demo/
 │   ├── restaurant.json    catégories et plats de la carte
 │   ├── shop.json          rayons et articles de la boutique
 │   ├── operations.json    équipes, fournisseurs, stock, charges, partenaires
-│   └── staff.json         personnel de l'hôtel : équipe, poste, rôle, département
+│   └── staff.json         personnel de l'hôtel : équipe, poste, rôle, département, mot de passe
+├── Registre.php       ce que le jeu a créé, que la purge retire
+├── Purger.php         la purge
 └── Seeders/           la logique, une classe par module
     ├── AbstractModuleSeeder.php
     ├── StaffSeeder.php
@@ -56,20 +58,44 @@ Chaque seeder étend `AbstractModuleSeeder` et implémente :
 Les insertions passent par les aides du parent (`insert()`, `exists()`,
 `table()`), qui utilisent des requêtes préparées.
 
-## Idempotence
+## Idempotence et registre
 
-Rien n'est jamais inséré deux fois. Chaque enregistrement de démonstration porte
-un marqueur reconnaissable dans une colonne naturelle :
+Rien n'est jamais inséré deux fois : chaque seeder cherche d'abord la ligne
+(`insertOnce`). Relancer l'installation complète les manques sans créer de
+doublon. C'est ce qui permet de rejouer l'action après l'ajout d'un module.
+
+Chaque ligne que le jeu **crée** est inscrite dans la table `demo_records` de
+l'établissement (table, id), dans la même transaction (voir `Demo\Registre`).
+Ce que le jeu a seulement retrouvé n'y figure pas. Les lignes transactionnelles
+portent en plus un marqueur :
 
 | Table | Marqueur |
 |---|---|
-| `customers` | `notes` commence par `[demo]` |
+| `customers` | `notes` = `[demo] Client de démonstration` |
 | `bookings` | `booking_number` préfixé `DEMO-` |
+| `shop_orders` | `order_number` préfixé `DEMO-V` |
+| commandes restaurant, affectations, charges | `notes` commence par `[demo]` |
+| `stock_items`, `shop_products`, `partner_organizations` | référence préfixée `DEMO-` |
 | `users` | adresse sur le domaine réservé `demo.wetchah.test` |
-| autres | `name` / `label` présent dans le jeu de référence |
 
-Relancer l'installation complète les manques sans créer de doublon. C'est ce qui
-permet de rejouer l'action après l'ajout d'un module.
+## Purge
+
+La purge retire tout ce que le jeu a créé, et rien d'autre (`Demo\Purger`) :
+
+1. le transactionnel marqué et ce qui en dérive — folios, paiements, factures,
+   lignes de commande —, même produit après coup par l'application ;
+2. les comptes du personnel, avec leurs rôles, équipes et spécialités ;
+3. tout le registre, à rebours de l'installation : chambres, catégories, carte,
+   rayons, articles, fournisseurs, familles, unités, équipes, partenaires,
+   clients, rattachements.
+
+Une ligne du jeu que des données réelles citent encore reste en place (une
+chambre de démonstration qui porte une vraie réservation) et reste inscrite :
+une purge suivante la retirera. Toutes les clés étrangères de la base sont
+lues, une table ajoutée par l'application est donc couverte d'office.
+
+Un établissement installé avant le registre y est inscrit à la première
+installation ou purge suivante : marqueurs, et noms du jeu pour le catalogue.
 
 ## Volume
 
@@ -81,6 +107,9 @@ et une chambre réellement créés, une ligne de folio vers sa réservation.
 
 - **Aucun rôle, aucun administrateur** : les rôles viennent du référentiel de
   l'application, l'administrateur du provisioning.
+- **Aucune écriture comptable** (`journal_entries`, `fiscal_years`) : ces tables
+  portent des soldes que l'application calcule elle-même. Y injecter des lignes
+  fausserait les états financiers sans moyen simple de revenir en arrière.
 
 ## Le personnel de démonstration
 
@@ -88,20 +117,16 @@ et une chambre réellement créés, une ligne de folio vers sa réservation.
 personnes, chaque rôle du PMS au moins une. On peut ainsi se connecter sous
 n'importe quel poste pour montrer ce qu'il voit et ce qu'il fait. La fiche de
 l'établissement, onglet Paramètres, en donne la liste : équipe, personne,
-identifiant, rôle, département et ce que le rôle permet.
+identifiant, rôle, département, ce que le rôle permet, et le mot de passe.
 
-Ces comptes ouvrent une session : ils sont donc bornés.
-
+- **Un seul mot de passe pour tous** (`password` dans `staff.json`). Relancer
+  l'installation le remet sur les comptes existants et les réactive.
 - **Adresses sur `demo.wetchah.test`**, domaine réservé : aucun courrier ne
   part, et c'est le marqueur de la purge (`StaffSeeder::DOMAINE`).
-- **Un mot de passe par établissement**, commun à ses comptes de démonstration,
-  tiré au hasard à la première installation et gardé chiffré dans la console
-  (`tenants.demo_password`). Le seeder n'en reçoit que l'empreinte. Il n'est
-  écrit nulle part dans le dépôt : un mot de passe connu de tous ouvrirait
-  chaque établissement de démonstration.
 - **Un rôle par personne** : aucun cumul que la séparation des tâches refuserait.
-- **La purge supprime les comptes.** Celui que des données réelles citent est
-  désactivé, et son mot de passe remplacé par un tirage que personne ne connaît.
-- **Aucune écriture comptable** (`journal_entries`, `fiscal_years`) : ces tables
-  portent des soldes que l'application calcule elle-même. Y injecter des lignes
-  fausserait les états financiers sans moyen simple de revenir en arrière.
+- **La purge supprime les comptes.** Celui que des données d'exploitation citent
+  est désactivé, et son mot de passe remplacé par un tirage que personne ne
+  connaît.
+
+Ce mot de passe est connu : ces comptes sont réservés aux établissements de
+démonstration ou de formation, à purger avant toute mise en service réelle.

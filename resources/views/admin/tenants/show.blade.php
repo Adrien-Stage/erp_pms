@@ -1582,18 +1582,14 @@
                                     <div>
                                         <h4 class="text-xs font-bold text-slate-800">Personnel de démonstration — {{ count($demoComptes) }} comptes</h4>
                                         <p class="text-[10px] text-slate-500 mt-1 leading-relaxed max-w-lg">
-                                            Connexion à l'application avec l'adresse de la personne. Le mot de passe, commun
-                                            à ces comptes, est propre à cet établissement. La purge supprime ces comptes.
+                                            Connexion à l'application avec l'adresse de la personne et le mot de passe commun
+                                            à tous ces comptes. « Compléter le jeu » le remet sur chacun ; la purge les supprime.
                                         </p>
                                     </div>
                                     @if($demoMotDePasse)
-                                        <div class="flex items-center gap-2 text-xs" x-data="{ voir: false }">
+                                        <div class="flex items-center gap-2 text-xs">
                                             <span class="text-slate-500">Mot de passe :</span>
-                                            <code x-show="voir" style="display:none;" class="font-mono font-bold text-slate-800 bg-slate-100 rounded-md px-2 py-1.5 select-all">{{ $demoMotDePasse }}</code>
-                                            <span x-show="!voir" class="font-mono text-slate-400">••••••••••••</span>
-                                            <button type="button" @click="voir = !voir"
-                                                    class="text-xs font-bold text-indigo-700 hover:text-indigo-800 cursor-pointer"
-                                                    x-text="voir ? 'Masquer' : 'Afficher'">Afficher</button>
+                                            <code class="font-mono font-bold text-slate-800 bg-slate-100 rounded-md px-2 py-1.5 select-all">{{ $demoMotDePasse }}</code>
                                         </div>
                                     @endif
                                 </div>

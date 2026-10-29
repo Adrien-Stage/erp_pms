@@ -14,8 +14,8 @@ namespace Demo\Seeders;
  * Garde-fous, parce que ces comptes ouvrent une session :
  *  - les adresses sont sur le domaine réservé demo.wetchah.test — aucun
  *    courrier ne part, et c'est le marqueur qu'utilise la purge ;
- *  - le mot de passe, commun à ces comptes, est tiré au hasard par la console
- *    pour chaque établissement ; ce seeder n'en reçoit que l'empreinte ;
+ *  - un seul mot de passe pour tous, celui du jeu (staff.json) : relancer
+ *    l'installation le remet sur les comptes existants et les réactive ;
  *  - un rôle par personne : aucun cumul que la séparation des tâches refuserait ;
  *  - jamais d'administrateur : ce niveau ne vient que du provisioning.
  */
@@ -39,12 +39,13 @@ class StaffSeeder extends AbstractModuleSeeder
 
     public function seed(): int
     {
-        $s         = $this->data['staff'] ?? [];
-        $empreinte = $s['password_hash'] ?? null;
+        $s = $this->data['staff'] ?? [];
 
-        if ($empreinte === null || !$this->tableExists('role_user')) {
+        if (empty($s['password']) || !$this->tableExists('role_user')) {
             return 0;
         }
+
+        $empreinte = password_hash($s['password'], PASSWORD_BCRYPT, ['cost' => 12]);
 
         $roles        = $this->roles();
         $departements = $this->departements();
@@ -79,6 +80,10 @@ class StaffSeeder extends AbstractModuleSeeder
                     'is_active'            => true,
                 ], $this->timestamps()));
                 $crees++;
+            } else {
+                // Compte déjà là : il reprend le mot de passe du jeu et rouvre.
+                $this->pdo->prepare('UPDATE users SET password = ?, is_active = true WHERE id = ?')
+                    ->execute([$empreinte, $userId]);
             }
 
             $this->rattacher('role_user', ['user_id' => $userId, 'role_id' => $roleId], ['level' => 'write']);

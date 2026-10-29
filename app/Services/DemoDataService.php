@@ -42,9 +42,6 @@ class DemoDataService
         $donnees   = $this->donnees();
         $modules   = $this->modulesActifs($tenant);
 
-        // Le personnel reçoit l'empreinte du mot de passe, jamais le clair.
-        $donnees['staff']['password_hash'] = password_hash($this->motDePasse($tenant), PASSWORD_BCRYPT, ['cost' => 12]);
-
         $log('start', "Installation des données de démonstration pour « {$tenant->name} »…", 'info');
 
         $pdo = $this->tenantDb->connect($tenant);
@@ -61,6 +58,9 @@ class DemoDataService
         $pdo->beginTransaction();
 
         try {
+            // Le registre de ce que le jeu crée : la purge s'y fie pour tout retirer.
+            \Demo\Registre::preparer($pdo, $donnees);
+
             foreach ($manifeste['steps'] as $etape) {
                 $classe = 'Demo\\Seeders\\' . $etape['seeder'];
 
@@ -133,7 +133,7 @@ class DemoDataService
         $pdo->beginTransaction();
 
         try {
-            $resultat = (new \Demo\Purger($pdo))->purge($log);
+            $resultat = (new \Demo\Purger($pdo, $this->donnees()))->purge($log);
             $pdo->commit();
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) {
@@ -154,31 +154,10 @@ class DemoDataService
         return $resultat;
     }
 
-    /**
-     * Mot de passe commun aux comptes du personnel de démonstration.
-     *
-     * Tiré au hasard à la première installation et gardé chiffré : relancer
-     * l'installation ne change pas les accès déjà distribués. Propre à chaque
-     * établissement, il n'est écrit nulle part dans le dépôt — un mot de passe
-     * connu de tous ouvrirait chaque établissement de démonstration.
-     */
-    public function motDePasse(Tenant $tenant): string
+    /** Mot de passe commun aux comptes du personnel de démonstration (staff.json). */
+    public function motDePasse(): string
     {
-        if (!empty($tenant->demo_password)) {
-            return $tenant->demo_password;
-        }
-
-        // Lisible à voix haute ou recopié à la main : sans 0/O ni 1/l/I.
-        $alphabet = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-        $tirage   = '';
-
-        for ($i = 0; $i < 12; $i++) {
-            $tirage .= $alphabet[random_int(0, strlen($alphabet) - 1)];
-        }
-
-        $tenant->forceFill(['demo_password' => $tirage])->save();
-
-        return $tirage;
+        return (string) ($this->lireJson($this->racine() . '/data/staff.json')['password'] ?? '');
     }
 
     /**
@@ -247,6 +226,10 @@ class DemoDataService
     {
         try {
             $pdo = $this->tenantDb->connect($tenant);
+
+            if (\Demo\Registre::nonVide($pdo)) {
+                return true;
+            }
 
             $stmt = $pdo->prepare('SELECT 1 FROM bookings WHERE booking_number LIKE ? LIMIT 1');
             $stmt->execute([\Demo\Seeders\BookingSeeder::PREFIXE . '%']);

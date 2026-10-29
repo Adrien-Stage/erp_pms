@@ -1,16 +1,15 @@
 <?php
 
 /**
- * Personnel de démonstration : un mot de passe propre à chaque établissement,
- * chiffré et stable, et la liste des comptes avec leurs accès sur la fiche
- * de l'établissement, pour l'administrateur TECH.
+ * Personnel de démonstration : un mot de passe commun, celui du jeu, et la
+ * liste des comptes avec leurs accès sur la fiche de l'établissement, pour
+ * l'administrateur TECH.
  */
 
 use App\Models\Tenant;
 use App\Models\User;
 use App\Services\DemoDataService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\DB;
 
 uses(RefreshDatabase::class);
 
@@ -28,26 +27,26 @@ function demoTenant(): Tenant
     ]);
 }
 
-test("le mot de passe de démonstration est tiré une fois, gardé chiffré, jamais sérialisé", function () {
-    $tenant = demoTenant();
-    $service = app(DemoDataService::class);
+test("tous les comptes de démonstration partagent le mot de passe du jeu", function () {
+    $jeu = json_decode(file_get_contents(base_path('demo/data/staff.json')), true);
 
-    $premier = $service->motDePasse($tenant);
+    expect(app(DemoDataService::class)->motDePasse())->toBe('Test@2026')->toBe($jeu['password']);
 
-    expect($premier)->toHaveLength(12)
-        ->and($service->motDePasse($tenant->fresh()))->toBe($premier)
-        ->and(DB::table('tenants')->where('id', $tenant->id)->value('demo_password'))->not->toContain($premier)
-        ->and($tenant->fresh()->toArray())->not->toHaveKey('demo_password');
-
-    expect($service->motDePasse(demoTenant()))->not->toBe($premier);
+    // Chaque équipe a au moins deux membres, tous sur le domaine réservé.
+    $equipes = array_count_values(array_column($jeu['staff'], 'team'));
+    expect(min($equipes))->toBeGreaterThanOrEqual(2);
+    foreach ($jeu['staff'] as $personne) {
+        expect($personne['email'])->toEndWith('@' . \Demo\Seeders\StaffSeeder::DOMAINE)
+            ->and($personne['role'])->not->toBeIn(['admin', 'support', 'customer_guest']);
+    }
 });
 
 test("la fiche de l'établissement liste le personnel de démonstration et ses accès", function () {
     $tenant = demoTenant();
-    $tenant->forceFill(['demo_password' => 'MotDePasseDemo'])->save();
 
     $this->mock(DemoDataService::class, function ($mock) {
         $mock->shouldReceive('estInstalle')->andReturn(true);
+        $mock->shouldReceive('motDePasse')->andReturn('Test@2026');
         $mock->shouldReceive('comptes')->andReturn([[
             'name' => 'Gaston Ewane', 'email' => 'gaston.ewane@demo.wetchah.test', 'team' => 'Achats',
             'title' => null, 'role' => 'purchasing_manager', 'role_name' => 'Responsable des achats',
@@ -63,5 +62,5 @@ test("la fiche de l'établissement liste le personnel de démonstration et ses a
         ->assertSee('gaston.ewane@demo.wetchah.test')
         ->assertSee('Responsable des achats')
         ->assertSee('Achats : fournisseurs, bons de commande')
-        ->assertSee('MotDePasseDemo');
+        ->assertSee('Test@2026');
 });

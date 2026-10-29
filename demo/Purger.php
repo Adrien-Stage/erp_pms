@@ -3,36 +3,48 @@
 namespace Demo;
 
 use Demo\Seeders\BookingSeeder;
-use Demo\Seeders\CustomerSeeder;
 use Demo\Seeders\StaffSeeder;
 use PDO;
 
 /**
  * Retrait du jeu de démonstration d'un établissement.
  *
- * Deux principes gouvernent cette classe, parce qu'elle supprime dans une base
- * en service :
+ * La purge retire tout ce que le jeu a créé, et rien d'autre :
  *
- * 1. **Ne toucher qu'au marqué.** Chaque enregistrement fictif porte un
- *    marqueur posé à l'installation (`[demo] …` en note, préfixe `DEMO-` sur
- *    un numéro). Rien d'autre n'est éligible.
+ * 1. **Le transactionnel marqué**, et ce qui en dérive. Réservations
+ *    (`DEMO-`), ventes (`DEMO-V`), commandes, affectations et charges
+ *    (`[demo] …`) partent avec leurs folios, paiements, factures et lignes,
+ *    même si l'application les a produits après coup.
  *
- * 2. **Ne jamais casser une donnée réelle.** Le catalogue — chambres, carte,
- *    articles, fournisseurs — n'est retiré que s'il n'est plus référencé. Une
- *    chambre créée par la démonstration mais qui porte depuis une vraie
- *    réservation reste en place : l'établissement s'en sert.
+ * 2. **Les comptes du personnel**, reconnus à leur domaine, avec leurs rôles,
+ *    équipes et spécialités.
  *
- * Le second point est celui qui compte. Les tables transactionnelles sont
- * faciles à reconnaître ; le catalogue, lui, se confond avec l'exploitation dès
- * qu'on s'en sert. Supprimer une chambre occupée pour « faire propre » coûterait
- * bien plus cher que de laisser trois chambres de démonstration.
+ * 3. **Tout le reste, d'après le registre** (voir Demo\Registre) : chambres,
+ *    catégories, carte, rayons, articles, fournisseurs, familles, unités,
+ *    équipes, partenaires, clients et rattachements. Parcouru à rebours de
+ *    l'installation : les enfants partent avant leurs parents.
+ *
+ * Une seule exception, qui protège l'exploitation : une ligne du jeu que des
+ * données réelles citent encore reste en place — une chambre de démonstration
+ * qui porte depuis une vraie réservation, par exemple. Elle reste inscrite au
+ * registre : une purge suivante la retirera quand plus rien ne la citera.
  */
 class Purger
 {
     /** @var array<int, string> Ce qui a été conservé, et pourquoi. */
     private array $conserves = [];
 
-    public function __construct(private PDO $pdo) {}
+    /** @var array<string, bool> */
+    private array $tablesConnues = [];
+
+    /** @var array<string, bool> */
+    private array $colonnesConnues = [];
+
+    /** @var array<string, list<array{0: string, 1: string}>> table => [table qui la cite, colonne] */
+    private array $citations = [];
+
+    /** @param  array<string, array>  $donnees  le contenu de /demo/data, pour les installations antérieures au registre */
+    public function __construct(private PDO $pdo, private array $donnees = []) {}
 
     /**
      * @param  callable  $log  fn(string $etape, string $message, string $niveau)
@@ -42,14 +54,18 @@ class Purger
     {
         $supprimes = 0;
 
+        // Une installation antérieure au registre y est inscrite d'abord.
+        Registre::preparer($this->pdo, $this->donnees);
+
         $supprimes += $this->purgerVentes($log);
         $supprimes += $this->purgerCommandesRestaurant($log);
         $supprimes += $this->purgerReservations($log);
         $supprimes += $this->purgerMenage($log);
         $supprimes += $this->purgerCharges($log);
-        $supprimes += $this->purgerClients($log);
-        $supprimes += $this->purgerCatalogue($log);
+        // Les comptes avant le registre : leurs rôles, équipes et spécialités
+        // partent avec eux, ce qui libère les équipes qu'ils occupaient.
         $supprimes += $this->purgerPersonnel($log);
+        $supprimes += $this->purgerRegistre($log);
 
         return ['total' => $supprimes, 'kept' => $this->conserves];
     }
@@ -180,131 +196,160 @@ class Purger
         return $n;
     }
 
-    /**
-     * Clients fictifs — seulement ceux dont plus rien ne dépend.
-     *
-     * Un client de démonstration à qui la réception a fini par attribuer une
-     * vraie réservation n'est plus fictif : le supprimer emporterait la
-     * réservation avec lui.
-     */
-    private function purgerClients(callable $log): int
-    {
-        $ids = $this->ids('SELECT id FROM customers WHERE notes = ?', [CustomerSeeder::MARQUEUR]);
+    // ── Registre ─────────────────────────────────────────────────────────────
 
-        if ($ids === []) {
+    /** Libellés des tables du registre, pour le journal et ce qui est conservé. */
+    private const LIBELLES = [
+        'room_types' => 'catégories de chambres', 'rooms' => 'chambres', 'customers' => 'clients',
+        'partner_organizations' => 'partenaires', 'shop_categories' => 'rayons', 'shop_products' => 'articles boutique',
+        'restaurant_menu_categories' => 'catégories de la carte', 'restaurant_menu_items' => 'plats',
+        'housekeeping_teams' => 'équipes de ménage', 'suppliers' => 'fournisseurs', 'stock_categories' => 'familles de stock',
+        'stock_units' => 'unités de stock', 'stock_items' => 'articles de stock', 'role_user' => 'rôles du personnel',
+        'housekeeping_team_user' => 'membres des équipes', 'point_of_sale_user' => 'rattachements au restaurant',
+        'technician_specialties' => 'spécialités techniques',
+    ];
+
+    /**
+     * Tout ce que le registre inscrit, à rebours de l'installation.
+     *
+     * Les comptes sont l'affaire de purgerPersonnel, passé avant, qui sait
+     * désactiver celui qu'on ne peut pas supprimer.
+     */
+    private function purgerRegistre(callable $log): int
+    {
+        if (!Registre::existe($this->pdo)) {
             return 0;
         }
 
-        $dependances = [
-            'bookings'       => ['customer_id', 'booker_id'],
-            'booking_drafts' => ['customer_id', 'booker_id'],
-            'folio_items'    => ['customer_id'],
-            'invoices'       => ['customer_id'],
-            'payments'       => ['customer_id'],
-            'guests'         => ['customer_id'],
-            'shop_orders'    => ['customer_id'],
-            'group_bookings' => ['contact_customer_id', 'booker_id'],
-            'loyalty_transactions' => ['customer_id'],
-            'restaurant_notes'     => ['customer_id'],
-        ];
+        $lignes  = $this->pdo->query('SELECT id, table_name, record_id FROM ' . Registre::TABLE . ' ORDER BY id DESC')->fetchAll(PDO::FETCH_ASSOC);
+        $retires = [];
+        $gardes  = [];
 
-        $libres = array_values(array_filter(
-            $ids,
-            fn(int $id) => !$this->estReference($id, $dependances)
+        foreach ($lignes as $ligne) {
+            $table = $ligne['table_name'];
+            $id    = (int) $ligne['record_id'];
+
+            if ($table === 'users') {
+                continue;
+            }
+
+            // Déjà partie (avec son parent, ou effacée depuis) : l'inscription aussi.
+            if (!$this->table($table) || $this->ids("SELECT id FROM \"{$table}\" WHERE id = ?", [$id]) === []) {
+                $this->desinscrire((int) $ligne['id']);
+                continue;
+            }
+
+            if ($this->estCitee($table, $id) || !$this->supprimerLigne($table, $id)) {
+                $gardes[$table] = ($gardes[$table] ?? 0) + 1;
+                continue;
+            }
+
+            $this->desinscrire((int) $ligne['id']);
+            $retires[$table] = ($retires[$table] ?? 0) + 1;
+        }
+
+        if ($retires !== []) {
+            $log('purge', '· Catalogue, clients et rattachements : ' . $this->detail($retires) . '.', 'info');
+        }
+
+        if ($gardes !== []) {
+            $this->conserves[] = 'Conservé parce que des données réelles le citent encore : ' . $this->detail($gardes) . '.';
+        }
+
+        return array_sum($retires);
+    }
+
+    /**
+     * Une ligne réelle cite-t-elle celle-ci ? Toutes les clés étrangères de la
+     * base sont lues : une table ajoutée par une version future de
+     * l'application est prise en compte sans toucher à ce code.
+     */
+    private function estCitee(string $table, int $id): bool
+    {
+        foreach ($this->citationsDe($table) as [$enfant, $colonne]) {
+            if ($this->ids("SELECT 1 FROM \"{$enfant}\" WHERE \"{$colonne}\" = ? LIMIT 1", [$id]) !== []) {
+                return true;
+            }
+        }
+
+        // Une unité est citée par son nom, sans clé étrangère.
+        if ($table === 'stock_units') {
+            $nom = $this->pdo->prepare('SELECT name FROM stock_units WHERE id = ?');
+            $nom->execute([$id]);
+            $nom = $nom->fetchColumn();
+
+            foreach ([['stock_items', 'unit'], ['stock_items', 'purchase_unit']] as [$t, $c]) {
+                if ($this->colonne($t, $c) && $this->ids("SELECT 1 FROM \"{$t}\" WHERE \"{$c}\" = ? LIMIT 1", [$nom]) !== []) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /** @return list<array{0: string, 1: string}> */
+    private function citationsDe(string $table): array
+    {
+        return $this->citations[$table] ??= array_map(
+            fn (array $r) => [$r[0], $r[1]],
+            $this->pdo->query(
+                "SELECT enfant.relname, att.attname
+                 FROM pg_constraint c
+                 JOIN pg_class enfant ON enfant.oid = c.conrelid
+                 JOIN pg_class parent ON parent.oid = c.confrelid
+                 JOIN pg_namespace ns ON ns.oid = parent.relnamespace AND ns.nspname = 'public'
+                 JOIN pg_attribute att ON att.attrelid = c.conrelid AND att.attnum = c.conkey[1]
+                 WHERE c.contype = 'f' AND array_length(c.conkey, 1) = 1
+                   AND parent.relname = " . $this->pdo->quote($table)
+            )->fetchAll(PDO::FETCH_NUM)
+        );
+    }
+
+    /** Supprime une ligne ; false si une contrainte s'y oppose. */
+    private function supprimerLigne(string $table, int $id): bool
+    {
+        // Un point de reprise par ligne : sous PostgreSQL, une contrainte
+        // violée annule toute la transaction si on ne le pose pas.
+        $this->pdo->exec('SAVEPOINT ligne_demo');
+
+        try {
+            $this->executer("DELETE FROM \"{$table}\" WHERE id = ?", [$id]);
+            $this->pdo->exec('RELEASE SAVEPOINT ligne_demo');
+
+            return true;
+        } catch (\PDOException) {
+            $this->pdo->exec('ROLLBACK TO SAVEPOINT ligne_demo');
+
+            return false;
+        }
+    }
+
+    private function desinscrire(int $entree): void
+    {
+        $this->executer('DELETE FROM ' . Registre::TABLE . ' WHERE id = ?', [$entree]);
+    }
+
+    /** « 12 chambres, 3 plats » */
+    private function detail(array $parTable): string
+    {
+        return implode(', ', array_map(
+            fn (string $table, int $n) => $n . ' ' . (self::LIBELLES[$table] ?? $table),
+            array_keys($parTable),
+            $parTable
         ));
-
-        $retenus = count($ids) - count($libres);
-
-        if ($retenus > 0) {
-            $this->conserves[] = "{$retenus} client(s) de démonstration conservé(s) : des données réelles y sont rattachées.";
-        }
-
-        if ($libres === []) {
-            return 0;
-        }
-
-        $n = $this->supprimerPar('customers', 'id', $libres);
-        $log('purge', "· Clients : {$n} ligne(s).", 'info');
-
-        return $n;
     }
 
-    // ── Catalogue ────────────────────────────────────────────────────────────
+    // ── Personnel ────────────────────────────────────────────────────────────
 
-    /**
-     * Le catalogue posé par la démonstration, uniquement s'il ne sert plus.
-     *
-     * Chaque entrée est testée contre ce qui la référence. On ne supprime que
-     * ce qui est devenu inerte.
-     */
-    private function purgerCatalogue(callable $log): int
-    {
-        $regles = [
-            // table, condition d'identification, paramètres, dépendances
-            ['shop_products', 'sku LIKE ?', ['DEMO-%'], ['shop_order_items' => ['shop_product_id']]],
-            ['stock_items', 'reference LIKE ?', ['DEMO-S%'], [
-                'purchase_order_lines'    => ['stock_item_id'],
-                'stock_movements'         => ['stock_item_id'],
-                'stock_requisition_lines' => ['stock_item_id'],
-                'room_cost_items'         => ['stock_item_id'],
-            ]],
-            ['partner_organizations', 'code LIKE ?', ['DEMO-P%'], [
-                'bookings'  => ['partner_organization_id'],
-                'customers' => ['partner_organization_id'],
-            ]],
-        ];
-
-        $n = 0;
-
-        foreach ($regles as [$table, $condition, $params, $dependances]) {
-            if (!$this->table($table)) {
-                continue;
-            }
-
-            $ids = $this->ids("SELECT id FROM {$table} WHERE {$condition}", $params);
-
-            if ($ids === []) {
-                continue;
-            }
-
-            $libres = array_values(array_filter(
-                $ids,
-                fn(int $id) => !$this->estReference($id, $dependances)
-            ));
-
-            $retenus = count($ids) - count($libres);
-
-            if ($retenus > 0) {
-                $this->conserves[] = "{$retenus} entrée(s) de « {$table} » conservée(s) : encore utilisée(s).";
-            }
-
-            if ($libres !== []) {
-                $n += $this->supprimerPar($table, 'id', $libres);
-            }
-        }
-
-        if ($n > 0) {
-            $log('purge', "· Catalogue devenu inutilisé : {$n} ligne(s).", 'info');
-        }
-
-        // Chambres, catégories, carte, fournisseurs et équipes ne portent aucun
-        // marqueur : rien ne les distingue de ceux que l'établissement aurait
-        // créés lui-même. Ils restent — c'est le socle sur lequel il travaille.
-        $this->conserves[] = 'Chambres, carte, rayons, fournisseurs et équipes conservés : indiscernables de ceux créés par l\'établissement.';
-
-        return $n;
-    }
-
-    // ── Aides ────────────────────────────────────────────────────────────────
-
-    /** Une valeur est-elle référencée par l'une des dépendances listées ? */
     /**
      * Les comptes du personnel de démonstration, reconnus à leur domaine.
      *
-     * Un compte dont l'établissement s'est servi — une écriture, une caisse,
-     * un journal le citent — ne peut pas disparaître sans casser ces lignes :
-     * il est alors désactivé, et son mot de passe remplacé par un tirage que
-     * personne ne connaît. Il ne s'ouvre plus, et l'historique reste lisible.
+     * Ce qui n'appartient qu'au compte (sessions, notifications, préférences)
+     * part avec lui. Un compte que des données d'exploitation citent — une
+     * caisse, une écriture — ne peut pas disparaître sans les casser : il est
+     * alors désactivé, et son mot de passe remplacé par un tirage que personne
+     * ne connaît. Il ne s'ouvre plus, et l'historique reste lisible.
      */
     private function purgerPersonnel(callable $log): int
     {
@@ -316,27 +361,26 @@ class Purger
         $supprimes = 0;
         $fermes    = 0;
 
-        foreach ($ids as $id) {
-            // Un point de reprise par compte : sous PostgreSQL, une contrainte
-            // violée annule toute la transaction si on ne le pose pas.
-            $this->pdo->exec('SAVEPOINT compte_demo');
-
-            try {
-                $this->executer('DELETE FROM users WHERE id = ?', [$id]);
-                $this->pdo->exec('RELEASE SAVEPOINT compte_demo');
-                $supprimes++;
-            } catch (\PDOException) {
-                $this->pdo->exec('ROLLBACK TO SAVEPOINT compte_demo');
-                $this->executer(
-                    'UPDATE users SET is_active = false, password = ?, remember_token = NULL WHERE id = ?',
-                    [password_hash(bin2hex(random_bytes(24)), PASSWORD_BCRYPT), $id]
-                );
-                $fermes++;
-            }
-        }
-
         if ($ids !== [] && $this->table('sessions') && $this->colonne('sessions', 'user_id')) {
             $this->executer('DELETE FROM sessions WHERE user_id IN (' . $this->trous($ids) . ')', $ids);
+        }
+
+        foreach ($ids as $id) {
+            if ($this->supprimerLigne('users', $id)) {
+                $supprimes++;
+
+                if (Registre::existe($this->pdo)) {
+                    $this->executer('DELETE FROM ' . Registre::TABLE . " WHERE table_name = 'users' AND record_id = ?", [$id]);
+                }
+
+                continue;
+            }
+
+            $this->executer(
+                'UPDATE users SET is_active = false, password = ?, remember_token = NULL WHERE id = ?',
+                [password_hash(bin2hex(random_bytes(24)), PASSWORD_BCRYPT), $id]
+            );
+            $fermes++;
         }
 
         if ($supprimes > 0) {
@@ -350,29 +394,7 @@ class Purger
         return $supprimes;
     }
 
-    private function estReference(int $id, array $dependances): bool
-    {
-        foreach ($dependances as $table => $colonnes) {
-            if (!$this->table($table)) {
-                continue;
-            }
-
-            foreach ($colonnes as $colonne) {
-                if (!$this->colonne($table, $colonne)) {
-                    continue;
-                }
-
-                $stmt = $this->pdo->prepare("SELECT 1 FROM \"{$table}\" WHERE \"{$colonne}\" = ? LIMIT 1");
-                $stmt->execute([$id]);
-
-                if ($stmt->fetchColumn() !== false) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
+    // ── Aides ────────────────────────────────────────────────────────────────
 
     private function supprimerPar(string $table, string $colonne, array $ids): int
     {
@@ -423,33 +445,30 @@ class Purger
 
     private function table(string $table): bool
     {
-        static $connues = [];
-
-        if (!array_key_exists($table, $connues)) {
+        if (!array_key_exists($table, $this->tablesConnues)) {
             $stmt = $this->pdo->prepare(
                 "SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name = ?"
             );
             $stmt->execute([$table]);
-            $connues[$table] = $stmt->fetchColumn() !== false;
+            $this->tablesConnues[$table] = $stmt->fetchColumn() !== false;
         }
 
-        return $connues[$table];
+        return $this->tablesConnues[$table];
     }
 
     private function colonne(string $table, string $colonne): bool
     {
-        static $connues = [];
         $cle = $table . '.' . $colonne;
 
-        if (!array_key_exists($cle, $connues)) {
+        if (!array_key_exists($cle, $this->colonnesConnues)) {
             $stmt = $this->pdo->prepare(
                 "SELECT 1 FROM information_schema.columns
                  WHERE table_schema='public' AND table_name = ? AND column_name = ?"
             );
             $stmt->execute([$table, $colonne]);
-            $connues[$cle] = $stmt->fetchColumn() !== false;
+            $this->colonnesConnues[$cle] = $stmt->fetchColumn() !== false;
         }
 
-        return $connues[$cle];
+        return $this->colonnesConnues[$cle];
     }
 }

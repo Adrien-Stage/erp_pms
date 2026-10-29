@@ -317,12 +317,11 @@ class AdminAuditController extends Controller
         $demoDataInstalled = $section === 'settings'
             && app(DemoDataService::class)->estInstalle($tenant);
 
-        // Le personnel de démonstration et ses accès, sur le même onglet : la
-        // fiche est réservée à l'administrateur TECH, le mot de passe y est en clair.
+        // Le personnel de démonstration et ses accès, sur le même onglet.
         $demoComptes = $section === 'settings'
             ? app(DemoDataService::class)->comptes($tenant)
             : [];
-        $demoMotDePasse = $demoComptes !== [] ? $tenant->demo_password : null;
+        $demoMotDePasse = $demoComptes !== [] ? app(DemoDataService::class)->motDePasse() : null;
 
         return view('admin.tenants.show', compact(
             'tenant', 'tenantUsers', 'tenantDepartments', 'section', 'demoDataInstalled', 'demoComptes', 'demoMotDePasse'
