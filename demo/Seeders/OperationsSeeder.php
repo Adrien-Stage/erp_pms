@@ -97,14 +97,15 @@ class OperationsSeeder extends AbstractModuleSeeder
     /** Fournisseurs, familles de stock et articles. */
     private function achats(array $o): int
     {
-        $crees       = 0;
+        $crees        = 0;
         $fournisseurs = [];
+        $parNom       = [];
 
         if ($this->tableExists('suppliers')) {
             foreach ($o['suppliers'] as $f) {
                 $avant = $this->findId('suppliers', ['name' => $f['name']]);
 
-                $fournisseurs[] = $this->insertOnce(
+                $fournisseurs[] = $parNom[$f['name']] = $this->insertOnce(
                     'suppliers',
                     ['name' => $f['name']],
                     array_merge([
@@ -144,6 +145,14 @@ class OperationsSeeder extends AbstractModuleSeeder
             }
         }
 
+        // Unités propres au jeu de démonstration (bidon, flacon, plateau…) :
+        // ajoutées à la liste de l'établissement pour rester choisissables.
+        if ($this->tableExists('stock_units')) {
+            foreach (array_unique(array_column($o['stock_items'], 'unit')) as $unite) {
+                $this->insertOnce('stock_units', ['name' => $unite], array_merge(['sort_order' => 100, 'is_active' => true], $this->timestamps()));
+            }
+        }
+
         foreach ($o['stock_items'] as $rang => $article) {
             if ($this->findId('stock_items', ['name' => $article['name']]) !== null) {
                 continue;
@@ -156,9 +165,10 @@ class OperationsSeeder extends AbstractModuleSeeder
                 'unit'                => $article['unit'],
                 'current_stock'       => $article['min'] * 2,
                 'min_stock'           => $article['min'],
-                'average_cost'        => $article['price'],
-                'last_purchase_price' => $article['price'],
-                'supplier_id'         => $fournisseurs === [] ? null : $this->cycle($fournisseurs, $rang),
+                // Les prix du jeu sont en FCFA ; l'application compte en centimes.
+                'average_cost'        => $article['price'] * 100,
+                'last_purchase_price' => $article['price'] * 100,
+                'supplier_id'         => $parNom[$article['supplier'] ?? ''] ?? ($fournisseurs === [] ? null : $this->cycle($fournisseurs, $rang)),
                 'is_active'           => true,
             ], $this->timestamps()));
 
