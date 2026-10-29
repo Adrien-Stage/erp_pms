@@ -115,6 +115,12 @@ Route::middleware(['auth', 'role:tech_admin'])->prefix('tech')->name('tech.')->g
     Route::put('/establishments/{tenant}/permissions', [TenantPermissionMatrixController::class, 'update'])->name('establishments.permissions.update');
     Route::post('/establishments/{tenant}/permissions/apercu', [TenantPermissionMatrixController::class, 'preview'])->name('establishments.permissions.preview');
     Route::post('/establishments/{tenant}/permissions/versions/{version}/retour', [TenantPermissionMatrixController::class, 'restore'])->name('establishments.permissions.restore');
+
+    // Corbeille de l'établissement : réservée à l'administrateur TECH, jamais
+    // au propriétaire. L'établissement restaure et purge ; la console demande.
+    Route::get('/establishments/{tenant}/corbeille', [\App\Http\Controllers\TenantCorbeilleController::class, 'show'])->name('establishments.corbeille');
+    Route::post('/establishments/{tenant}/corbeille/{entree}/restaurer', [\App\Http\Controllers\TenantCorbeilleController::class, 'restore'])->whereNumber('entree')->name('establishments.corbeille.restaurer');
+    Route::delete('/establishments/{tenant}/corbeille/{entree}', [\App\Http\Controllers\TenantCorbeilleController::class, 'purge'])->whereNumber('entree')->name('establishments.corbeille.purger');
     Route::post('/establishments/{tenant}/administrateurs', [TenantAdminAccountController::class, 'store'])->name('establishments.admins.store');
     Route::post('/establishments/{tenant}/administrateurs/{compte}', [TenantAdminAccountController::class, 'update'])->whereNumber('compte')->name('establishments.admins.update');
 
