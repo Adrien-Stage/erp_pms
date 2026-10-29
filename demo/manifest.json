@@ -7,7 +7,7 @@
         "restaurant_orders": 20,
         "shop_orders": 20,
         "housekeeping_assignments": 20,
-        "stock_items": 20,
+        "stock_items": 75,
         "expenses": 20
     },
     "steps": [
