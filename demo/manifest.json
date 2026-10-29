@@ -11,6 +11,7 @@
         "expenses": 20
     },
     "steps": [
+        { "seeder": "StaffSeeder",       "module": null,           "label": "Personnel de l'hôtel" },
         { "seeder": "CustomerSeeder",    "module": null,           "label": "Clients" },
         { "seeder": "HotelSeeder",       "module": null,           "label": "Catégories et chambres" },
         { "seeder": "BookingSeeder",     "module": null,           "label": "Réservations, folios et paiements" },

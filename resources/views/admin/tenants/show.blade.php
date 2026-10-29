@@ -1573,6 +1573,70 @@
                                 </span>
                             @endif
                         </div>
+
+                        {{-- Le personnel de démonstration et ses accès : un compte
+                             par poste, pour montrer ce que chacun voit et fait. --}}
+                        @if(!empty($demoComptes))
+                            <div class="border-t border-slate-100 px-6 py-4 space-y-3">
+                                <div class="flex flex-wrap items-center justify-between gap-3">
+                                    <div>
+                                        <h4 class="text-xs font-bold text-slate-800">Personnel de démonstration — {{ count($demoComptes) }} comptes</h4>
+                                        <p class="text-[10px] text-slate-500 mt-1 leading-relaxed max-w-lg">
+                                            Connexion à l'application avec l'adresse de la personne. Le mot de passe, commun
+                                            à ces comptes, est propre à cet établissement. La purge supprime ces comptes.
+                                        </p>
+                                    </div>
+                                    @if($demoMotDePasse)
+                                        <div class="flex items-center gap-2 text-xs" x-data="{ voir: false }">
+                                            <span class="text-slate-500">Mot de passe :</span>
+                                            <code x-show="voir" style="display:none;" class="font-mono font-bold text-slate-800 bg-slate-100 rounded-md px-2 py-1.5 select-all">{{ $demoMotDePasse }}</code>
+                                            <span x-show="!voir" class="font-mono text-slate-400">••••••••••••</span>
+                                            <button type="button" @click="voir = !voir"
+                                                    class="text-xs font-bold text-indigo-700 hover:text-indigo-800 cursor-pointer"
+                                                    x-text="voir ? 'Masquer' : 'Afficher'">Afficher</button>
+                                        </div>
+                                    @endif
+                                </div>
+
+                                <div class="overflow-x-auto rounded-lg border border-slate-200">
+                                    <table class="w-full text-left text-[11px]">
+                                        <thead class="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
+                                            <tr>
+                                                <th class="px-3 py-2">Équipe</th>
+                                                <th class="px-3 py-2">Personne</th>
+                                                <th class="px-3 py-2">Identifiant</th>
+                                                <th class="px-3 py-2">Rôle</th>
+                                                <th class="px-3 py-2">Accès</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach($demoComptes as $compte)
+                                                <tr class="border-t border-slate-100 align-top">
+                                                    <td class="px-3 py-2 font-semibold text-slate-700 whitespace-nowrap">{{ $compte['team'] }}</td>
+                                                    <td class="px-3 py-2 text-slate-800">
+                                                        {{ $compte['name'] }}
+                                                        @if($compte['title'])
+                                                            <span class="block text-[10px] text-slate-500">{{ $compte['title'] }}</span>
+                                                        @endif
+                                                        @unless($compte['actif'])
+                                                            <span class="block text-[10px] font-bold text-red-600">Désactivé</span>
+                                                        @endunless
+                                                    </td>
+                                                    <td class="px-3 py-2 font-mono text-slate-600 select-all whitespace-nowrap">{{ $compte['email'] }}</td>
+                                                    <td class="px-3 py-2 text-slate-700 whitespace-nowrap">
+                                                        {{ $compte['role_name'] ?? '—' }}
+                                                        @if($compte['department'])
+                                                            <span class="block text-[10px] text-slate-500">{{ $compte['department'] }}</span>
+                                                        @endif
+                                                    </td>
+                                                    <td class="px-3 py-2 text-slate-500 leading-relaxed">{{ $compte['acces'] ?? '—' }}</td>
+                                                </tr>
+                                            @endforeach
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        @endif
                     </div>
 
                     <!-- Danger Zone Card -->
