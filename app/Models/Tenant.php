@@ -54,7 +54,12 @@ class Tenant extends Model
         'last_health_check',
     ];
 
+    /** Jamais dans une sérialisation : il ne s'affiche qu'à l'écran de démonstration. */
+    protected $hidden = ['demo_password'];
+
     protected $casts = [
+        // Mot de passe des comptes de démonstration : chiffré au repos.
+        'demo_password' => 'encrypted',
         'settings' => 'array',
         'site_content' => 'array',
         'modules' => 'array',

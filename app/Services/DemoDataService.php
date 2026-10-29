@@ -42,6 +42,9 @@ class DemoDataService
         $donnees   = $this->donnees();
         $modules   = $this->modulesActifs($tenant);
 
+        // Le personnel reçoit l'empreinte du mot de passe, jamais le clair.
+        $donnees['staff']['password_hash'] = password_hash($this->motDePasse($tenant), PASSWORD_BCRYPT, ['cost' => 12]);
+
         $log('start', "Installation des données de démonstration pour « {$tenant->name} »…", 'info');
 
         $pdo = $this->tenantDb->connect($tenant);
@@ -149,6 +152,89 @@ class DemoDataService
         $log('done', "Terminé : {$resultat['total']} enregistrement(s) supprimé(s).", 'success');
 
         return $resultat;
+    }
+
+    /**
+     * Mot de passe commun aux comptes du personnel de démonstration.
+     *
+     * Tiré au hasard à la première installation et gardé chiffré : relancer
+     * l'installation ne change pas les accès déjà distribués. Propre à chaque
+     * établissement, il n'est écrit nulle part dans le dépôt — un mot de passe
+     * connu de tous ouvrirait chaque établissement de démonstration.
+     */
+    public function motDePasse(Tenant $tenant): string
+    {
+        if (!empty($tenant->demo_password)) {
+            return $tenant->demo_password;
+        }
+
+        // Lisible à voix haute ou recopié à la main : sans 0/O ni 1/l/I.
+        $alphabet = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        $tirage   = '';
+
+        for ($i = 0; $i < 12; $i++) {
+            $tirage .= $alphabet[random_int(0, strlen($alphabet) - 1)];
+        }
+
+        $tenant->forceFill(['demo_password' => $tirage])->save();
+
+        return $tirage;
+    }
+
+    /**
+     * Les comptes du personnel de démonstration présents dans l'établissement,
+     * dans l'ordre du jeu : nom, poste, équipe, identifiant, rôle et ce que le
+     * rôle permet. Vide si l'établissement est injoignable.
+     *
+     * @return list<array{name:string, email:string, team:string, title:?string, role:?string, role_name:?string, acces:?string, department:?string, actif:bool}>
+     */
+    public function comptes(Tenant $tenant): array
+    {
+        $jeu = $this->lireJson($this->racine() . '/data/staff.json');
+
+        try {
+            $pdo  = $this->tenantDb->connect($tenant);
+            $stmt = $pdo->prepare(
+                "SELECT u.email, u.is_active, d.name AS department, r.slug, r.name AS role_name, r.description
+                 FROM users u
+                 LEFT JOIN departments d ON d.id = u.department_id
+                 LEFT JOIN role_user ru ON ru.user_id = u.id
+                 LEFT JOIN roles r ON r.id = ru.role_id
+                 WHERE lower(u.email) LIKE ?"
+            );
+            $stmt->execute(['%@' . \Demo\Seeders\StaffSeeder::DOMAINE]);
+            $presents = [];
+
+            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $ligne) {
+                $presents[strtolower($ligne['email'])] ??= $ligne;
+            }
+        } catch (Throwable) {
+            return [];
+        }
+
+        $comptes = [];
+
+        foreach ($jeu['staff'] as $personne) {
+            $present = $presents[strtolower($personne['email'])] ?? null;
+
+            if ($present === null) {
+                continue;
+            }
+
+            $comptes[] = [
+                'name'       => $personne['name'],
+                'email'      => $personne['email'],
+                'team'       => $personne['team'],
+                'title'      => $personne['title'] ?? null,
+                'role'       => $present['slug'],
+                'role_name'  => $present['role_name'],
+                'acces'      => $present['description'],
+                'department' => $present['department'],
+                'actif'      => (bool) $present['is_active'],
+            ];
+        }
+
+        return $comptes;
     }
 
     /**

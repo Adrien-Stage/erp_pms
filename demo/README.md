@@ -28,9 +28,11 @@ demo/
 │   ├── hotel.json         catégories et numéros de chambres
 │   ├── restaurant.json    catégories et plats de la carte
 │   ├── shop.json          rayons et articles de la boutique
-│   └── operations.json    équipes, fournisseurs, stock, charges, partenaires
+│   ├── operations.json    équipes, fournisseurs, stock, charges, partenaires
+│   └── staff.json         personnel de l'hôtel : équipe, poste, rôle, département
 └── Seeders/           la logique, une classe par module
     ├── AbstractModuleSeeder.php
+    ├── StaffSeeder.php
     ├── CustomerSeeder.php
     ├── HotelSeeder.php
     ├── BookingSeeder.php
@@ -63,6 +65,7 @@ un marqueur reconnaissable dans une colonne naturelle :
 |---|---|
 | `customers` | `notes` commence par `[demo]` |
 | `bookings` | `booking_number` préfixé `DEMO-` |
+| `users` | adresse sur le domaine réservé `demo.wetchah.test` |
 | autres | `name` / `label` présent dans le jeu de référence |
 
 Relancer l'installation complète les manques sans créer de doublon. C'est ce qui
@@ -76,8 +79,29 @@ et une chambre réellement créés, une ligne de folio vers sa réservation.
 
 ## Ce que le jeu ne crée jamais
 
-- **Aucun utilisateur ni rôle** : les comptes viennent de la console, et un compte
-  fictif capable de se connecter serait une porte d'entrée.
+- **Aucun rôle, aucun administrateur** : les rôles viennent du référentiel de
+  l'application, l'administrateur du provisioning.
+
+## Le personnel de démonstration
+
+`staff.json` décrit le personnel de l'hôtel : chaque service a au moins deux
+personnes, chaque rôle du PMS au moins une. On peut ainsi se connecter sous
+n'importe quel poste pour montrer ce qu'il voit et ce qu'il fait. La fiche de
+l'établissement, onglet Paramètres, en donne la liste : équipe, personne,
+identifiant, rôle, département et ce que le rôle permet.
+
+Ces comptes ouvrent une session : ils sont donc bornés.
+
+- **Adresses sur `demo.wetchah.test`**, domaine réservé : aucun courrier ne
+  part, et c'est le marqueur de la purge (`StaffSeeder::DOMAINE`).
+- **Un mot de passe par établissement**, commun à ses comptes de démonstration,
+  tiré au hasard à la première installation et gardé chiffré dans la console
+  (`tenants.demo_password`). Le seeder n'en reçoit que l'empreinte. Il n'est
+  écrit nulle part dans le dépôt : un mot de passe connu de tous ouvrirait
+  chaque établissement de démonstration.
+- **Un rôle par personne** : aucun cumul que la séparation des tâches refuserait.
+- **La purge supprime les comptes.** Celui que des données réelles citent est
+  désactivé, et son mot de passe remplacé par un tirage que personne ne connaît.
 - **Aucune écriture comptable** (`journal_entries`, `fiscal_years`) : ces tables
   portent des soldes que l'application calcule elle-même. Y injecter des lignes
   fausserait les états financiers sans moyen simple de revenir en arrière.

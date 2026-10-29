@@ -4,6 +4,7 @@ namespace Demo;
 
 use Demo\Seeders\BookingSeeder;
 use Demo\Seeders\CustomerSeeder;
+use Demo\Seeders\StaffSeeder;
 use PDO;
 
 /**
@@ -48,6 +49,7 @@ class Purger
         $supprimes += $this->purgerCharges($log);
         $supprimes += $this->purgerClients($log);
         $supprimes += $this->purgerCatalogue($log);
+        $supprimes += $this->purgerPersonnel($log);
 
         return ['total' => $supprimes, 'kept' => $this->conserves];
     }
@@ -296,6 +298,58 @@ class Purger
     // ── Aides ────────────────────────────────────────────────────────────────
 
     /** Une valeur est-elle référencée par l'une des dépendances listées ? */
+    /**
+     * Les comptes du personnel de démonstration, reconnus à leur domaine.
+     *
+     * Un compte dont l'établissement s'est servi — une écriture, une caisse,
+     * un journal le citent — ne peut pas disparaître sans casser ces lignes :
+     * il est alors désactivé, et son mot de passe remplacé par un tirage que
+     * personne ne connaît. Il ne s'ouvre plus, et l'historique reste lisible.
+     */
+    private function purgerPersonnel(callable $log): int
+    {
+        if (!$this->table('users')) {
+            return 0;
+        }
+
+        $ids = $this->ids('SELECT id FROM users WHERE lower(email) LIKE ?', ['%@' . StaffSeeder::DOMAINE]);
+        $supprimes = 0;
+        $fermes    = 0;
+
+        foreach ($ids as $id) {
+            // Un point de reprise par compte : sous PostgreSQL, une contrainte
+            // violée annule toute la transaction si on ne le pose pas.
+            $this->pdo->exec('SAVEPOINT compte_demo');
+
+            try {
+                $this->executer('DELETE FROM users WHERE id = ?', [$id]);
+                $this->pdo->exec('RELEASE SAVEPOINT compte_demo');
+                $supprimes++;
+            } catch (\PDOException) {
+                $this->pdo->exec('ROLLBACK TO SAVEPOINT compte_demo');
+                $this->executer(
+                    'UPDATE users SET is_active = false, password = ?, remember_token = NULL WHERE id = ?',
+                    [password_hash(bin2hex(random_bytes(24)), PASSWORD_BCRYPT), $id]
+                );
+                $fermes++;
+            }
+        }
+
+        if ($ids !== [] && $this->table('sessions') && $this->colonne('sessions', 'user_id')) {
+            $this->executer('DELETE FROM sessions WHERE user_id IN (' . $this->trous($ids) . ')', $ids);
+        }
+
+        if ($supprimes > 0) {
+            $log('purge', "· Personnel de démonstration : {$supprimes} compte(s).", 'info');
+        }
+
+        if ($fermes > 0) {
+            $this->conserves[] = "{$fermes} compte(s) du personnel de démonstration désactivé(s), sans mot de passe utilisable : des données réelles les citent.";
+        }
+
+        return $supprimes;
+    }
+
     private function estReference(int $id, array $dependances): bool
     {
         foreach ($dependances as $table => $colonnes) {
