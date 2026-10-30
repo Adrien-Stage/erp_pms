@@ -152,6 +152,28 @@ class OperationsSeeder extends AbstractModuleSeeder
             }
         }
 
+        // Les zones de rangement du magasin : chaque famille a la sienne
+        // (viandes et poissons en chambre froide 1, eaux et sirops en cave…).
+        // Le « Magasin central » que l'application pose est repris tel quel.
+        $zoneDeFamille = [];
+
+        if ($this->tableExists('storage_zones')) {
+            foreach ($o['storage_zones'] ?? [] as $rang => $zone) {
+                $avant = $this->findId('storage_zones', ['name' => $zone['name']]);
+                $zoneId = $avant ?? $this->insert('storage_zones', array_merge(
+                    ['name' => $zone['name'], 'sort_order' => $rang, 'is_active' => true],
+                    $this->timestamps()
+                ));
+
+                foreach ($zone['categories'] as $famille) {
+                    $zoneDeFamille[$famille] = $zoneId;
+                }
+
+                if ($avant === null) {
+                    $crees++;
+                }
+            }
+        }
 
         foreach ($o['stock_items'] as $rang => $article) {
             $tarifs = array_values(array_filter(
@@ -165,12 +187,19 @@ class OperationsSeeder extends AbstractModuleSeeder
                 // de l'établissement, homonyme, n'est pas touché.
                 if (Registre::contient($this->pdo, 'stock_items', $existant)) {
                     $this->tarifs($existant, $tarifs, $parNom);
+
+                    // Rangé, d'une installation antérieure, au magasin central par défaut.
+                    if (isset($zoneDeFamille[$article['category']])) {
+                        $this->pdo->prepare('UPDATE stock_items SET storage_zone_id = ? WHERE id = ?')
+                            ->execute([$zoneDeFamille[$article['category']], $existant]);
+                    }
                 }
                 continue;
             }
 
             $itemId = $this->insert('stock_items', array_merge([
                 'stock_category_id'   => $familles[$article['category']] ?? null,
+                'storage_zone_id'     => $zoneDeFamille[$article['category']] ?? null,
                 'name'                => $article['name'],
                 'reference'           => 'DEMO-S' . str_pad((string) ($rang + 1), 4, '0', STR_PAD_LEFT),
                 'unit'                => $this->unite($article['unit']),

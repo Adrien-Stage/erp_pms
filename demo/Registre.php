@@ -140,6 +140,8 @@ final class Registre
             ['suppliers', 'name', array_merge($noms($d['operations']['suppliers'] ?? []), self::ANCIENS_FOURNISSEURS)],
             ['stock_categories', 'name', array_merge($noms($d['operations']['stock_categories'] ?? []), self::ANCIENNES_FAMILLES)],
             ['stock_units', 'name', self::UNITES_DU_JEU],
+            // Le « Magasin central » est posé par l'application, pas par le jeu.
+            ['storage_zones', 'name', array_values(array_diff($noms($d['operations']['storage_zones'] ?? []), ['Magasin central']))],
             ['stock_items', 'reference LIKE', 'DEMO-S%'],
             ['users', 'lower(email) LIKE', '%@' . StaffSeeder::DOMAINE],
         ];

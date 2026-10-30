@@ -207,7 +207,7 @@ class Purger
         'stock_units' => 'unités de stock', 'stock_items' => 'articles de stock', 'role_user' => 'rôles du personnel',
         'housekeeping_team_user' => 'membres des équipes', 'point_of_sale_user' => 'rattachements au restaurant',
         'technician_specialties' => 'spécialités techniques',
-        'stock_item_supplier' => 'tarifs fournisseurs',
+        'stock_item_supplier' => 'tarifs fournisseurs', 'storage_zones' => 'zones de rangement',
     ];
 
     /**
@@ -224,30 +224,42 @@ class Purger
 
         $lignes  = $this->pdo->query('SELECT id, table_name, record_id FROM ' . Registre::TABLE . ' ORDER BY id DESC')->fetchAll(PDO::FETCH_ASSOC);
         $retires = [];
-        $gardes  = [];
 
-        foreach ($lignes as $ligne) {
-            $table = $ligne['table_name'];
-            $id    = (int) $ligne['record_id'];
+        // Du plus récent au plus ancien ; une ligne encore citée par une autre
+        // du jeu, inscrite avant elle (une zone ajoutée après ses articles…),
+        // est reprise au tour suivant, tant qu'un tour retire quelque chose.
+        do {
+            $restantes = [];
+            $gardes    = [];
+            $avance    = false;
 
-            if ($table === 'users') {
-                continue;
-            }
+            foreach ($lignes as $ligne) {
+                $table = $ligne['table_name'];
+                $id    = (int) $ligne['record_id'];
 
-            // Déjà partie (avec son parent, ou effacée depuis) : l'inscription aussi.
-            if (!$this->table($table) || $this->ids("SELECT id FROM \"{$table}\" WHERE id = ?", [$id]) === []) {
+                if ($table === 'users') {
+                    continue;
+                }
+
+                // Déjà partie (avec son parent, ou effacée depuis) : l'inscription aussi.
+                if (!$this->table($table) || $this->ids("SELECT id FROM \"{$table}\" WHERE id = ?", [$id]) === []) {
+                    $this->desinscrire((int) $ligne['id']);
+                    continue;
+                }
+
+                if ($this->estCitee($table, $id) || !$this->supprimerLigne($table, $id)) {
+                    $gardes[$table] = ($gardes[$table] ?? 0) + 1;
+                    $restantes[] = $ligne;
+                    continue;
+                }
+
                 $this->desinscrire((int) $ligne['id']);
-                continue;
+                $retires[$table] = ($retires[$table] ?? 0) + 1;
+                $avance = true;
             }
 
-            if ($this->estCitee($table, $id) || !$this->supprimerLigne($table, $id)) {
-                $gardes[$table] = ($gardes[$table] ?? 0) + 1;
-                continue;
-            }
-
-            $this->desinscrire((int) $ligne['id']);
-            $retires[$table] = ($retires[$table] ?? 0) + 1;
-        }
+            $lignes = $restantes;
+        } while ($avance && $lignes !== []);
 
         if ($retires !== []) {
             $log('purge', '· Catalogue, clients et rattachements : ' . $this->detail($retires) . '.', 'info');
