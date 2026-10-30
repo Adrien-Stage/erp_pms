@@ -81,9 +81,15 @@ class StaffSeeder extends AbstractModuleSeeder
                 ], $this->timestamps()));
                 $crees++;
             } else {
-                // Compte déjà là : il reprend le mot de passe du jeu et rouvre.
+                // Compte déjà là : il reprend le mot de passe du jeu et rouvre ;
+                // sans département, il reçoit le sien s'il existe désormais.
                 $this->pdo->prepare('UPDATE users SET password = ?, is_active = true WHERE id = ?')
                     ->execute([$empreinte, $userId]);
+
+                if (($departement = $departements[$personne['department'] ?? ''] ?? null) !== null) {
+                    $this->pdo->prepare('UPDATE users SET department_id = ? WHERE id = ? AND department_id IS NULL')
+                        ->execute([$departement, $userId]);
+                }
             }
 
             $this->rattacher('role_user', ['user_id' => $userId, 'role_id' => $roleId], ['level' => 'write']);
