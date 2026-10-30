@@ -63,8 +63,21 @@
     $ecritures = array_flip($matrice['ecritures'] ?? []);
     $bornes = $matrice['droits_bornes'] ?? [];
     $portees = $matrice['portees'] ?? [];
-    $parModule = collect($matrice['catalogue'] ?? [])
-        ->groupBy(fn ($r, $droit) => explode('.', $droit)[0], preserveKeys: true);
+    // Groupes par service responsable, tels que l'établissement les range
+    // (son « classement ») ; un établissement plus ancien ne l'envoie pas :
+    // ses droits se rangent alors par préfixe, comme avant.
+    $classement = $matrice['classement'] ?? [];
+    $catalogue = $matrice['catalogue'] ?? [];
+    if ($classement !== []) {
+        $parModule = collect($classement)
+            ->sortBy('rang')
+            ->filter(fn ($c, $droit) => array_key_exists($droit, $catalogue))
+            ->groupBy('groupe_libelle', preserveKeys: true)
+            ->map(fn ($liste) => $liste->map(fn ($c, $droit) => $catalogue[$droit]));
+    } else {
+        $parModule = collect($catalogue)
+            ->groupBy(fn ($r, $droit) => explode('.', $droit)[0], preserveKeys: true);
+    }
 
     $administrateurs = collect($matrice['comptes'] ?? [])->filter(fn (array $c) => in_array('admin', $c['roles'], true))->values();
     $restrictions = collect($matrice['restrictions'] ?? []);
@@ -272,7 +285,12 @@
                                     @foreach($droits as $droit => $detenteurs)
                                         <tr class="group">
                                             <th scope="row" class="sticky left-0 z-10 border-b border-r border-slate-100 bg-white px-4 py-1.5 text-left font-mono text-[11px] font-normal text-slate-700 group-hover:bg-slate-50">
-                                                {{ $droit }}
+                                                @isset($classement[$droit])
+                                                    <span class="block font-sans font-semibold text-slate-800">{{ $classement[$droit]['ecran'] }} — {{ $classement[$droit]['action'] }}</span>
+                                                    <span class="text-[10px] text-slate-400">{{ $droit }}</span>
+                                                @else
+                                                    {{ $droit }}
+                                                @endisset
                                                 @if(!isset($ecritures[$droit]))
                                                     <span class="ml-1 rounded bg-slate-100 px-1 font-sans text-[9px] text-slate-500">lecture</span>
                                                 @endif
@@ -1012,7 +1030,9 @@
                     module.querySelectorAll('tbody tr').forEach((ligne) => {
                         const boites = [...ligne.querySelectorAll('input[type="checkbox"][data-droit]')];
                         const droit = boites[0]?.dataset.droit ?? '';
-                        const parLeTexte = terme === '' || droit.toLowerCase().includes(terme);
+                        // Le code du droit ou son libellé.
+                        const libelle = (ligne.querySelector('th')?.textContent ?? '').toLowerCase();
+                        const parLeTexte = terme === '' || droit.toLowerCase().includes(terme) || libelle.includes(terme);
                         const parLEcart = !ecarts || boites.some((c) =>
                             c.classList.contains('case-droit') && (role === '' || c.dataset.role === role) && ecartDe(c) !== null);
                         const visible = parLeTexte && parLEcart;
