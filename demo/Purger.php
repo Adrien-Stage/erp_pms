@@ -207,6 +207,7 @@ class Purger
         'stock_units' => 'unités de stock', 'stock_items' => 'articles de stock', 'role_user' => 'rôles du personnel',
         'housekeeping_team_user' => 'membres des équipes', 'point_of_sale_user' => 'rattachements au restaurant',
         'technician_specialties' => 'spécialités techniques',
+        'stock_item_supplier' => 'tarifs fournisseurs',
     ];
 
     /**

@@ -30,11 +30,14 @@ final class Registre
         "Produits d'entretien", 'Linge de maison', 'Accueil chambre', 'Consommables cuisine', 'Fournitures bureau',
     ];
 
-    /** Fournisseur des anciennes données, retiré du jeu avec le linge. */
-    private const ANCIENS_FOURNISSEURS = ['Linge & Textile SARL'];
+    /** Fournisseurs des anciennes données, retirés du jeu : le linge, et un marché qui n'est pas un fournisseur. */
+    private const ANCIENS_FOURNISSEURS = ['Linge & Textile SARL', 'Marché Central Douala'];
 
-    /** Unités que le jeu ajoute à la liste de l'application, qui ne les a pas par défaut. */
-    private const UNITES_DU_JEU = ['bidon', 'flacon', 'plateau'];
+    /**
+     * Unité que le jeu ajoute à la liste de l'application, qui ne l'a pas par
+     * défaut. Bidon et flacon en font désormais partie : ils restent.
+     */
+    private const UNITES_DU_JEU = ['plateau', 'Plateau'];
 
     /**
      * Crée le registre s'il n'existe pas.
@@ -71,6 +74,19 @@ final class Registre
     {
         $pdo->prepare('INSERT INTO ' . self::TABLE . ' (table_name, record_id) VALUES (?, ?) ON CONFLICT DO NOTHING')
             ->execute([$table, $id]);
+    }
+
+    /** Cette ligne a-t-elle été créée par le jeu ? */
+    public static function contient(PDO $pdo, string $table, int $id): bool
+    {
+        if (!self::existe($pdo)) {
+            return false;
+        }
+
+        $stmt = $pdo->prepare('SELECT 1 FROM ' . self::TABLE . ' WHERE table_name = ? AND record_id = ?');
+        $stmt->execute([$table, $id]);
+
+        return $stmt->fetchColumn() !== false;
     }
 
     /** Le jeu a-t-il des lignes dans cet établissement ? */
@@ -139,6 +155,18 @@ final class Registre
 
             foreach (self::ids($pdo, "SELECT id FROM {$table} WHERE {$condition} ORDER BY id", $params) as $id) {
                 self::noter($pdo, $table, $id);
+            }
+
+            // Les tarifs des articles du jeu suivent leurs articles : sans
+            // eux, ils les retiendraient à la purge.
+            if ($table === 'stock_items' && self::table($pdo, 'stock_item_supplier')) {
+                $tarifs = self::ids($pdo,
+                    'SELECT t.id FROM stock_item_supplier t JOIN ' . self::TABLE . " r ON r.table_name = 'stock_items' AND r.record_id = t.stock_item_id ORDER BY t.id",
+                    []);
+
+                foreach ($tarifs as $id) {
+                    self::noter($pdo, 'stock_item_supplier', $id);
+                }
             }
         }
     }

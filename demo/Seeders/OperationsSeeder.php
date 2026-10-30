@@ -2,6 +2,8 @@
 
 namespace Demo\Seeders;
 
+use Demo\Registre;
+
 /**
  * L'exploitation : ménage, fournisseurs, stock, charges et partenaires.
  *
@@ -97,15 +99,14 @@ class OperationsSeeder extends AbstractModuleSeeder
     /** Fournisseurs, familles de stock et articles. */
     private function achats(array $o): int
     {
-        $crees        = 0;
-        $fournisseurs = [];
-        $parNom       = [];
+        $crees  = 0;
+        $parNom = [];
 
         if ($this->tableExists('suppliers')) {
             foreach ($o['suppliers'] as $f) {
                 $avant = $this->findId('suppliers', ['name' => $f['name']]);
 
-                $fournisseurs[] = $parNom[$f['name']] = $this->insertOnce(
+                $parNom[$f['name']] = $this->insertOnce(
                     'suppliers',
                     ['name' => $f['name']],
                     array_merge([
@@ -115,12 +116,18 @@ class OperationsSeeder extends AbstractModuleSeeder
                         'phone'         => $f['phone'],
                         'email'         => $f['email'],
                         'category'      => $f['category'],
+                        'city'          => $f['city'] ?? null,
+                        'payment_terms' => $f['payment_terms'] ?? null,
                         'is_active'     => true,
                     ], $this->timestamps())
                 );
 
                 if ($avant === null) {
                     $crees++;
+                } elseif (Registre::contient($this->pdo, 'suppliers', $avant)) {
+                    // Un fournisseur du jeu, d'une installation antérieure :
+                    // sa catégorie devient une clé que l'application connaît.
+                    $this->pdo->prepare('UPDATE suppliers SET category = ? WHERE id = ?')->execute([$f['category'], $avant]);
                 }
             }
         }
@@ -145,37 +152,104 @@ class OperationsSeeder extends AbstractModuleSeeder
             }
         }
 
-        // Unités propres au jeu de démonstration (bidon, flacon, plateau…) :
-        // ajoutées à la liste de l'établissement pour rester choisissables.
-        if ($this->tableExists('stock_units')) {
-            foreach (array_unique(array_column($o['stock_items'], 'unit')) as $unite) {
-                $this->insertOnce('stock_units', ['name' => $unite], array_merge(['sort_order' => 100, 'is_active' => true], $this->timestamps()));
-            }
-        }
 
         foreach ($o['stock_items'] as $rang => $article) {
-            if ($this->findId('stock_items', ['name' => $article['name']]) !== null) {
+            $tarifs = array_values(array_filter(
+                $article['suppliers'] ?? [],
+                fn (array $t) => isset($parNom[$t[0]])
+            ));
+            $existant = $this->findId('stock_items', ['name' => $article['name']]);
+
+            if ($existant !== null) {
+                // Un article du jeu reçoit les tarifs qui lui manquent ; celui
+                // de l'établissement, homonyme, n'est pas touché.
+                if (Registre::contient($this->pdo, 'stock_items', $existant)) {
+                    $this->tarifs($existant, $tarifs, $parNom);
+                }
                 continue;
             }
 
-            $this->insert('stock_items', array_merge([
+            $itemId = $this->insert('stock_items', array_merge([
                 'stock_category_id'   => $familles[$article['category']] ?? null,
                 'name'                => $article['name'],
                 'reference'           => 'DEMO-S' . str_pad((string) ($rang + 1), 4, '0', STR_PAD_LEFT),
-                'unit'                => $article['unit'],
+                'unit'                => $this->unite($article['unit']),
                 'current_stock'       => $article['min'] * 2,
                 'min_stock'           => $article['min'],
                 // Les prix du jeu sont en FCFA ; l'application compte en centimes.
                 'average_cost'        => $article['price'] * 100,
                 'last_purchase_price' => $article['price'] * 100,
-                'supplier_id'         => $parNom[$article['supplier'] ?? ''] ?? ($fournisseurs === [] ? null : $this->cycle($fournisseurs, $rang)),
+                // Le fournisseur habituel : le premier de la liste.
+                'supplier_id'         => isset($tarifs[0]) ? $parNom[$tarifs[0][0]] : null,
                 'is_active'           => true,
             ], $this->timestamps()));
 
+            $this->tarifs($itemId, $tarifs, $parNom);
             $crees++;
         }
 
         return $crees;
+    }
+
+    /** @var array<string, string> unité du jeu => symbole de l'établissement */
+    private array $unites = [];
+
+    /**
+     * L'unité de l'établissement qui correspond à celle du jeu, par son nom
+     * (« pièce », « Kilogramme ») ou son symbole (« kg », « pcs ») ; l'article
+     * porte son symbole, comme ceux que l'application crée. Une unité
+     * inconnue (plateau…) est ajoutée à la liste pour rester choisissable.
+     */
+    private function unite(string $unite): string
+    {
+        if (isset($this->unites[$unite]) || !$this->tableExists('stock_units')) {
+            return $this->unites[$unite] ?? $unite;
+        }
+
+        $avecSymbole = (bool) $this->pdo->query(
+            "SELECT 1 FROM information_schema.columns WHERE table_name = 'stock_units' AND column_name = 'short_name'"
+        )->fetchColumn();
+        $colonnes = $avecSymbole ? "name, COALESCE(NULLIF(short_name, ''), name)" : 'name, name';
+        $condition = $avecSymbole ? 'lower(name) = lower(?) OR lower(short_name) = lower(?)' : 'lower(name) = lower(?)';
+
+        $stmt = $this->pdo->prepare("SELECT {$colonnes} FROM stock_units WHERE {$condition} ORDER BY id LIMIT 1");
+        $stmt->execute($avecSymbole ? [$unite, $unite] : [$unite]);
+        $trouvee = $stmt->fetch(\PDO::FETCH_NUM);
+
+        if ($trouvee !== false) {
+            return $this->unites[$unite] = $trouvee[1];
+        }
+
+        $this->insert('stock_units', array_merge([
+            'name'       => mb_strtoupper(mb_substr($unite, 0, 1)) . mb_substr($unite, 1),
+            'short_name' => $unite,
+            'sort_order' => 100,
+            'is_active'  => true,
+        ], $this->timestamps()));
+
+        return $this->unites[$unite] = $avecSymbole ? $unite : mb_strtoupper(mb_substr($unite, 0, 1)) . mb_substr($unite, 1);
+    }
+
+    /**
+     * Le prix de l'article chez chacun de ses fournisseurs, dans son unité de
+     * stock, en centimes.
+     *
+     * @param  list<array{0: string, 1: int}>  $tarifs  [nom du fournisseur, prix en FCFA]
+     * @param  array<string, int>  $parNom
+     */
+    private function tarifs(int $itemId, array $tarifs, array $parNom): void
+    {
+        if (!$this->tableExists('stock_item_supplier')) {
+            return;
+        }
+
+        foreach ($tarifs as [$fournisseur, $prix]) {
+            $this->insertOnce(
+                'stock_item_supplier',
+                ['stock_item_id' => $itemId, 'supplier_id' => $parNom[$fournisseur]],
+                array_merge(['purchase_price' => $prix * 100, 'priced_at' => $this->jours(-20)], $this->timestamps())
+            );
+        }
     }
 
     /** Charges d'exploitation des derniers mois. */
