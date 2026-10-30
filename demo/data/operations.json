@@ -28,6 +28,13 @@
         { "name": "Gaz Express Douala", "contact": "Service livraison", "phone": "+237 699 40 50 60", "email": "livraison@gazexpress.example", "category": "other", "city": "Douala", "payment_terms": "cash" }
     ],
 
+    "storage_zones": [
+        { "name": "Magasin central", "categories": ["ENTRETIEN", "FOURNITURES DE BUREAU", "PRODUITS D'ACCUEIL", "PRODUITS DIVERS", "PUBLICITE"] },
+        { "name": "Cave", "categories": ["EAUX MINERALES", "SIROP"] },
+        { "name": "Épicerie", "categories": ["EPICERIE", "BISCUITS", "CONFISERIES", "LEGUMINEUSES", "LAIT"] },
+        { "name": "Chambre froide 1", "categories": ["VIANDES BLANCHES", "VIANDES ROUGES", "POISSONS", "CHARCUTERIE"] },
+        { "name": "Chambre froide 2", "categories": ["BEURRE", "FROMAGE", "OEUFS", "LEGUMES", "FRUITS"] }
+    ],
     "stock_categories": [
         { "name": "BEURRE" },
         { "name": "BISCUITS" },
