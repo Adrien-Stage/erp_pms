@@ -30,9 +30,18 @@ class LoginRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'email' => ['required', 'string', 'email'],
+            'login' => ['required_without:email', 'string'],
+            'email' => ['required_without:login', 'string'],
             'password' => ['required', 'string'],
         ];
+    }
+
+    /**
+     * Get the login identifier (either 'login' or 'email').
+     */
+    public function loginCredential(): string
+    {
+        return trim((string) ($this->input('login') ?? $this->input('email')));
     }
 
     /**
@@ -44,29 +53,29 @@ class LoginRequest extends FormRequest
     {
         $this->ensureIsNotRateLimited();
 
-        $user = User::where('email', $this->string('email')->toString())->first();
+        $login = $this->loginCredential();
+        $user = User::where('email', $login)->first();
 
-        if ($user && !$user->is_active && Hash::check($this->string('password')->toString(), $user->password)) {
+        if ($user && ! $user->is_active) {
             RateLimiter::hit($this->throttleKey());
 
+            $field = $this->has('login') ? 'login' : 'email';
             throw ValidationException::withMessages([
-                'email' => 'Votre compte a ete desactive. Veuillez contacter votre manager.',
+                $field => 'Votre compte administrateur a été désactivé.',
             ]);
         }
 
-        if ($user && $user->isAdmin() && Hash::check($this->string('password')->toString(), $user->password)) {
+        $credentials = [
+            'email' => $login,
+            'password' => (string) $this->input('password'),
+        ];
+
+        if (! Auth::attempt($credentials, $this->boolean('remember'))) {
             RateLimiter::hit($this->throttleKey());
 
+            $field = $this->has('login') ? 'login' : 'email';
             throw ValidationException::withMessages([
-                'email' => trans('auth.failed'),
-            ]);
-        }
-
-        if (! Auth::attempt($this->only('email', 'password'), $this->boolean('remember'))) {
-            RateLimiter::hit($this->throttleKey());
-
-            throw ValidationException::withMessages([
-                'email' => trans('auth.failed'),
+                $field => trans('auth.failed'),
             ]);
         }
 
@@ -87,9 +96,10 @@ class LoginRequest extends FormRequest
         event(new Lockout($this));
 
         $seconds = RateLimiter::availableIn($this->throttleKey());
+        $field = $this->has('login') ? 'login' : 'email';
 
         throw ValidationException::withMessages([
-            'email' => trans('auth.throttle', [
+            $field => trans('auth.throttle', [
                 'seconds' => $seconds,
                 'minutes' => ceil($seconds / 60),
             ]),
@@ -101,6 +111,6 @@ class LoginRequest extends FormRequest
      */
     public function throttleKey(): string
     {
-        return Str::transliterate(Str::lower($this->string('email')).'|'.$this->ip());
+        return Str::transliterate(Str::lower($this->loginCredential()).'|'.$this->ip());
     }
 }
