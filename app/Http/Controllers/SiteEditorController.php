@@ -7,6 +7,8 @@ use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 /**
@@ -41,15 +43,30 @@ class SiteEditorController extends Controller
             'password' => ['required', 'string'],
         ]);
 
+        $throttleKey = Str::transliterate(Str::lower($credentials['email']).'|'.$request->ip());
+
+        if (RateLimiter::tooManyAttempts($throttleKey, 5)) {
+            $seconds = RateLimiter::availableIn($throttleKey);
+            return back()
+                ->withInput(['email' => $credentials['email']])
+                ->withErrors(['email' => trans('auth.throttle', [
+                    'seconds' => $seconds,
+                    'minutes' => ceil($seconds / 60),
+                ])]);
+        }
+
         $user = User::where('email', $credentials['email'])->first();
 
         // Un même message pour tous les échecs : identifiant inconnu, mot de
         // passe faux, compte désactivé ou compte d'un autre rôle. Distinguer
         // ces cas révélerait quels comptes existent, et surtout que cette
         // adresse sert aussi à autre chose.
-        $echec = fn () => back()
-            ->withInput(['email' => $credentials['email']])
-            ->withErrors(['email' => 'Identifiants incorrects.']);
+        $echec = function () use ($credentials, $throttleKey) {
+            RateLimiter::hit($throttleKey);
+            return back()
+                ->withInput(['email' => $credentials['email']])
+                ->withErrors(['email' => 'Identifiants incorrects.']);
+        };
 
         if (!$user || !$user->isSiteEditor() || !$user->is_active) {
             return $echec();
@@ -58,6 +75,8 @@ class SiteEditorController extends Controller
         if (!Auth::attempt(['email' => $credentials['email'], 'password' => $credentials['password']], $request->boolean('remember'))) {
             return $echec();
         }
+
+        RateLimiter::clear($throttleKey);
 
         // Rattachement manquant : le compte n'a pas de site à éditer.
         if (!Auth::user()->tenant_id) {
@@ -164,6 +183,7 @@ class SiteEditorController extends Controller
             'role'      => User::ROLE_SITE_EDITOR,
             'tenant_id' => $tenant->id,
             'is_active' => true,
+            'must_change_password' => true,
         ]);
 
         AuditLog::record(Auth::id(), 'site_editor_create',

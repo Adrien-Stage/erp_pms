@@ -7,7 +7,9 @@ use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
@@ -111,6 +113,7 @@ class OwnerController extends Controller
         // Champ laissé vide = mot de passe inchangé, et non effacé.
         if (!empty($validated['password'])) {
             $owner->password = Hash::make($validated['password']);
+            $owner->must_change_password = false;
         }
 
         $owner->save();
@@ -126,6 +129,13 @@ class OwnerController extends Controller
         $this->ensureOwner($owner);
 
         $owner->update(['is_active' => !$owner->is_active]);
+
+        if (! $owner->is_active) {
+            $owner->forceFill(['remember_token' => Str::random(60)])->save();
+            if (config('session.driver') === 'database') {
+                DB::table(config('session.table', 'sessions'))->where('user_id', $owner->id)->delete();
+            }
+        }
 
         $etat = $owner->is_active ? 'activé' : 'désactivé';
         AuditLog::record(Auth::id(), 'owner_toggle_active', "Propriétaire {$owner->name} {$etat}", 'owners');

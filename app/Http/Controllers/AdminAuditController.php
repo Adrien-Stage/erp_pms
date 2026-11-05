@@ -20,6 +20,7 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -198,6 +199,7 @@ class AdminAuditController extends Controller
                 'password' => Hash::make($request->owner_password),
                 'role' => User::ROLE_OWNER,
                 'is_active' => true,
+                'must_change_password' => true,
             ]);
             $ownerId = $newOwner->id;
         } else {
@@ -2006,6 +2008,14 @@ class AdminAuditController extends Controller
 
         $user->update(['is_active' => ! $user->is_active]);
 
+        // S1 : Si désactivé, révoquer les sessions actives et le jeton de mémorisation
+        if (! $user->is_active) {
+            $user->forceFill(['remember_token' => Str::random(60)])->save();
+            if (config('session.driver') === 'database') {
+                DB::table(config('session.table', 'sessions'))->where('user_id', $user->id)->delete();
+            }
+        }
+
         AuditLog::record(
             $admin->id,
             'user_management',
@@ -2029,7 +2039,15 @@ class AdminAuditController extends Controller
             abort(403);
         }
         $tempPassword = Str::random(10);
-        $user->update(['password' => Hash::make($tempPassword)]);
+        $user->forceFill([
+            'password' => Hash::make($tempPassword),
+            'must_change_password' => true,
+            'remember_token' => Str::random(60),
+        ])->save();
+
+        if (config('session.driver') === 'database') {
+            DB::table(config('session.table', 'sessions'))->where('user_id', $user->id)->delete();
+        }
 
         // Le mot de passe lui-même ne part évidemment pas au journal : seul
         // le fait qu'un administrateur ait pris la main sur ce compte y figure.
