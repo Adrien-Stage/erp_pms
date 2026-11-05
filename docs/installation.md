@@ -44,6 +44,7 @@ git clone <url-du-depot> wetchah_erp
 
 ```bash
 cp .env.docker .env
+php artisan key:generate
 ```
 
 Puis éditer le `.env`. Le minimum à renseigner :
