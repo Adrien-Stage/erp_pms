@@ -27,7 +27,7 @@ class EnsureRoleAccess
 
         $user = Auth::user();
 
-        // S1 : Si le compte a été désactivé, couper immédiatement la session existante
+        // S1 : Si le compte a été désactivé, déconnecter et invalider la session
         if (! $user->is_active) {
             Auth::logout();
             if ($request->hasSession()) {
@@ -35,7 +35,7 @@ class EnsureRoleAccess
                 $request->session()->regenerateToken();
             }
             if ($request->expectsJson()) {
-                return response()->json(['message' => 'Ce compte administrateur a été désactivé.'], 403);
+                return response()->json(['message' => 'Ce compte a été désactivé.'], 403);
             }
             return redirect()->guest(route('login'))->withErrors(['login' => 'Ce compte a été désactivé.']);
         }
@@ -52,87 +52,139 @@ class EnsureRoleAccess
         }
         $authorizedRoles = array_map('trim', $authorizedRoles);
 
-        // Vérifier si l'utilisateur a l'un des rôles autorisés
-        if (!$user->hasAnyRole($authorizedRoles)) {
-            // Log l'accès refusé pour audit dans la base de données
-            \App\Models\AuditLog::record(
-                $user->id,
-                'access_denied',
-                'Accès refusé. Rôles requis: ' . implode(', ', $authorizedRoles) . ' (URL: ' . $request->getPathInfo() . ')',
-                'security',
-                ['url' => $request->fullUrl(), 'required_roles' => $authorizedRoles]
-            );
+        // Seuls les rôles réellement détenus ouvrent l'accès.
+        //
+        // Le département en conférait aussi, silencieusement : rattacher un
+        // réceptionniste à « Direction Générale » lui donnait manager et admin,
+        // donc la gestion des utilisateurs et la comptabilité, sans que
+        // personne ne lui ait accordé ces rôles. Mesuré avant retrait : la même
+        // personne passait de 302 à 200 sur /users et /accounting par le seul
+        // effet de son rattachement.
+        //
+        // Le département restreint désormais les données, il n'accorde plus de
+        // droits. La commande « roles:audit-departements » liste les comptes
+        // qui dépendaient de cet octroi, pour que les rôles leur soient donnés
+        // explicitement plutôt que déduits.
+        $hasRole = $user->hasAnyRole($authorizedRoles);
 
-            // Messages d'erreur personnalisés par contexte
-            $customMessages = [
-                'admin' => 'Accès réservé à l\'administration.',
-                'manager' => 'Seul un manager peut effectuer cette action.',
-                'reception' => 'Réservé au personnel de réception.',
-                'housekeeping_leader' => 'Réservé aux chefs d\'équipe housekeeping.',
-                'housekeeping_staff' => 'Réservé au personnel housekeeping.',
-                'housekeeping' => 'Réservé au personnel housekeeping.',
-                'accountant' => 'Accès réservé à la comptabilité.',
-                'cashier' => 'Accès réservé aux caissiers.',
-            ];
-
-            $message = 'Accès refusé. Rôles requis: ' . implode(', ', $authorizedRoles);
-
-            // Essayer de trouver un message plus spécifique
-            foreach ($authorizedRoles as $role) {
-                if (isset($customMessages[$role])) {
-                    $message = $customMessages[$role];
-                    break;
-                }
-            }
-
-            // Pour les requêtes AJAX ou qui attendent un popup
-            if ($request->expectsJson() ||
-                $request->header('X-Requested-With') === 'XMLHttpRequest' ||
-                $request->header('X-Expect-Popup') === 'true') {
-
-                return response()->json([
-                    'access_denied' => true,
-                    'message' => $message,
-                    'required_roles' => $authorizedRoles
-                ], 403);
-            }
-
-            // Log l'accès refusé pour audit
-            \Log::warning('RBAC Access Denied', [
-                'user_id' => $user->id,
-                'user_email' => $user->email,
-                'user_role' => $user->role,
-                'required_roles' => $authorizedRoles,
-                'url' => $request->fullUrl(),
-                'ip' => $request->ip(),
-            ]);
-
-            $fallbackUrl = url()->previous();
-            $currentUrl = $request->fullUrl();
-
-            if (empty($fallbackUrl) || $fallbackUrl === $currentUrl) {
-                // Cet ERP n'a pas de route « dashboard » unique : chaque profil
-                // a la sienne. La nommer en dur produisait une erreur 500 à la
-                // place du refus, dès qu'un accès était bloqué sans référent.
-                $fallbackUrl = match (true) {
-                    $user->isTechAdmin() => route('tech.dashboard'),
-                    $user->isOwner()     => route('business.dashboard'),
-                    default              => route('login'),
-                };
-            }
-
-            return redirect($fallbackUrl)->with([
-                'access_denied_popup' => true,
-                'access_denied_message' => $message,
-            ]);
-        }
-
-        // Vérifier l'isolation multi-tenant (sauf pour admin global)
-        if (!$user->isAdmin()) {
-            $this->validateTenantAccess($request, $user);
+        if (!$hasRole) {
+            return $this->refuser($request, $authorizedRoles);
         }
 
         return $next($request);
+    }
+
+    /**
+     * Réponse de refus : trace, message, et format attendu par l'appelant.
+     *
+     * Extraite pour qu'EnsurePermission la réutilise. La garde par droit décide
+     * autrement — elle consulte le catalogue et les surcharges — mais refuse
+     * exactement de la même façon : même entrée au journal d'audit, même
+     * message, même 403 JSON ou même redirection.
+     *
+     * @param  list<string>  $authorizedRoles  rôles qui auraient ouvert l'accès
+     */
+    public function refuser(Request $request, array $authorizedRoles): Response
+    {
+        $user = Auth::user();
+
+        // S1 : Si le compte a été désactivé, déconnecter et invalider la session
+        if (! $user->is_active) {
+            Auth::logout();
+            if ($request->hasSession()) {
+                $request->session()->invalidate();
+                $request->session()->regenerateToken();
+            }
+            if ($request->expectsJson()) {
+                return response()->json(['message' => 'Ce compte a été désactivé.'], 403);
+            }
+            return redirect()->guest(route('login'))->withErrors(['login' => 'Ce compte a été désactivé.']);
+        }
+
+        // Log l'accès refusé pour audit dans la base de données
+        \App\Models\AuditLog::record(
+            $user->id,
+            'access_denied',
+            'Accès refusé. Rôles requis: ' . implode(', ', $authorizedRoles) . ' (URL: ' . $request->getPathInfo() . ')',
+            'security',
+            ['url' => $request->fullUrl(), 'required_roles' => $authorizedRoles]
+        );
+
+        // Messages d'erreur personnalisés par contexte
+        $customMessages = [
+            'admin' => 'Accès réservé à l\'administration.',
+            'manager' => 'Seul un manager peut effectuer cette action.',
+            'reception' => 'Réservé au personnel de réception.',
+            'housekeeping_leader' => 'Réservé au responsable des étages.',
+            'housekeeping_supervisor' => 'Réservé aux gouvernantes.',
+            'housekeeping_staff' => 'Réservé au personnel housekeeping.',
+            'housekeeping' => 'Réservé au personnel housekeeping.',
+            'accountant' => 'Accès réservé à la comptabilité.',
+            'cashier' => 'Accès réservé aux caissiers.',
+            'econome' => 'Accès réservé à l\'économat.',
+            'purchasing_manager' => 'Accès réservé au service des achats.',
+        ];
+
+        $message = 'Accès refusé. Rôles requis: ' . implode(', ', $authorizedRoles);
+
+        // Essayer de trouver un message plus spécifique
+        foreach ($authorizedRoles as $role) {
+            if (isset($customMessages[$role])) {
+                $message = $customMessages[$role];
+                break;
+            }
+        }
+
+        $title = 'Accès refusé';
+        $subtitle = 'Vous n\'avez pas les permissions nécessaires';
+
+        if (! $user->is_active) {
+            $title = 'Compte désactivé';
+            $subtitle = 'Votre compte utilisateur a été désactivé';
+            $message = 'Ce compte a été désactivé par l\'administration.';
+        }
+
+        // Pour les requêtes AJAX ou qui attendent un popup
+        if ($request->expectsJson() ||
+            $request->header('X-Requested-With') === 'XMLHttpRequest' ||
+            $request->header('X-Expect-Popup') === 'true') {
+
+            return response()->json([
+                'access_denied' => true,
+                'title' => $title,
+                'subtitle' => $subtitle,
+                'message' => $message,
+                'action_url' => route('login'),
+                'action_label' => 'Se connecter',
+                'required_roles' => $authorizedRoles,
+            ], 403);
+        }
+
+        // Log l'accès refusé pour audit
+        \Log::warning('RBAC Access Denied', [
+            'user_id' => $user->id,
+            'user_email' => $user->email,
+            'user_role' => $user->role,
+            'required_roles' => $authorizedRoles,
+            'url' => $request->fullUrl(),
+            'ip' => $request->ip(),
+        ]);
+
+        $fallbackUrl = url()->previous();
+        $currentUrl = $request->fullUrl();
+
+        if (empty($fallbackUrl) || $fallbackUrl === $currentUrl) {
+            $fallbackUrl = route('dashboard');
+        }
+
+        return redirect($fallbackUrl)->with([
+            'access_denied_popup' => true,
+            'access_denied_title' => $title,
+            'access_denied_subtitle' => $subtitle,
+            'access_denied_message' => $message,
+            'access_denied_url' => route('login'),
+            'access_denied_action_label' => 'Se connecter',
+        ]);
     }
 
     /**
@@ -162,13 +214,7 @@ class EnsureRoleAccess
     {
         // Vérifier les paramètres de route
         if ($request->route() && $request->route()->hasParameter('tenant')) {
-            $param = $request->route()->parameter('tenant');
-            if ($param instanceof \App\Models\Tenant) {
-                return $param->id;
-            }
-            if (is_numeric($param)) {
-                return (int) $param;
-            }
+            return $request->route()->parameter('tenant');
         }
 
         // Vérifier les paramètres de requête
