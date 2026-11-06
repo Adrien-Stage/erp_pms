@@ -323,8 +323,12 @@ class TenantDatabase
                 SELECT id, user_id, event_type, action, module, ip_address, user_agent, payload, created_at
                 FROM audit_logs
                 WHERE user_id = :userId
-                   OR (payload IS NOT NULL AND CAST(payload AS text) LIKE :target1)
-                   OR (payload IS NOT NULL AND CAST(payload AS text) LIKE :target2)
+                   OR (payload IS NOT NULL AND (
+                       CAST(payload AS text) LIKE :target1
+                    OR CAST(payload AS text) LIKE :target2
+                    OR CAST(payload AS text) LIKE :target3
+                    OR CAST(payload AS text) LIKE :target4
+                   ))
                 ORDER BY created_at DESC
                 LIMIT :limit
             ');
@@ -332,6 +336,8 @@ class TenantDatabase
             $stmt->bindValue(':userId', $userId, PDO::PARAM_INT);
             $stmt->bindValue(':target1', '%"target_user_id":' . $userId . '%', PDO::PARAM_STR);
             $stmt->bindValue(':target2', '%"target_user_id":"' . $userId . '"%', PDO::PARAM_STR);
+            $stmt->bindValue(':target3', '%"target_user_id": ' . $userId . '%', PDO::PARAM_STR);
+            $stmt->bindValue(':target4', '%"target_user_id": "' . $userId . '"%', PDO::PARAM_STR);
             $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
             $stmt->execute();
 
