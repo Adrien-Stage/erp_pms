@@ -68,7 +68,54 @@ class TenantUserController extends Controller
         $estControleur = $employe->role === 'controller'
             || collect($employe->roles ?? [])->contains(fn ($r) => ($r['slug'] ?? null) === 'controller');
 
-        return view('admin.tenants.user', compact('tenant', 'employe', 'estControleur'));
+        $auditLogs = [];
+        try {
+            $auditLogs = $this->tenantDb->userAuditLogs($tenant, $user);
+        } catch (\Throwable $e) {
+            Log::warning("Lecture de l'historique d'audit échouée pour l'utilisateur #{$user} sur {$tenant->slug} : " . $e->getMessage());
+        }
+
+        return view('admin.tenants.user', compact('tenant', 'employe', 'estControleur', 'auditLogs'));
+    }
+
+    /**
+     * Supprime définitivement un utilisateur de l'établissement depuis l'ERP.
+     */
+    public function destroy(Request $request, Tenant $tenant, int $user): RedirectResponse
+    {
+        $this->authorizeTenant($tenant);
+
+        try {
+            $employe = $this->tenantDb->userDetail($tenant, $user);
+        } catch (\Throwable $e) {
+            return back()->with('error', "Impossible de joindre la base de l'établissement.");
+        }
+
+        if (! $employe) {
+            return $this->liste($tenant)->with('error', "Cet employé est introuvable dans cet établissement.");
+        }
+
+        try {
+            $supprime = $this->tenantDb->deleteUser($tenant, $user);
+        } catch (\Throwable $e) {
+            Log::error("Erreur suppression utilisateur #{$user} sur {$tenant->slug} : " . $e->getMessage());
+
+            return back()->with('error', "Échec de la suppression : " . $e->getMessage());
+        }
+
+        if (! $supprime) {
+            return back()->with('error', "L'utilisateur n'a pas pu être supprimé.");
+        }
+
+        AuditLog::record(
+            Auth::id(),
+            'tenant_user_destroy',
+            "Suppression de l'utilisateur {$employe->name} ({$employe->email}) de l'établissement {$tenant->name}",
+            'tenant_users',
+            ['tenant_id' => $tenant->id, 'user_id' => $user, 'name' => $employe->name, 'email' => $employe->email]
+        );
+
+        return $this->liste($tenant)->with('success', "L'utilisateur {$employe->name} a été supprimé définitivement de l'établissement.");
     }
 
     /**
