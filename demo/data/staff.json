@@ -45,7 +45,7 @@
         { "name": "Sabine Kenfack", "email": "sabine.kenfack@demo.wetchah.test", "phone": "+237 678 12 26 38", "team": "Comptabilité et finances", "role": "accountant", "department": "comptabilite_finance" },
         { "name": "Martin Eyoum", "email": "martin.eyoum@demo.wetchah.test", "phone": "+237 679 10 20 39", "team": "Contrôle de gestion", "role": "controller", "department": "comptabilite_finance" },
         { "name": "Gisèle Ndongo", "email": "gisele.ndongo@demo.wetchah.test", "phone": "+237 679 11 23 39", "team": "Contrôle de gestion", "role": "controller", "department": "comptabilite_finance" },
-        { "name": "Lucien Abanda", "email": "lucien.abanda@demo.wetchah.test", "phone": "+237 680 10 20 40", "team": "Qualité et audit", "role": "quality_auditor", "department": "qualite_controle" },
-        { "name": "Irène Mbassi", "email": "irene.mbassi@demo.wetchah.test", "phone": "+237 680 11 23 40", "team": "Qualité et audit", "role": "quality_auditor", "department": "qualite_controle" }
+        { "name": "Lucien Abanda", "email": "lucien.abanda@demo.wetchah.test", "phone": "+237 680 10 20 40", "team": "Qualité et audit", "role": "controller", "department": "qualite_controle" },
+        { "name": "Irène Mbassi", "email": "irene.mbassi@demo.wetchah.test", "phone": "+237 680 11 23 40", "team": "Qualité et audit", "role": "controller", "department": "qualite_controle" }
     ]
 }

@@ -38,7 +38,7 @@ function matriceFeinte(array $ecarts = []): array
 function etablissementProvisionne(): Tenant
 {
     return etablissementValide([
-        'slug'                 => 'zingana',
+        'slug'                 => 'zingana-test',
         'docker_app_container' => 'meka-erp-zingana-app',
         'provisioned_at'       => now(),
     ]);

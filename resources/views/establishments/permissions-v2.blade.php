@@ -414,7 +414,7 @@
                             <tr>
                                 <td class="px-4 py-3 font-semibold text-slate-800">{{ $admin['name'] }}</td>
                                 <td class="px-4 py-3 font-mono text-slate-600">{{ $admin['email'] }}</td>
-                                <td class="px-4 py-3 text-slate-500">{{ $admin['derniere_connexion'] ? \Illuminate\Support\Carbon::parse($admin['derniere_connexion'])->format('d/m/Y H:i') : 'Jamais' }}</td>
+                                <td class="px-4 py-3 text-slate-500">{{ ($admin['derniere_connexion'] ?? null) ? \Illuminate\Support\Carbon::parse($admin['derniere_connexion'])->format('d/m/Y H:i') : 'Jamais' }}</td>
                                 <td class="px-4 py-3">
                                     <span class="rounded-full border px-2 py-0.5 text-[10px] font-bold {{ $admin['actif'] ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700' }}">
                                         {{ $admin['actif'] ? 'Actif' : 'Désactivé' }}
