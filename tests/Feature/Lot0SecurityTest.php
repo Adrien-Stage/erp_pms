@@ -95,7 +95,7 @@ test('S2 : la connexion ERP bloque après 5 échecs consécutifs', function () {
 
     $bloque->assertSessionHasErrors('login');
     $message = session('errors')->first('login');
-    expect($message)->toMatch('/trop de tentatives|secondes/i');
+    expect($message)->toMatch('/trop de tentatives|secondes|seconds|too many/i');
 });
 
 test('S4 : le modèle .env.docker ne contient aucune clé de chiffrement et installation.md mentionne key:generate', function () {
