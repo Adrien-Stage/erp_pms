@@ -5,6 +5,7 @@ namespace App\Http\Middleware;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Route;
 use Symfony\Component\HttpFoundation\Response;
 
 class EnsureRoleAccess
@@ -174,7 +175,9 @@ class EnsureRoleAccess
         $currentUrl = $request->fullUrl();
 
         if (empty($fallbackUrl) || $fallbackUrl === $currentUrl) {
-            $fallbackUrl = route('dashboard');
+            $fallbackUrl = Route::has('dashboard')
+                ? route('dashboard')
+                : ($user->isTechAdmin() ? route('tech.dashboard') : (Route::has('business.dashboard') ? route('business.dashboard') : url('/')));
         }
 
         return redirect($fallbackUrl)->with([
