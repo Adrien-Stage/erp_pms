@@ -302,6 +302,158 @@ class TenantDatabase
     }
 
     /**
+     * Historique d'actions et traçabilité d'un employé dans l'établissement.
+     *
+     * Remonte l'ensemble des événements déclenchés par cet utilisateur
+     * ainsi que les actions d'administration ciblant son compte (création,
+     * modification de rôle, réinitialisation de mot de passe, etc.).
+     *
+     * @return array<int, object>
+     */
+    public function userAuditLogs(Tenant $tenant, int $userId, int $limit = 150): array
+    {
+        try {
+            $pdo = $this->connect($tenant);
+
+            if (! $this->aLaTable($pdo, 'audit_logs')) {
+                return [];
+            }
+
+            $stmt = $pdo->prepare('
+                SELECT id, user_id, event_type, action, module, ip_address, user_agent, payload, created_at
+                FROM audit_logs
+                WHERE user_id = :userId
+                   OR (payload IS NOT NULL AND CAST(payload AS text) LIKE :target1)
+                   OR (payload IS NOT NULL AND CAST(payload AS text) LIKE :target2)
+                ORDER BY created_at DESC
+                LIMIT :limit
+            ');
+
+            $stmt->bindValue(':userId', $userId, PDO::PARAM_INT);
+            $stmt->bindValue(':target1', '%"target_user_id":' . $userId . '%', PDO::PARAM_STR);
+            $stmt->bindValue(':target2', '%"target_user_id":"' . $userId . '"%', PDO::PARAM_STR);
+            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+            $stmt->execute();
+
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            return array_map(function ($row) {
+                if (! empty($row['payload']) && is_string($row['payload'])) {
+                    $decoded = json_decode($row['payload'], true);
+                    $row['payload_decoded'] = is_array($decoded) ? $decoded : null;
+                } else {
+                    $row['payload_decoded'] = is_array($row['payload']) ? $row['payload'] : null;
+                }
+
+                return (object) $row;
+            }, $rows);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning("Lecture audit logs tenant {$tenant->slug} échouée : " . $e->getMessage());
+
+            return [];
+        }
+    }
+
+    /**
+     * Supprime définitivement un utilisateur dans la base de l'établissement.
+     *
+     * Contrôles stricts de sécurité :
+     * 1. Vérifie l'existence du compte
+     * 2. Empêche la suppression du dernier compte administrateur
+     * 3. Nettoie les sessions actives et liaisons périphériques
+     * 4. Enregistre une trace immuable dans le journal d'audit de l'établissement
+     *
+     * @throws \RuntimeException Si des contraintes métier ou d'intégrité légale bloquent la suppression
+     */
+    public function deleteUser(Tenant $tenant, int $userId): bool
+    {
+        $pdo = $this->connect($tenant);
+
+        // 1. Vérification de l'existence du compte
+        $stmt = $pdo->prepare('SELECT id, name, email FROM users WHERE id = ?');
+        $stmt->execute([$userId]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (! $user) {
+            return false;
+        }
+
+        // 2. Empêcher la suppression du dernier administrateur de l'établissement
+        if ($this->aLaTable($pdo, 'role_user') && $this->aLaTable($pdo, 'roles')) {
+            $adminCountStmt = $pdo->query("
+                SELECT COUNT(DISTINCT ru.user_id)
+                FROM role_user ru
+                JOIN roles r ON r.id = ru.role_id
+                WHERE r.slug = 'admin'
+            ");
+            $totalAdmins = (int) ($adminCountStmt ? $adminCountStmt->fetchColumn() : 0);
+
+            $isUserAdminStmt = $pdo->prepare("
+                SELECT COUNT(*)
+                FROM role_user ru
+                JOIN roles r ON r.id = ru.role_id
+                WHERE ru.user_id = ? AND r.slug = 'admin'
+            ");
+            $isUserAdminStmt->execute([$userId]);
+            $isUserAdmin = (int) $isUserAdminStmt->fetchColumn() > 0;
+
+            if ($isUserAdmin && $totalAdmins <= 1) {
+                throw new \RuntimeException("Impossible de supprimer le dernier compte administrateur de l'établissement.");
+            }
+        }
+
+        // 3. Exécution de la suppression dans une transaction SQL
+        $pdo->beginTransaction();
+        try {
+            // Nettoyage des permissions spécifiques / exceptions
+            if ($this->aLaTable($pdo, 'user_module_permissions')) {
+                $pdo->prepare('DELETE FROM user_module_permissions WHERE user_id = ?')->execute([$userId]);
+            }
+
+            // Purge des sessions actives
+            if ($this->aLaTable($pdo, 'sessions')) {
+                $pdo->prepare('DELETE FROM sessions WHERE user_id = ?')->execute([$userId]);
+            }
+
+            // Détachement des points de vente
+            if ($this->aLaTable($pdo, 'point_of_sale_user')) {
+                $pdo->prepare('DELETE FROM point_of_sale_user WHERE user_id = ?')->execute([$userId]);
+            }
+
+            // Inscription au journal d'audit de l'établissement AVANT suppression du compte
+            if ($this->aLaTable($pdo, 'audit_logs')) {
+                $auditStmt = $pdo->prepare('
+                    INSERT INTO audit_logs (user_id, event_type, action, module, payload, created_at, updated_at)
+                    VALUES (NULL, :event_type, :action, :module, :payload, NOW(), NOW())
+                ');
+                $auditStmt->execute([
+                    ':event_type' => 'user_deletion_by_erp',
+                    ':action'     => "Suppression définitive du compte de {$user['name']} ({$user['email']}) effectuée depuis la console centrale ERP",
+                    ':module'     => 'security',
+                    ':payload'    => json_encode(['deleted_user_id' => $userId, 'deleted_email' => $user['email']]),
+                ]);
+            }
+
+            // Suppression du compte utilisateur
+            $deleteStmt = $pdo->prepare('DELETE FROM users WHERE id = ?');
+            $deleteStmt->execute([$userId]);
+
+            $pdo->commit();
+
+            return true;
+        } catch (\PDOException $e) {
+            $pdo->rollBack();
+
+            $msg = $e->getMessage();
+            if (str_contains($msg, 'shop_orders') || str_contains($msg, 'shift_handovers') || str_contains($msg, 'foreign key constraint')) {
+                throw new \RuntimeException("Des opérations comptables ou commerciales (commandes boutique, passations de service) sont rattachées à ce collaborateur pour des raisons légales de traçabilité. Veuillez désactiver son compte au lieu de le supprimer.");
+            }
+
+            throw $e;
+        }
+    }
+
+    /**
      * Liste des départements d'un établissement avec leurs modules attachés.
      */
     public function departments(Tenant $tenant): array

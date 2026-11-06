@@ -104,9 +104,10 @@ Route::middleware(['auth', 'role:tech_admin'])->prefix('tech')->name('tech.')->g
     Route::post('/establishments/{tenant}', [AdminAuditController::class, 'updateTenant'])->name('establishments.update');
     Route::delete('/establishments/{tenant}', [AdminAuditController::class, 'destroyTenant'])->name('establishments.destroy');
 
-    // Employés de l'établissement : la console les consulte. Ils se créent et
-    // se modifient dans l'application, par l'administrateur de l'établissement.
+    // Employés de l'établissement : la console les consulte et permet leur suppression.
+    // La création et modification standard se font dans l'application par l'administrateur.
     Route::get('/establishments/{tenant}/users/{user}', [TenantUserController::class, 'show'])->whereNumber('user')->name('establishments.users.show');
+    Route::delete('/establishments/{tenant}/users/{user}', [TenantUserController::class, 'destroy'])->whereNumber('user')->name('establishments.users.destroy');
     Route::post('/establishments/{tenant}/users/{user}/grc', [TenantUserController::class, 'grcAccess'])->whereNumber('user')->name('establishments.users.grc');
 
     // Droits & rôles : matrice lue depuis l'établissement, dont la console ne
@@ -178,6 +179,8 @@ Route::middleware(['auth', 'role:owner'])->prefix('business')->name('business.')
     Route::get('/establishments', [AdminAuditController::class, 'businessDashboard'])->name('establishments');
     Route::get('/establishments/{tenant}', [AdminAuditController::class, 'businessShowTenant'])->name('establishments.show');
     Route::get('/establishments/{tenant}/finance-data', [AdminAuditController::class, 'businessEstablishmentFinance'])->name('establishments.finance-data');
+    Route::get('/establishments/{tenant}/users/{user}', [TenantUserController::class, 'show'])->whereNumber('user')->name('establishments.users.show');
+    Route::delete('/establishments/{tenant}/users/{user}', [TenantUserController::class, 'destroy'])->whereNumber('user')->name('establishments.users.destroy');
 
     // Droits & rôles de l'établissement, réglés par son propriétaire : la
     // couche de la console et les comptes administrateurs.

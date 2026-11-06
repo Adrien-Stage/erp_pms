@@ -44,11 +44,43 @@ class TenantDatabaseDouble extends TenantDatabase
     /** @var array<string, string> Restrictions de service de l'employé consulté. */
     public array $restrictions = [];
 
+    /** @var array<int, array<string, mixed>> Logs d'audit de l'employé consulté. */
+    public array $auditLogs = [];
+
     public function connect(Tenant $tenant): PDO
     {
         // Toute connexion brute serait le signe d'une écriture SQL directe.
         $this->connexions++;
         throw new PDOException('Aucune connexion brute attendue');
+    }
+
+    public function userAuditLogs(Tenant $tenant, int $userId, int $limit = 150): array
+    {
+        if (!$this->joignable) {
+            throw new PDOException('Conteneur injoignable');
+        }
+
+        return array_map(fn ($l) => (object) $l, $this->auditLogs);
+    }
+
+    public function deleteUser(Tenant $tenant, int $userId): bool
+    {
+        if (!$this->joignable) {
+            throw new PDOException('Conteneur injoignable');
+        }
+
+        if (!isset($this->employes[$userId])) {
+            return false;
+        }
+
+        $roles = collect($this->rolesAffectes)->pluck('slug')->all();
+        if (in_array('admin', $roles, true)) {
+            throw new \RuntimeException("Impossible de supprimer le dernier compte administrateur de l'établissement.");
+        }
+
+        unset($this->employes[$userId]);
+
+        return true;
     }
 
     public function users(Tenant $tenant): array
@@ -115,10 +147,10 @@ function administrateurTechnique(): User
 
 // ── Plus aucune écriture directe ────────────────────────────────────────────
 
-test("la console n'écrit plus de compte dans la base de l'établissement", function () {
+test("la console ne crée ni ne modifie de compte directement dans la base de l'établissement", function () {
     foreach ([
         'tech.establishments.users.store', 'tech.establishments.users.update',
-        'tech.establishments.users.toggle-active', 'tech.establishments.users.destroy',
+        'tech.establishments.users.toggle-active',
         'tech.establishments.create-manager', 'tech.establishments.create-controller',
         'business.establishments.create-manager', 'business.establishments.create-controller',
     ] as $route) {
@@ -167,7 +199,7 @@ test("la fiche montre les rôles, leur niveau et les restrictions, sans rien mod
         ->assertSee('economat')
         // « inherit » ne retire rien : il n'est pas une restriction.
         ->assertDontSee('restaurant</span>', false)
-        ->assertDontSee('Supprimer définitivement')
+        ->assertSee("Historique d'activité", false)
         ->assertDontSee('name="password"', false);
 });
 
@@ -262,4 +294,88 @@ test('une base injoignable renvoie un message plutôt qu\'une erreur brute', fun
         ->get(route('tech.establishments.users.show', ['tenant' => $tenant, 'user' => 7]))
         ->assertRedirect()
         ->assertSessionHas('error');
+});
+
+// ── Historique d'actions (Audit Logs) & Suppression de compte ───────────────
+
+test("la fiche utilisateur affiche l'historique complet d'actions de l'utilisateur", function () {
+    $tenant = actionTenant();
+    $double = doubleService([7 => employe(7, 'Serge Mbarga')]);
+    $double->auditLogs = [
+        [
+            'id' => 101,
+            'user_id' => 7,
+            'event_type' => 'login',
+            'action' => 'Connexion réussie au point de vente Réception',
+            'module' => 'auth',
+            'ip_address' => '192.168.1.50',
+            'payload' => null,
+            'payload_decoded' => null,
+            'created_at' => '2026-11-06 14:15:00',
+        ],
+        [
+            'id' => 102,
+            'user_id' => 1,
+            'event_type' => 'user_management',
+            'action' => "Attribution du rôle Réceptionniste à Serge Mbarga",
+            'module' => 'users',
+            'ip_address' => '192.168.1.10',
+            'payload' => '{"target_user_id": 7}',
+            'payload_decoded' => ['target_user_id' => 7],
+            'created_at' => '2026-11-05 10:00:00',
+        ],
+    ];
+
+    $this->actingAs(administrateurTechnique())
+        ->get(route('tech.establishments.users.show', ['tenant' => $tenant, 'user' => 7]))
+        ->assertOk()
+        ->assertSee("Historique d'activité &amp; Journal d'audit", false)
+        ->assertSee('Connexion réussie au point de vente Réception')
+        ->assertSee('Attribution du rôle Réceptionniste à Serge Mbarga')
+        ->assertSee('Action subie')
+        ->assertSee('192.168.1.50')
+        ->assertSee('2 opération(s)');
+});
+
+test("la suppression d'un collaborateur depuis l'ERP supprime le compte et consigne l'audit log", function () {
+    $tenant = actionTenant();
+    $double = doubleService([7 => employe(7, 'Serge Mbarga', 'reception')]);
+
+    $this->actingAs(administrateurTechnique())
+        ->delete(route('tech.establishments.users.destroy', ['tenant' => $tenant, 'user' => 7]))
+        ->assertRedirect(route('tech.establishments.show', ['tenant' => $tenant, 'section' => 'users']))
+        ->assertSessionHas('success');
+
+    // Le compte a bien été effacé du service
+    expect($double->employes)->not->toHaveKey(7);
+
+    // L'action est consignée dans le journal d'audit central de l'ERP
+    $this->assertDatabaseHas('audit_logs', [
+        'event_type' => 'tenant_user_destroy',
+        'module' => 'tenant_users',
+    ]);
+});
+
+test("la suppression d'un collaborateur inconnu renvoie une erreur", function () {
+    $tenant = actionTenant();
+    doubleService([]);
+
+    $this->actingAs(administrateurTechnique())
+        ->delete(route('tech.establishments.users.destroy', ['tenant' => $tenant, 'user' => 999]))
+        ->assertRedirect()
+        ->assertSessionHas('error');
+});
+
+test("la suppression du dernier administrateur est strictement refusée", function () {
+    $tenant = actionTenant();
+    $double = doubleService([1 => employe(1, 'Admin Principal', 'admin')]);
+    $double->rolesAffectes = [['slug' => 'admin', 'name' => 'Administrateur', 'module' => 'direction', 'level' => 'write']];
+
+    $this->actingAs(administrateurTechnique())
+        ->delete(route('tech.establishments.users.destroy', ['tenant' => $tenant, 'user' => 1]))
+        ->assertRedirect()
+        ->assertSessionHas('error');
+
+    // Le compte existe toujours
+    expect($double->employes)->toHaveKey(1);
 });
