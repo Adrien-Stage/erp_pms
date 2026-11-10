@@ -3,31 +3,22 @@
 namespace Demo;
 
 use Demo\Seeders\BookingSeeder;
+use Demo\Seeders\OperationsSeeder;
+use Demo\Seeders\RestaurantSeeder;
 use Demo\Seeders\StaffSeeder;
 use PDO;
 
 /**
- * Retrait du jeu de démonstration d'un établissement.
+ * Retrait complet du jeu de démonstration d'un établissement.
  *
- * La purge retire tout ce que le jeu a créé, et rien d'autre :
- *
- * 1. **Le transactionnel marqué**, et ce qui en dérive. Réservations
- *    (`DEMO-`), ventes (`DEMO-V`), commandes, affectations et charges
- *    (`[demo] …`) partent avec leurs folios, paiements, factures et lignes,
- *    même si l'application les a produits après coup.
- *
- * 2. **Les comptes du personnel**, reconnus à leur domaine, avec leurs rôles,
- *    équipes et spécialités.
- *
- * 3. **Tout le reste, d'après le registre** (voir Demo\Registre) : chambres,
- *    catégories, carte, rayons, articles, fournisseurs, familles, unités,
- *    équipes, partenaires, clients et rattachements. Parcouru à rebours de
- *    l'installation : les enfants partent avant leurs parents.
- *
- * Une seule exception, qui protège l'exploitation : une ligne du jeu que des
- * données réelles citent encore reste en place — une chambre de démonstration
- * qui porte depuis une vraie réservation, par exemple. Elle reste inscrite au
- * registre : une purge suivante la retirera quand plus rien ne la citera.
+ * Ordre de purge :
+ *  1. Le transactionnel marqué (ventes DEMO-V, commandes & banquets, DIT-DEMO,
+ *     DM/DA/BC-DEMO, réservations DEMO- et groupe DEMO-GRP, ménage, charges,
+ *     discussions du jeu).
+ *  2. Le personnel @demo.wetchah.test (désactivé si cité par des données réelles).
+ *  3. Le registre `demo_records` à rebours de l'installation (lignes enfants
+ *     d'abord : lignes de mini-bar, articles mini-bar, recettes, garde-manger,
+ *     dépôts, fiches coûts, budget, tarifs, stock, catalogue, clients, chambres…).
  */
 class Purger
 {
@@ -40,10 +31,9 @@ class Purger
     /** @var array<string, bool> */
     private array $colonnesConnues = [];
 
-    /** @var array<string, list<array{0: string, 1: string}>> table => [table qui la cite, colonne] */
+    /** @var array<string, list<array{0: string, 1: string}>> */
     private array $citations = [];
 
-    /** @param  array<string, array>  $donnees  le contenu de /demo/data, pour les installations antérieures au registre */
     public function __construct(private PDO $pdo, private array $donnees = []) {}
 
     /**
@@ -58,14 +48,17 @@ class Purger
         Registre::preparer($this->pdo, $this->donnees);
 
         $supprimes += $this->purgerVentes($log);
-        $supprimes += $this->purgerCommandesRestaurant($log);
+        $supprimes += $this->purgerCommandesEtBanquets($log);
+        $supprimes += $this->purgerMaintenance($log);
+        $supprimes += $this->purgerApprovisionnements($log);
         $supprimes += $this->purgerReservations($log);
         $supprimes += $this->purgerMenage($log);
         $supprimes += $this->purgerCharges($log);
-        // Les comptes avant le registre : leurs rôles, équipes et spécialités
-        // partent avec eux, ce qui libère les équipes qu'ils occupaient.
+        $supprimes += $this->purgerDiscussions($log);
         $supprimes += $this->purgerPersonnel($log);
         $supprimes += $this->purgerRegistre($log);
+
+        $this->nettoyerParametresMinibar();
 
         return ['total' => $supprimes, 'kept' => $this->conserves];
     }
@@ -79,7 +72,6 @@ class Purger
         }
 
         $ids = $this->ids("SELECT id FROM shop_orders WHERE order_number LIKE 'DEMO-V%'");
-
         if ($ids === []) {
             return 0;
         }
@@ -92,73 +84,165 @@ class Purger
         return $n;
     }
 
-    private function purgerCommandesRestaurant(callable $log): int
+    private function purgerCommandesEtBanquets(callable $log): int
     {
-        if (!$this->table('restaurant_customer_orders')) {
-            return 0;
+        $n = 0;
+
+        if ($this->table('restaurant_customer_orders')) {
+            $ids = $this->ids(
+                'SELECT id FROM restaurant_customer_orders WHERE notes = ?',
+                [RestaurantSeeder::REPERE_COMMANDE]
+            );
+
+            if ($ids !== []) {
+                $n += $this->supprimerPar('restaurant_customer_order_items', 'restaurant_customer_order_id', $ids);
+                $n += $this->supprimerPar('restaurant_customer_orders', 'id', $ids);
+            }
         }
 
-        $ids = $this->ids(
-            'SELECT id FROM restaurant_customer_orders WHERE notes = ?',
-            ['[demo] Commande de démonstration']
-        );
+        if ($this->table('restaurant_banquets')) {
+            $bIds = $this->ids("SELECT id FROM restaurant_banquets WHERE reference LIKE 'DEMO-BQ-%'");
 
-        if ($ids === []) {
-            return 0;
+            if ($bIds !== []) {
+                $n += $this->supprimerPar('restaurant_banquet_payments', 'restaurant_banquet_id', $bIds);
+                $n += $this->supprimerPar('restaurant_banquets', 'id', $bIds);
+            }
         }
 
-        $n = $this->supprimerPar('restaurant_customer_order_items', 'restaurant_customer_order_id', $ids)
-            + $this->supprimerPar('restaurant_customer_orders', 'id', $ids);
-
-        $log('purge', "· Commandes restaurant : {$n} ligne(s).", 'info');
+        if ($n > 0) {
+            $log('purge', "· Restaurant & banquets : {$n} ligne(s).", 'info');
+        }
 
         return $n;
     }
 
-    /**
-     * Réservations et tout ce qui leur pend au nez.
-     *
-     * L'ordre importe : un check-out a pu produire une facture et des points de
-     * fidélité, qui référencent la réservation. Les supprimer après elle est
-     * impossible — la contrainte de clé étrangère refuse.
-     */
-    private function purgerReservations(callable $log): int
+    private function purgerMaintenance(callable $log): int
     {
-        $ids = $this->ids("SELECT id FROM bookings WHERE booking_number LIKE ?", [BookingSeeder::PREFIXE . '%']);
+        if (!$this->table('maintenance_requests')) {
+            return 0;
+        }
 
+        $ids = $this->ids("SELECT id FROM maintenance_requests WHERE reference LIKE 'DIT-DEMO-%'");
         if ($ids === []) {
             return 0;
         }
 
+        $n = $this->supprimerPar('maintenance_request_events', 'maintenance_request_id', $ids)
+            + $this->supprimerPar('maintenance_requests', 'id', $ids);
+
+        $log('purge', "· Interventions techniques : {$n} ligne(s).", 'info');
+
+        return $n;
+    }
+
+    private function purgerApprovisionnements(callable $log): int
+    {
         $n = 0;
 
-        // Factures : leurs lignes d'abord.
-        if ($this->table('invoices')) {
-            $factures = $this->ids(
-                'SELECT id FROM invoices WHERE booking_id IN (' . $this->trous($ids) . ')',
-                $ids
-            );
-
-            if ($factures !== []) {
-                $n += $this->supprimerPar('invoice_items', 'invoice_id', $factures);
-                $n += $this->supprimerPar('invoices', 'id', $factures);
+        if ($this->table('purchase_orders')) {
+            $ids = $this->ids("SELECT id FROM purchase_orders WHERE number LIKE 'BC-DEMO-%'");
+            if ($ids !== []) {
+                $n += $this->supprimerPar('purchase_order_lines', 'purchase_order_id', $ids);
+                $n += $this->supprimerPar('purchase_orders', 'id', $ids);
             }
         }
 
-        foreach (['payments', 'folio_items', 'guests', 'loyalty_transactions', 'restaurant_notes'] as $table) {
-            $n += $this->supprimerPar($table, 'booking_id', $ids);
+        if ($this->table('purchase_requests')) {
+            $ids = $this->ids("SELECT id FROM purchase_requests WHERE number LIKE 'DA-DEMO-%'");
+            if ($ids !== []) {
+                $n += $this->supprimerPar('purchase_request_lines', 'purchase_request_id', $ids);
+                $n += $this->supprimerPar('purchase_requests', 'id', $ids);
+            }
         }
 
-        // Une vente ou une commande réelle a pu être imputée à une réservation
-        // de démonstration : on la détache plutôt que de la supprimer, elle
-        // appartient à l'exploitation.
-        foreach (['shop_orders', 'restaurant_customer_orders'] as $table) {
-            $this->detacher($table, 'booking_id', $ids);
+        if ($this->table('stock_requisitions')) {
+            $ids = $this->ids("SELECT id FROM stock_requisitions WHERE number LIKE 'DM-DEMO-%'");
+            if ($ids !== []) {
+                $n += $this->supprimerPar('stock_requisition_lines', 'stock_requisition_id', $ids);
+                $n += $this->supprimerPar('stock_requisitions', 'id', $ids);
+            }
         }
 
-        $n += $this->supprimerPar('bookings', 'id', $ids);
+        if ($n > 0) {
+            $log('purge', "· Demandes et bons d'achat : {$n} ligne(s).", 'info');
+        }
 
-        $log('purge', "· Réservations, folios, paiements et factures : {$n} ligne(s).", 'info');
+        return $n;
+    }
+
+    private function purgerReservations(callable $log): int
+    {
+        $ids = $this->ids('SELECT id FROM bookings WHERE booking_number LIKE ?', [BookingSeeder::PREFIXE . '%']);
+        $n   = 0;
+
+        if ($ids !== []) {
+            $chambresOccupees = $this->ids(
+                "SELECT DISTINCT room_id FROM bookings WHERE status = 'checked_in' AND id IN (" . $this->trous($ids) . ')',
+                $ids
+            );
+
+            // Factures : leurs lignes d'abord.
+            if ($this->table('invoices')) {
+                $factures = $this->ids(
+                    'SELECT id FROM invoices WHERE booking_id IN (' . $this->trous($ids) . ')',
+                    $ids
+                );
+
+                if ($factures !== []) {
+                    $n += $this->supprimerPar('invoice_items', 'invoice_id', $factures);
+                    $n += $this->supprimerPar('invoices', 'id', $factures);
+                }
+            }
+
+            if ($this->table('minibar_checks')) {
+                $checks = $this->ids(
+                    'SELECT id FROM minibar_checks WHERE booking_id IN (' . $this->trous($ids) . ')',
+                    $ids
+                );
+                if ($checks !== []) {
+                    $n += $this->supprimerPar('minibar_check_lines', 'minibar_check_id', $checks);
+                    $n += $this->supprimerPar('minibar_checks', 'id', $checks);
+                }
+            }
+
+            foreach (['payments', 'folio_items', 'guests', 'loyalty_transactions', 'restaurant_notes', 'minibar_movements', 'minibar_restocks'] as $table) {
+                $n += $this->supprimerPar($table, 'booking_id', $ids);
+            }
+
+            if ($this->table('rooms') && $this->colonne('rooms', 'minibar_due_booking_id')) {
+                $this->detacher('rooms', 'minibar_due_booking_id', $ids);
+            }
+
+            // Ventes / commandes / banquets réels éventuellement imputés à une réservation démo.
+            foreach (['shop_orders', 'restaurant_customer_orders', 'restaurant_banquets'] as $table) {
+                $this->detacher($table, 'booking_id', $ids);
+            }
+
+            $n += $this->supprimerPar('bookings', 'id', $ids);
+
+            // Libère les chambres réelles restées au statut « occupied » uniquement pour un séjour démo.
+            if ($chambresOccupees !== [] && $this->table('rooms')) {
+                $this->executer(
+                    "UPDATE rooms SET status = 'available'
+                     WHERE id IN (" . $this->trous($chambresOccupees) . ")
+                       AND status = 'occupied'
+                       AND NOT EXISTS (SELECT 1 FROM bookings WHERE bookings.room_id = rooms.id AND bookings.status = 'checked_in')",
+                    $chambresOccupees
+                );
+            }
+        }
+
+        if ($this->table('group_bookings')) {
+            $gIds = $this->ids('SELECT id FROM group_bookings WHERE group_code LIKE ?', [BookingSeeder::PREFIXE . 'GRP-%']);
+            if ($gIds !== []) {
+                $this->detacher('bookings', 'group_booking_id', $gIds);
+                $n += $this->supprimerPar('group_bookings', 'id', $gIds);
+            }
+        }
+
+        if ($n > 0) {
+            $log('purge', "· Réservations, groupe, folios, paiements et factures : {$n} ligne(s).", 'info');
+        }
 
         return $n;
     }
@@ -169,11 +253,15 @@ class Purger
             return 0;
         }
 
-        $n = $this->executer(
-            'DELETE FROM housekeeping_assignments WHERE notes = ?',
-            ['[demo] Affectation de démonstration']
-        );
+        $ids = $this->ids('SELECT id FROM housekeeping_assignments WHERE notes = ?', [OperationsSeeder::REPERE_MENAGE]);
+        if ($ids === []) {
+            return 0;
+        }
 
+        $this->detacher('maintenance_requests', 'housekeeping_assignment_id', $ids);
+        $this->detacher('minibar_checks', 'housekeeping_assignment_id', $ids);
+
+        $n = $this->supprimerPar('housekeeping_assignments', 'id', $ids);
         if ($n > 0) {
             $log('purge', "· Affectations de ménage : {$n} ligne(s).", 'info');
         }
@@ -187,8 +275,7 @@ class Purger
             return 0;
         }
 
-        $n = $this->executer('DELETE FROM expenses WHERE notes = ?', ['[demo] Charge de démonstration']);
-
+        $n = $this->executer('DELETE FROM expenses WHERE notes = ?', [OperationsSeeder::REPERE_CHARGE]);
         if ($n > 0) {
             $log('purge', "· Charges : {$n} ligne(s).", 'info');
         }
@@ -196,26 +283,74 @@ class Purger
         return $n;
     }
 
+    private function purgerDiscussions(callable $log): int
+    {
+        if (!Registre::existe($this->pdo) || !$this->table('discussion_conversations')) {
+            return 0;
+        }
+
+        $convIds = $this->ids(
+            "SELECT record_id FROM " . Registre::TABLE . " WHERE table_name = 'discussion_conversations'"
+        );
+        if ($convIds === []) {
+            return 0;
+        }
+
+        $n = $this->supprimerPar('discussion_messages', 'conversation_id', $convIds)
+            + $this->supprimerPar('discussion_conversation_user', 'discussion_conversation_id', $convIds)
+            + $this->supprimerPar('discussion_conversations', 'id', $convIds);
+
+        $this->executer(
+            'DELETE FROM ' . Registre::TABLE . " WHERE table_name IN ('discussion_conversations', 'discussion_conversation_user', 'discussion_messages')"
+        );
+
+        if ($n > 0) {
+            $log('purge', "· Discussions internes : {$n} ligne(s).", 'info');
+        }
+
+        return $n;
+    }
+
     // ── Registre ─────────────────────────────────────────────────────────────
 
-    /** Libellés des tables du registre, pour le journal et ce qui est conservé. */
     private const LIBELLES = [
-        'room_types' => 'catégories de chambres', 'rooms' => 'chambres', 'customers' => 'clients',
-        'partner_organizations' => 'partenaires', 'shop_categories' => 'rayons', 'shop_products' => 'articles boutique',
-        'restaurant_menu_categories' => 'catégories de la carte', 'restaurant_menu_items' => 'plats',
-        'housekeeping_teams' => 'équipes de ménage', 'suppliers' => 'fournisseurs', 'stock_categories' => 'familles de stock',
-        'stock_units' => 'unités de stock', 'stock_items' => 'articles de stock', 'role_user' => 'rôles du personnel',
-        'housekeeping_team_user' => 'membres des équipes', 'point_of_sale_user' => 'rattachements au restaurant',
-        'technician_specialties' => 'spécialités techniques',
-        'stock_item_supplier' => 'tarifs fournisseurs', 'storage_zones' => 'zones de rangement',
+        'room_types'                  => 'catégories de chambres',
+        'rooms'                       => 'chambres',
+        'service_items'               => 'prestations annexes',
+        'room_packages'               => 'formules tarifaires',
+        'customers'                   => 'clients',
+        'partner_organizations'       => 'partenaires',
+        'shop_categories'             => 'rayons',
+        'shop_products'               => 'articles boutique',
+        'restaurant_menu_categories'  => 'catégories de la carte',
+        'restaurant_menu_items'       => 'plats',
+        'restaurant_pantry_categories'=> 'catégories garde-manger',
+        'restaurant_pantry_items'     => 'articles garde-manger',
+        'restaurant_recipes'          => 'fiches recettes',
+        'restaurant_recipe_lines'     => 'lignes recettes',
+        'housekeeping_teams'          => 'équipes de ménage',
+        'shift_weeks'                 => 'semaines de planning',
+        'shift_assignments'           => 'quarts de travail',
+        'suppliers'                   => 'fournisseurs',
+        'stock_categories'            => 'familles de stock',
+        'stock_units'                 => 'unités de stock',
+        'stock_items'                 => 'articles de stock',
+        'stock_item_supplier'         => 'tarifs fournisseurs',
+        'storage_zones'               => 'zones de rangement',
+        'service_stores'              => 'dépôts de service',
+        'service_store_stocks'        => 'stocks des dépôts',
+        'minibar_articles'            => 'articles mini-bar',
+        'minibar_standards'           => 'dotations mini-bar',
+        'room_minibar_lines'          => 'lignes mini-bar chambres',
+        'room_cost_sheets'            => 'fiches coûts chambres',
+        'room_cost_items'             => 'postes coûts chambres',
+        'budget_lines'                => 'lignes budgétaires',
+        'role_user'                   => 'rôles du personnel',
+        'housekeeping_team_user'      => 'membres des équipes',
+        'point_of_sale_user'          => 'rattachements au restaurant',
+        'technician_specialties'      => 'spécialités techniques',
     ];
 
-    /**
-     * Tout ce que le registre inscrit, à rebours de l'installation.
-     *
-     * Les comptes sont l'affaire de purgerPersonnel, passé avant, qui sait
-     * désactiver celui qu'on ne peut pas supprimer.
-     */
     private function purgerRegistre(callable $log): int
     {
         if (!Registre::existe($this->pdo)) {
@@ -225,9 +360,6 @@ class Purger
         $lignes  = $this->pdo->query('SELECT id, table_name, record_id FROM ' . Registre::TABLE . ' ORDER BY id DESC')->fetchAll(PDO::FETCH_ASSOC);
         $retires = [];
 
-        // Du plus récent au plus ancien ; une ligne encore citée par une autre
-        // du jeu, inscrite avant elle (une zone ajoutée après ses articles…),
-        // est reprise au tour suivant, tant qu'un tour retire quelque chose.
         do {
             $restantes = [];
             $gardes    = [];
@@ -241,7 +373,6 @@ class Purger
                     continue;
                 }
 
-                // Déjà partie (avec son parent, ou effacée depuis) : l'inscription aussi.
                 if (!$this->table($table) || $this->ids("SELECT id FROM \"{$table}\" WHERE id = ?", [$id]) === []) {
                     $this->desinscrire((int) $ligne['id']);
                     continue;
@@ -249,13 +380,13 @@ class Purger
 
                 if ($this->estCitee($table, $id) || !$this->supprimerLigne($table, $id)) {
                     $gardes[$table] = ($gardes[$table] ?? 0) + 1;
-                    $restantes[] = $ligne;
+                    $restantes[]    = $ligne;
                     continue;
                 }
 
                 $this->desinscrire((int) $ligne['id']);
                 $retires[$table] = ($retires[$table] ?? 0) + 1;
-                $avance = true;
+                $avance          = true;
             }
 
             $lignes = $restantes;
@@ -272,11 +403,35 @@ class Purger
         return array_sum($retires);
     }
 
-    /**
-     * Une ligne réelle cite-t-elle celle-ci ? Toutes les clés étrangères de la
-     * base sont lues : une table ajoutée par une version future de
-     * l'application est prise en compte sans toucher à ce code.
-     */
+    private function nettoyerParametresMinibar(): void
+    {
+        if (!$this->table('tenants') || !$this->table('service_stores')) {
+            return;
+        }
+
+        $row = $this->pdo->query('SELECT id, settings FROM tenants ORDER BY id LIMIT 1')->fetch(PDO::FETCH_ASSOC);
+        if (!$row || empty($row['settings'])) {
+            return;
+        }
+
+        $settings = json_decode((string) $row['settings'], true);
+        $depotId  = $settings['minibar']['depot_id'] ?? null;
+        if (!$depotId) {
+            return;
+        }
+
+        if ($this->ids('SELECT id FROM service_stores WHERE id = ?', [(int) $depotId]) === []) {
+            unset($settings['minibar']['depot_id']);
+            if ($settings['minibar'] === []) {
+                unset($settings['minibar']);
+            }
+            $this->executer(
+                'UPDATE tenants SET settings = ? WHERE id = ?',
+                [json_encode($settings, JSON_UNESCAPED_UNICODE), (int) $row['id']]
+            );
+        }
+    }
+
     private function estCitee(string $table, int $id): bool
     {
         foreach ($this->citationsDe($table) as [$enfant, $colonne]) {
@@ -285,7 +440,6 @@ class Purger
             }
         }
 
-        // Une unité est citée par son nom, sans clé étrangère.
         if ($table === 'stock_units') {
             $nom = $this->pdo->prepare('SELECT name FROM stock_units WHERE id = ?');
             $nom->execute([$id]);
@@ -319,11 +473,8 @@ class Purger
         );
     }
 
-    /** Supprime une ligne ; false si une contrainte s'y oppose. */
     private function supprimerLigne(string $table, int $id): bool
     {
-        // Un point de reprise par ligne : sous PostgreSQL, une contrainte
-        // violée annule toute la transaction si on ne le pose pas.
         $this->pdo->exec('SAVEPOINT ligne_demo');
 
         try {
@@ -343,7 +494,6 @@ class Purger
         $this->executer('DELETE FROM ' . Registre::TABLE . ' WHERE id = ?', [$entree]);
     }
 
-    /** « 12 chambres, 3 plats » */
     private function detail(array $parTable): string
     {
         return implode(', ', array_map(
@@ -355,22 +505,13 @@ class Purger
 
     // ── Personnel ────────────────────────────────────────────────────────────
 
-    /**
-     * Les comptes du personnel de démonstration, reconnus à leur domaine.
-     *
-     * Ce qui n'appartient qu'au compte (sessions, notifications, préférences)
-     * part avec lui. Un compte que des données d'exploitation citent — une
-     * caisse, une écriture — ne peut pas disparaître sans les casser : il est
-     * alors désactivé, et son mot de passe remplacé par un tirage que personne
-     * ne connaît. Il ne s'ouvre plus, et l'historique reste lisible.
-     */
     private function purgerPersonnel(callable $log): int
     {
         if (!$this->table('users')) {
             return 0;
         }
 
-        $ids = $this->ids('SELECT id FROM users WHERE lower(email) LIKE ?', ['%@' . StaffSeeder::DOMAINE]);
+        $ids       = $this->ids('SELECT id FROM users WHERE lower(email) LIKE ?', ['%@' . StaffSeeder::DOMAINE]);
         $supprimes = 0;
         $fermes    = 0;
 
@@ -421,7 +562,6 @@ class Purger
         );
     }
 
-    /** Détache sans supprimer : la ligne appartient à l'exploitation. */
     private function detacher(string $table, string $colonne, array $ids): void
     {
         if ($ids === [] || !$this->table($table) || !$this->colonne($table, $colonne)) {

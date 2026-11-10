@@ -2,10 +2,12 @@
 
 namespace Demo\Seeders;
 
+use Demo\Registre;
+
 /**
  * Le personnel de l'hôtel : un compte par personne du jeu, avec son rôle, son
  * département et ce que son service lui rattache (équipe de ménage,
- * restaurant, spécialités techniques).
+ * restaurant, spécialités techniques, planning de quarts de la semaine).
  *
  * Chaque service compte au moins deux personnes et chaque rôle du PMS au moins
  * une : on peut se connecter sous n'importe quel poste pour montrer ce qu'il
@@ -34,7 +36,7 @@ class StaffSeeder extends AbstractModuleSeeder
 
     public function label(): string
     {
-        return "Personnel de l'hôtel";
+        return "Personnel de l'hôtel et planning des quarts";
     }
 
     public function seed(): int
@@ -109,6 +111,10 @@ class StaffSeeder extends AbstractModuleSeeder
             }
         }
 
+        $this->resetUserCache();
+        $this->completerChefsEquipes($equipes);
+        $crees += $this->planningDesQuarts($s['staff'] ?? [], $departements);
+
         return $crees;
     }
 
@@ -157,11 +163,148 @@ class StaffSeeder extends AbstractModuleSeeder
             $equipes[$equipe['name']] = $this->insertOnce(
                 'housekeeping_teams',
                 ['name' => $equipe['name']],
-                array_merge(['color' => $equipe['color'], 'is_active' => true], $this->timestamps())
+                array_merge([
+                    'code'      => $equipe['code'] ?? null,
+                    'notes'     => $equipe['notes'] ?? null,
+                    'is_active' => true,
+                ], $this->timestamps())
             );
         }
 
         return $equipes;
+    }
+
+    /** Affecte le code et le responsable (leader_id) des équipes créées par le jeu. */
+    private function completerChefsEquipes(array $equipes): void
+    {
+        if (!$this->tableExists('housekeeping_teams') || !$this->columnExists('housekeeping_teams', 'leader_id')) {
+            return;
+        }
+
+        foreach ($this->data['operations']['housekeeping_teams'] ?? [] as $equipe) {
+            $id = $equipes[$equipe['name']] ?? null;
+            if ($id === null) {
+                continue;
+            }
+
+            $leaderId = !empty($equipe['leader_email'])
+                ? $this->userIdByEmail($equipe['leader_email'], false)
+                : null;
+
+            $stmt = $this->pdo->prepare(
+                'UPDATE housekeeping_teams
+                 SET code = COALESCE(code, ?),
+                     notes = COALESCE(notes, ?),
+                     leader_id = COALESCE(leader_id, ?)
+                 WHERE id = ?'
+            );
+            $stmt->execute([$equipe['code'] ?? null, $equipe['notes'] ?? null, $leaderId, $id]);
+        }
+    }
+
+    /**
+     * Planning des quarts de la semaine en cours (Lundi -> Dimanche) pour les
+     * départements à quarts accueillant du personnel de démonstration.
+     */
+    private function planningDesQuarts(array $staff, array $departements): int
+    {
+        if (
+            !$this->tableExists('shift_weeks')
+            || !$this->tableExists('shift_assignments')
+            || !$this->tableExists('work_regimes')
+            || !$this->tableExists('work_shifts')
+            || !$this->columnExists('work_regimes', 'mode')
+            || !$this->columnExists('departments', 'work_regime_id')
+            || !$this->columnExists('work_shifts', 'work_regime_id')
+        ) {
+            return 0;
+        }
+
+        $regimeParDept = $this->pdo->query('SELECT id, work_regime_id FROM departments')->fetchAll(\PDO::FETCH_KEY_PAIR);
+        $regimeDefaut  = $this->pdo->query('SELECT id FROM work_regimes WHERE is_default = true AND is_active = true ORDER BY id LIMIT 1')->fetchColumn();
+        $regimesFixes  = $this->pdo->query("SELECT id FROM work_regimes WHERE mode = 'fixed'")->fetchAll(\PDO::FETCH_COLUMN);
+        $regimesFixes  = array_map('intval', $regimesFixes);
+
+        $quartsParRegime = [];
+        foreach ($this->pdo->query('SELECT id, work_regime_id, name FROM work_shifts WHERE is_active = true ORDER BY sort_order, starts_at, id')->fetchAll(\PDO::FETCH_ASSOC) as $ws) {
+            $quartsParRegime[(int) $ws['work_regime_id']][] = ['id' => (int) $ws['id'], 'name' => $ws['name']];
+        }
+
+        $lundiTs   = strtotime('-' . ((int) date('N') - 1) . ' days', strtotime('today'));
+        $lundi     = date('Y-m-d', $lundiTs);
+        $managerId = $this->userIdByEmail('jean-paul.mbida@' . self::DOMAINE);
+        $crees     = 0;
+
+        // Regrouper le personnel démo par département.
+        $membresParDept = [];
+        foreach ($staff as $personne) {
+            $slug = $personne['department'] ?? null;
+            if ($slug === null || !isset($departements[$slug])) {
+                continue;
+            }
+            $uid = $this->userIdByEmail($personne['email'], false);
+            if ($uid === null) {
+                continue;
+            }
+            $membresParDept[(int) $departements[$slug]][] = ['id' => $uid, 'personne' => $personne];
+        }
+
+        foreach ($membresParDept as $deptId => $membres) {
+            $regimeId = (int) ($regimeParDept[$deptId] ?: $regimeDefaut ?: 0);
+            if ($regimeId === 0 || in_array($regimeId, $regimesFixes, true)) {
+                // Les services à horaire fixe (Direction, Finance, Qualité) se pré-remplissent d'office.
+                continue;
+            }
+
+            $quarts = $quartsParRegime[$regimeId] ?? [];
+            if ($quarts === []) {
+                continue;
+            }
+
+            $quartJour = $quarts[0]['id'];
+            $quartNuit = $quarts[1]['id'] ?? $quartJour;
+
+            $semaineAvant = $this->findId('shift_weeks', ['department_id' => $deptId, 'week_start' => $lundi]);
+            if ($semaineAvant === null) {
+                $this->insert('shift_weeks', array_merge([
+                    'department_id' => $deptId,
+                    'week_start'    => $lundi,
+                    'published_at'  => $this->now(),
+                    'published_by'  => $managerId,
+                    'sent'          => $this->json([]),
+                ], $this->timestamps()));
+                $crees++;
+            }
+
+            foreach ($membres as $idx => $m) {
+                $estNuit = str_contains(mb_strtolower($m['personne']['title'] ?? ''), 'nuit');
+                $shiftId = $estNuit ? $quartNuit : $quartJour;
+
+                for ($jour = 0; $jour < 7; $jour++) {
+                    // 1 jour de repos hebdomadaire rotatif (aucune assignation ce jour-là).
+                    if (($idx + $jour) % 7 === 6) {
+                        continue;
+                    }
+
+                    $dateStr = date('Y-m-d', strtotime("+{$jour} days", $lundiTs));
+                    if ($this->findId('shift_assignments', ['user_id' => $m['id'], 'date' => $dateStr, 'work_shift_id' => $shiftId]) !== null) {
+                        continue;
+                    }
+
+                    $this->insert('shift_assignments', array_merge([
+                        'user_id'       => $m['id'],
+                        'work_shift_id' => $shiftId,
+                        'department_id' => $deptId,
+                        'date'          => $dateStr,
+                        'assigned_by'   => $managerId,
+                        'source'        => 'manual',
+                    ], $this->timestamps()));
+                    $crees++;
+                }
+            }
+        }
+
+        return $crees;
     }
 
     /** Le premier restaurant actif, où travaille l'équipe de salle et de cuisine. */

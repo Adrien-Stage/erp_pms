@@ -13,10 +13,6 @@ image applicative, ni redéploiement**. On modifie un JSON de ce dossier, et
 l'installation suivante en tient compte — y compris sur un établissement déjà en
 service.
 
-L'alternative — un seeder embarqué dans `wetchah_app` — aurait figé les données
-dans l'image : toute correction de contenu aurait imposé un build et une mise à
-jour de chaque établissement.
-
 ## Structure
 
 ```
@@ -24,11 +20,11 @@ demo/
 ├── README.md          ce fichier
 ├── manifest.json      ordre d'exécution et module requis par étape
 ├── data/              le contenu, éditable sans toucher au code
-│   ├── people.json        noms, villes, nationalités (clients)
-│   ├── hotel.json         catégories et numéros de chambres
-│   ├── restaurant.json    catégories et plats de la carte
-│   ├── shop.json          rayons et articles de la boutique
-│   ├── operations.json    équipes, fournisseurs, stock, charges, partenaires
+│   ├── people.json        noms, villes, nationalités (clients), sources
+│   ├── hotel.json         catégories, chambres, prestations, formules, fiches coûts
+│   ├── restaurant.json    carte, garde-manger, fiches recettes et banquets
+│   ├── shop.json          rayons, articles et seuils de réassort boutique
+│   ├── operations.json    équipes, fournisseurs, 77 articles stock, dépôts, mini-bars, charges, partenaires, budget
 │   └── staff.json         personnel de l'hôtel : équipe, poste, rôle, département, mot de passe
 ├── Registre.php       ce que le jeu a créé, que la purge retire
 ├── Purger.php         la purge
@@ -46,87 +42,66 @@ demo/
 Les classes sont autochargées en PSR-4 sous le préfixe `Demo\` (voir
 `composer.json`).
 
-## Contrat d'une classe de seeder
+## Contrat monétaire
 
-Chaque seeder étend `AbstractModuleSeeder` et implémente :
-
-- `module(): ?string` — le module qui doit être actif pour que l'étape tourne.
-  `null` = socle, toujours installé.
-- `label(): string` — ce qui s'affiche dans le journal d'installation.
-- `seed(): int` — insère et renvoie le nombre d'enregistrements créés.
-
-Les insertions passent par les aides du parent (`insert()`, `exists()`,
-`table()`), qui utilisent des requêtes préparées.
+Tous les montants saisis dans `demo/data/*.json` (tarifs chambres, prestations,
+formules, carte restaurant, garde-manger, banquets, boutique, coûts d'articles,
+fiches coûts, charges et budget) sont exprimés **en FCFA**. Les seeders les
+convertissent systématiquement en **centimes** (`* 100`) à l'insertion, en
+conformité avec les conventions de `wetchah_app`.
 
 ## Idempotence et registre
 
 Rien n'est jamais inséré deux fois : chaque seeder cherche d'abord la ligne
 (`insertOnce`). Relancer l'installation complète les manques sans créer de
-doublon. C'est ce qui permet de rejouer l'action après l'ajout d'un module.
+doublon.
 
 Chaque ligne que le jeu **crée** est inscrite dans la table `demo_records` de
 l'établissement (table, id), dans la même transaction (voir `Demo\Registre`).
-Ce que le jeu a seulement retrouvé n'y figure pas. Les lignes transactionnelles
-portent en plus un marqueur :
+Les entités préexistantes de l'hôtel portant le même code ou numéro (ex. catégorie
+`STD` « Standard » ou chambres existantes) ne sont jamais écrasées ni inscrites.
 
 | Table | Marqueur |
 |---|---|
 | `customers` | `notes` = `[demo] Client de démonstration` |
 | `bookings` | `booking_number` préfixé `DEMO-` |
+| `group_bookings` | `group_code` préfixé `DEMO-GRP-` |
 | `shop_orders` | `order_number` préfixé `DEMO-V` |
+| `restaurant_banquets` | `reference` préfixée `DEMO-BQ-` |
+| `maintenance_requests` | `reference` préfixée `DIT-DEMO-` |
+| `stock_requisitions` | `number` préfixé `DM-DEMO-` |
+| `purchase_requests` | `number` préfixé `DA-DEMO-` |
+| `purchase_orders` | `number` préfixé `BC-DEMO-` |
 | commandes restaurant, affectations, charges | `notes` commence par `[demo]` |
-| `stock_items`, `shop_products`, `partner_organizations` | référence préfixée `DEMO-` |
+| `stock_items`, `shop_products`, `partner_organizations` | référence/SKU/code préfixé `DEMO-` |
 | `users` | adresse sur le domaine réservé `demo.wetchah.test` |
 
 ## Purge
 
 La purge retire tout ce que le jeu a créé, et rien d'autre (`Demo\Purger`) :
 
-1. le transactionnel marqué et ce qui en dérive — folios, paiements, factures,
-   lignes de commande —, même produit après coup par l'application ;
-2. les comptes du personnel, avec leurs rôles, équipes et spécialités ;
-3. tout le registre, à rebours de l'installation : chambres, catégories, carte,
-   rayons, articles, fournisseurs, familles, unités, équipes, partenaires,
-   clients, rattachements.
+1. le transactionnel marqué et ce qui en dérive (ventes, commandes & banquets,
+   interventions techniques, demandes/bons d'achat, réservations & groupe,
+   folios, paiements, factures, affectations de ménage, charges, discussions) ;
+2. les comptes du personnel (`@demo.wetchah.test`), avec leurs rôles, équipes,
+   quarts et spécialités ;
+3. tout le registre `demo_records`, à rebours de l'installation (lignes mini-bar,
+   recettes, garde-manger, dépôts, fiches coûts, budget, stock, catalogue,
+   clients, chambres).
 
-Une ligne du jeu que des données réelles citent encore reste en place (une
-chambre de démonstration qui porte une vraie réservation) et reste inscrite :
-une purge suivante la retirera. Toutes les clés étrangères de la base sont
-lues, une table ajoutée par l'application est donc couverte d'office.
-
-Un établissement installé avant le registre y est inscrit à la première
-installation ou purge suivante : marqueurs, et noms du jeu pour le catalogue.
-
-## Volume
-
-Environ **20 enregistrements par module**, réglable dans `manifest.json`
-(`volume`). Les relations sont respectées : une réservation pointe vers un client
-et une chambre réellement créés, une ligne de folio vers sa réservation.
+Une ligne du jeu que des données réelles citent encore (par exemple un fournisseur
+ou un article de stock repris sur un bon de commande réel) reste en place et
+reste inscrite jusqu'à ne plus être citée.
 
 ## Ce que le jeu ne crée jamais
 
 - **Aucun rôle, aucun administrateur** : les rôles viennent du référentiel de
   l'application, l'administrateur du provisioning.
 - **Aucune écriture comptable** (`journal_entries`, `fiscal_years`) : ces tables
-  portent des soldes que l'application calcule elle-même. Y injecter des lignes
-  fausserait les états financiers sans moyen simple de revenir en arrière.
+  portent des soldes que l'application calcule elle-même.
 
 ## Le personnel de démonstration
 
-`staff.json` décrit le personnel de l'hôtel : chaque service a au moins deux
-personnes, chaque rôle du PMS au moins une. On peut ainsi se connecter sous
-n'importe quel poste pour montrer ce qu'il voit et ce qu'il fait. La fiche de
-l'établissement, onglet Paramètres, en donne la liste : équipe, personne,
-identifiant, rôle, département, ce que le rôle permet, et le mot de passe.
-
-- **Un seul mot de passe pour tous** (`password` dans `staff.json`). Relancer
-  l'installation le remet sur les comptes existants et les réactive.
-- **Adresses sur `demo.wetchah.test`**, domaine réservé : aucun courrier ne
-  part, et c'est le marqueur de la purge (`StaffSeeder::DOMAINE`).
-- **Un rôle par personne** : aucun cumul que la séparation des tâches refuserait.
-- **La purge supprime les comptes.** Celui que des données d'exploitation citent
-  est désactivé, et son mot de passe remplacé par un tirage que personne ne
-  connaît.
-
-Ce mot de passe est connu : ces comptes sont réservés aux établissements de
-démonstration ou de formation, à purger avant toute mise en service réelle.
+`staff.json` décrit le personnel de l'hôtel (45 comptes sur `@demo.wetchah.test`,
+mot de passe commun `Test@2026`, planifié sur la semaine en cours pour les
+services à quarts).
