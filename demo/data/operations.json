@@ -1,12 +1,12 @@
 {
-    "_comment": "Exploitation : ménage, achats, stock, charges et partenaires. Montants en FCFA. Chaque article nomme ses fournisseurs avec leur prix, le premier étant le fournisseur habituel ; la catégorie d'un fournisseur est une clé de Supplier::CATEGORIES.",
+    "_comment": "Exploitation : ménage, achats, stock, dépôts, mini-bars, maintenance, charges, partenaires, budget et discussions. Montants en FCFA.",
     "housekeeping_teams": [
-        { "name": "Équipe Étage 1", "color": "#3B82F6" },
-        { "name": "Équipe Étage 2", "color": "#10B981" },
-        { "name": "Équipe Étages supérieurs", "color": "#F59E0B" },
-        { "name": "Équipe Parties communes", "color": "#8B5CF6" }
+        { "name": "Équipe Étage 1",          "code": "HK-E1",  "leader_email": "bernadette.atangana@demo.wetchah.test", "notes": "Chambres 101 à 106 (1er étage)" },
+        { "name": "Équipe Étage 2",          "code": "HK-E2",  "leader_email": "bernadette.atangana@demo.wetchah.test", "notes": "Chambres 201 à 206 (2e étage)" },
+        { "name": "Équipe Étages supérieurs","code": "HK-SUP", "leader_email": "felicite.owona@demo.wetchah.test",      "notes": "Suites et chambres des 3e et 4e étages" },
+        { "name": "Équipe Parties communes", "code": "HK-PC",  "leader_email": "felicite.owona@demo.wetchah.test",      "notes": "Hall, restaurant, piscine et abords" }
     ],
-    "assignment_types": ["daily_cleaning", "departure_cleaning", "deep_cleaning", "inspection"],
+    "assignment_types": ["depart", "recouche"],
     "assignment_statuses": ["completed", "completed", "completed", "in_progress", "pending"],
 
     "suppliers": [
@@ -74,16 +74,18 @@
         { "name": "Eau minérale 1,5 L", "category": "EAUX MINERALES", "unit": "bouteille", "price": 400, "min": 120, "suppliers": [["Brasseries du Cameroun", 400], ["Dépôt de boissons Bonabéri", 425]] },
         { "name": "Eau minérale 50 cl", "category": "EAUX MINERALES", "unit": "bouteille", "price": 300, "min": 200, "suppliers": [["Brasseries du Cameroun", 300], ["Dépôt de boissons Bonabéri", 325]] },
         { "name": "Eau gazeuse 1 L", "category": "EAUX MINERALES", "unit": "bouteille", "price": 900, "min": 48, "suppliers": [["Brasseries du Cameroun", 900], ["Dépôt de boissons Bonabéri", 950]] },
+        { "name": "Jus de mangue 33 cl", "category": "EAUX MINERALES", "unit": "bouteille", "price": 600, "min": 48, "suppliers": [["Brasseries du Cameroun", 600], ["Dépôt de boissons Bonabéri", 650]] },
+        { "name": "Bière locale 33 cl", "category": "EAUX MINERALES", "unit": "bouteille", "price": 650, "min": 48, "suppliers": [["Brasseries du Cameroun", 650], ["Dépôt de boissons Bonabéri", 700]] },
         { "name": "Détergent multi-surfaces 5 L", "category": "ENTRETIEN", "unit": "bidon", "price": 6500, "min": 10, "suppliers": [["Hygiène Pro Services", 6500], ["Cash & Carry Bonanjo", 7075]] },
         { "name": "Eau de javel 2 L", "category": "ENTRETIEN", "unit": "bidon", "price": 1800, "min": 20, "suppliers": [["Hygiène Pro Services", 1800], ["Cash & Carry Bonanjo", 1950]] },
         { "name": "Liquide vaisselle 5 L", "category": "ENTRETIEN", "unit": "bidon", "price": 5500, "min": 8, "suppliers": [["Hygiène Pro Services", 5500], ["Cash & Carry Bonanjo", 6000]] },
         { "name": "Sacs poubelle 100 L", "category": "ENTRETIEN", "unit": "rouleau", "price": 2500, "min": 30, "suppliers": [["Hygiène Pro Services", 2500], ["Quincaillerie du Centre", 2700]] },
         { "name": "Papier toilette (paquet de 12)", "category": "ENTRETIEN", "unit": "paquet", "price": 3500, "min": 20, "suppliers": [["Hygiène Pro Services", 3500], ["Cash & Carry Bonanjo", 3700]] },
         { "name": "Riz parfumé 25 kg", "category": "EPICERIE", "unit": "sac", "price": 22000, "min": 4, "suppliers": [["Mboppi Distribution", 22000], ["Cash & Carry Bonanjo", 23750]] },
-        { "name": "Huile végétale 5 L", "category": "EPICERIE", "unit": "bidon", "price": 9000, "min": 6, "suppliers": [["Mboppi Distribution", 9000], ["Cash & Carry Bonanjo", 9725]] },
+        { "name": "Huile végétale 5 L", "category": "EPICERIE", "unit": "bidon", "price": 9000, "min": 6, "stock": 0, "suppliers": [["Mboppi Distribution", 9000], ["Cash & Carry Bonanjo", 9725]] },
         { "name": "Sucre en morceaux 1 kg", "category": "EPICERIE", "unit": "paquet", "price": 1100, "min": 20, "suppliers": [["Mboppi Distribution", 1100], ["Cash & Carry Bonanjo", 1200]] },
         { "name": "Farine de blé 50 kg", "category": "EPICERIE", "unit": "sac", "price": 28000, "min": 2, "suppliers": [["Mboppi Distribution", 28000], ["Cash & Carry Bonanjo", 30250]] },
-        { "name": "Café moulu 1 kg", "category": "EPICERIE", "unit": "paquet", "price": 7500, "min": 6, "suppliers": [["Mboppi Distribution", 7500], ["Cash & Carry Bonanjo", 8100]] },
+        { "name": "Café moulu 1 kg", "category": "EPICERIE", "unit": "paquet", "price": 7500, "min": 6, "stock": 2, "suppliers": [["Mboppi Distribution", 7500], ["Cash & Carry Bonanjo", 8100]] },
         { "name": "Sel fin 1 kg", "category": "EPICERIE", "unit": "paquet", "price": 300, "min": 10, "suppliers": [["Mboppi Distribution", 300], ["Cash & Carry Bonanjo", 325]] },
         { "name": "Ramette de papier A4", "category": "FOURNITURES DE BUREAU", "unit": "paquet", "price": 3500, "min": 20, "suppliers": [["Papeterie Bureau Plus", 3500], ["Cash & Carry Bonanjo", 3850]] },
         { "name": "Stylos à bille bleus (boîte de 50)", "category": "FOURNITURES DE BUREAU", "unit": "boîte", "price": 4500, "min": 4, "suppliers": [["Papeterie Bureau Plus", 4500], ["Cash & Carry Bonanjo", 5050]] },
@@ -110,9 +112,9 @@
         { "name": "Œufs de caille (boîte de 24)", "category": "OEUFS", "unit": "boîte", "price": 2500, "min": 4, "suppliers": [["Ferme avicole de la Sanaga", 2500]] },
         { "name": "Capitaine frais", "category": "POISSONS", "unit": "kg", "price": 5000, "min": 5, "suppliers": [["Pêcherie du Wouri", 5000]] },
         { "name": "Bar entier", "category": "POISSONS", "unit": "kg", "price": 4500, "min": 5, "suppliers": [["Pêcherie du Wouri", 4500]] },
-        { "name": "Crevettes", "category": "POISSONS", "unit": "kg", "price": 8000, "min": 3, "suppliers": [["Pêcherie du Wouri", 8000]] },
+        { "name": "Crevettes", "category": "POISSONS", "unit": "kg", "price": 8000, "min": 3, "stock": 1, "suppliers": [["Pêcherie du Wouri", 8000]] },
         { "name": "Maquereau congelé (carton de 20 kg)", "category": "POISSONS", "unit": "carton", "price": 28000, "min": 2, "suppliers": [["Pêcherie du Wouri", 28000]] },
-        { "name": "Savonnette d'accueil 25 g", "category": "PRODUITS D'ACCUEIL", "unit": "pièce", "price": 300, "min": 200, "suppliers": [["Hygiène Pro Services", 300]] },
+        { "name": "Savonnette d'accueil 25 g", "category": "PRODUITS D'ACCUEIL", "unit": "pièce", "price": 300, "min": 200, "stock": 80, "suppliers": [["Hygiène Pro Services", 300]] },
         { "name": "Shampoing 30 ml", "category": "PRODUITS D'ACCUEIL", "unit": "flacon", "price": 400, "min": 200, "suppliers": [["Hygiène Pro Services", 400]] },
         { "name": "Kit dentaire", "category": "PRODUITS D'ACCUEIL", "unit": "pièce", "price": 500, "min": 100, "suppliers": [["Hygiène Pro Services", 500]] },
         { "name": "Bonnet de douche", "category": "PRODUITS D'ACCUEIL", "unit": "pièce", "price": 150, "min": 100, "suppliers": [["Hygiène Pro Services", 150]] },
@@ -136,35 +138,96 @@
         { "name": "Gigot de mouton", "category": "VIANDES ROUGES", "unit": "kg", "price": 6500, "min": 3, "suppliers": [["Boucherie Moderne Akwa", 6500]] }
     ],
 
-    "expense_categories": ["Énergie", "Eau", "Télécommunications", "Entretien", "Salaires", "Marketing", "Transport", "Assurance", "Fournitures", "Maintenance"],
+    "service_stores": [
+        {
+            "name": "Dépôt Étages & Mini-bars",
+            "department": "housekeeping",
+            "stocks": [
+                { "stock_item": "Eau minérale 50 cl",       "quantity": 60 },
+                { "stock_item": "Jus de mangue 33 cl",      "quantity": 40 },
+                { "stock_item": "Bière locale 33 cl",       "quantity": 40 },
+                { "stock_item": "Biscuits sablés 200 g",    "quantity": 24 },
+                { "stock_item": "Gaufrettes 150 g",         "quantity": 24 },
+                { "stock_item": "Savonnette d'accueil 25 g","quantity": 100 },
+                { "stock_item": "Shampoing 30 ml",          "quantity": 100 }
+            ]
+        },
+        {
+            "name": "Dépôt Maintenance & Technique",
+            "department": "technique",
+            "stocks": [
+                { "stock_item": "Ampoule LED 9 W",                          "quantity": 25 },
+                { "stock_item": "Piles AA pour télécommandes (paquet de 4)","quantity": 15 }
+            ]
+        }
+    ],
+
+    "minibar": {
+        "articles": [
+            { "stock_item": "Eau minérale 50 cl",    "name": "Eau minérale 50 cl",    "price": 1000 },
+            { "stock_item": "Jus de mangue 33 cl",   "name": "Jus de mangue 33 cl",   "price": 1500 },
+            { "stock_item": "Bière locale 33 cl",    "name": "Bière locale 33 cl",    "price": 1500 },
+            { "stock_item": "Biscuits sablés 200 g", "name": "Biscuits sablés 200 g", "price": 1500 },
+            { "stock_item": "Gaufrettes 150 g",      "name": "Gaufrettes 150 g",      "price": 1200 }
+        ],
+        "standards": {
+            "SUP":   { "Eau minérale 50 cl": 2, "Jus de mangue 33 cl": 2, "Bière locale 33 cl": 2, "Biscuits sablés 200 g": 1 },
+            "SJR":   { "Eau minérale 50 cl": 2, "Jus de mangue 33 cl": 2, "Bière locale 33 cl": 2, "Biscuits sablés 200 g": 1, "Gaufrettes 150 g": 1 },
+            "SPRES": { "Eau minérale 50 cl": 4, "Jus de mangue 33 cl": 4, "Bière locale 33 cl": 4, "Biscuits sablés 200 g": 2, "Gaufrettes 150 g": 2 }
+        }
+    },
+
     "expenses": [
-        { "category": "Énergie",            "label": "Facture ENEO — électricité",        "amount": 485000 },
-        { "category": "Eau",                "label": "Facture CAMWATER",                  "amount": 132000 },
-        { "category": "Télécommunications", "label": "Abonnement fibre et téléphonie",    "amount": 95000 },
-        { "category": "Entretien",          "label": "Nettoyage des façades",             "amount": 150000 },
-        { "category": "Maintenance",        "label": "Entretien groupe électrogène",      "amount": 210000 },
-        { "category": "Maintenance",        "label": "Révision climatiseurs",             "amount": 175000 },
-        { "category": "Marketing",          "label": "Campagne réseaux sociaux",          "amount": 120000 },
-        { "category": "Marketing",          "label": "Impression brochures",              "amount": 65000 },
-        { "category": "Transport",          "label": "Carburant navette clients",         "amount": 180000 },
-        { "category": "Assurance",          "label": "Prime multirisque trimestrielle",   "amount": 340000 },
-        { "category": "Fournitures",        "label": "Réassort produits d'accueil",       "amount": 95000 },
-        { "category": "Entretien",          "label": "Traitement de la piscine",          "amount": 88000 },
-        { "category": "Énergie",            "label": "Recharge gaz cuisine",              "amount": 72000 },
-        { "category": "Maintenance",        "label": "Réparation ascenseur",              "amount": 450000 },
-        { "category": "Transport",          "label": "Entretien véhicule de service",     "amount": 130000 },
-        { "category": "Fournitures",        "label": "Achat linge de rechange",           "amount": 260000 },
-        { "category": "Télécommunications", "label": "Renouvellement licences logiciels", "amount": 145000 },
-        { "category": "Entretien",          "label": "Élagage et jardinage",              "amount": 78000 },
-        { "category": "Marketing",          "label": "Photographies des chambres",        "amount": 200000 },
-        { "category": "Maintenance",        "label": "Contrôle installation incendie",    "amount": 165000 }
+        { "category": "electricity", "label": "Facture ENEO — électricité",        "amount": 485000 },
+        { "category": "water",       "label": "Facture CAMWATER",                  "amount": 132000 },
+        { "category": "other",       "label": "Abonnement fibre et téléphonie",    "amount": 95000 },
+        { "category": "maintenance", "label": "Nettoyage des façades",             "amount": 150000 },
+        { "category": "maintenance", "label": "Entretien groupe électrogène",      "amount": 210000 },
+        { "category": "maintenance", "label": "Révision climatiseurs",             "amount": 175000 },
+        { "category": "other",       "label": "Campagne réseaux sociaux",          "amount": 120000 },
+        { "category": "purchase",    "label": "Impression brochures",              "amount": 65000 },
+        { "category": "transport",   "label": "Carburant navette clients",         "amount": 180000 },
+        { "category": "other",       "label": "Prime multirisque trimestrielle",   "amount": 340000 },
+        { "category": "purchase",    "label": "Réassort produits d'accueil",       "amount": 95000 },
+        { "category": "maintenance", "label": "Traitement de la piscine",          "amount": 88000 },
+        { "category": "purchase",    "label": "Recharge gaz cuisine",              "amount": 72000 },
+        { "category": "maintenance", "label": "Réparation ascenseur",              "amount": 450000 },
+        { "category": "transport",   "label": "Entretien véhicule de service",     "amount": 130000 },
+        { "category": "purchase",    "label": "Achat linge de rechange",           "amount": 260000 },
+        { "category": "other",       "label": "Renouvellement licences logiciels", "amount": 145000 },
+        { "category": "maintenance", "label": "Élagage et jardinage",              "amount": 78000 },
+        { "category": "other",       "label": "Photographies des chambres",        "amount": 200000 },
+        { "category": "maintenance", "label": "Contrôle installation incendie",    "amount": 165000 }
     ],
 
     "partner_organizations": [
-        { "name": "Agence Voyages Sanaga",   "type": "travel_agency", "discount": 10, "contact": "Mme Nkeng",  "phone": "+237 233 41 55 66" },
-        { "name": "Groupe Hôtelier Littoral","type": "corporate",     "discount": 15, "contact": "M. Owona",   "phone": "+237 699 78 12 34" },
-        { "name": "ONG Espoir Santé",        "type": "ngo",           "discount": 20, "contact": "Mme Biya",   "phone": "+237 677 90 11 22" },
-        { "name": "Chambre de Commerce",     "type": "institution",   "discount": 12, "contact": "M. Atangana","phone": "+237 233 43 77 88" },
-        { "name": "Tour Opérateur Mont Fébé","type": "travel_agency", "discount": 8,  "contact": "Mme Tagne",  "phone": "+237 694 23 45 67" }
-    ]
+        { "name": "Agence Voyages Sanaga",    "type": "travel_agency", "discount": 10, "contact": "Mme Nkeng",   "phone": "+237 233 41 55 66" },
+        { "name": "Groupe Hôtelier Littoral", "type": "corporate",     "discount": 15, "contact": "M. Owona",    "phone": "+237 699 78 12 34" },
+        { "name": "ONG Espoir Santé",         "type": "ngo",           "discount": 20, "contact": "Mme Biya",    "phone": "+237 677 90 11 22" },
+        { "name": "Chambre de Commerce",      "type": "institution",   "discount": 12, "contact": "M. Atangana", "phone": "+237 233 43 77 88" },
+        { "name": "Tour Opérateur Mont Fébé", "type": "travel_agency", "discount": 8,  "contact": "Mme Tagne",   "phone": "+237 694 23 45 67" }
+    ],
+
+    "budget_fcfa": {
+        "hebergement": {
+            "revenue": [5200000, 5000000, 5600000, 5400000, 5800000, 5500000, 6200000, 6400000, 5900000, 6000000, 6300000, 7200000],
+            "cost":    [1400000, 1380000, 1450000, 1420000, 1480000, 1450000, 1550000, 1600000, 1500000, 1520000, 1580000, 1750000]
+        },
+        "restaurant": {
+            "revenue": [2800000, 2700000, 3000000, 2950000, 3100000, 3050000, 3300000, 3400000, 3150000, 3250000, 3400000, 3900000],
+            "cost":    [1150000, 1120000, 1220000, 1200000, 1260000, 1240000, 1350000, 1380000, 1280000, 1310000, 1360000, 1550000]
+        },
+        "boutique": {
+            "revenue": [650000,  620000,  700000,  680000,  720000,  700000,  780000,  820000,  740000,  760000,  800000,  950000],
+            "cost":    [340000,  330000,  360000,  350000,  370000,  360000,  400000,  420000,  380000,  390000,  410000,  480000]
+        },
+        "economat": {
+            "revenue": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            "cost":    [1800000, 1750000, 1900000, 1850000, 1950000, 1900000, 2050000, 2100000, 1950000, 2000000, 2100000, 2400000]
+        },
+        "structure": {
+            "revenue": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            "cost":    [1650000, 1650000, 1680000, 1650000, 1700000, 1680000, 1720000, 1720000, 1700000, 1700000, 1750000, 1850000]
+        }
+    }
 }

@@ -1,28 +1,36 @@
 {
-    "_comment": "Catégories et chambres. base_price en FCFA. Les chambres sont réparties sur les catégories dans l'ordre déclaré.",
+    "_comment": "Catégories, chambres, prestations annexes, formules et fiches de coûts. Montants en FCFA (convertis en centimes par le seeder).",
     "room_types": [
         {
             "code": "STD", "name": "Chambre Standard",
             "description": "Chambre confortable avec lit double, climatisation et salle d'eau privative.",
             "base_capacity": 2, "max_capacity": 2, "base_price": 25000,
+            "size_sqm": 22, "bed_configuration": "1 grand lit double",
+            "includes_breakfast": false, "allows_extra_bed": false, "extra_bed_price": 0,
             "amenities": ["Climatisation", "Wi-Fi", "Télévision", "Salle d'eau privative"]
         },
         {
             "code": "SUP", "name": "Chambre Supérieure",
             "description": "Plus spacieuse, avec coin salon et vue dégagée sur le jardin ou la piscine.",
             "base_capacity": 2, "max_capacity": 3, "base_price": 40000,
+            "size_sqm": 30, "bed_configuration": "1 lit King Size",
+            "includes_breakfast": true, "allows_extra_bed": true, "extra_bed_price": 10000,
             "amenities": ["Climatisation", "Wi-Fi", "Télévision", "Coin salon", "Minibar"]
         },
         {
             "code": "SJR", "name": "Suite Junior",
             "description": "Chambre et salon séparés, idéale pour un séjour prolongé.",
             "base_capacity": 2, "max_capacity": 4, "base_price": 65000,
+            "size_sqm": 45, "bed_configuration": "1 lit King Size + canapé-lit",
+            "includes_breakfast": true, "allows_extra_bed": true, "extra_bed_price": 12000,
             "amenities": ["Climatisation", "Wi-Fi", "Télévision", "Salon séparé", "Minibar", "Coffre-fort"]
         },
         {
             "code": "SPRES", "name": "Suite Présidentielle",
             "description": "La plus grande, avec terrasse privée et service dédié.",
             "base_capacity": 2, "max_capacity": 4, "base_price": 120000,
+            "size_sqm": 75, "bed_configuration": "1 grand lit King + salon privé",
+            "includes_breakfast": true, "allows_extra_bed": true, "extra_bed_price": 15000,
             "amenities": ["Climatisation", "Wi-Fi", "Télévision", "Terrasse privée", "Minibar", "Coffre-fort", "Service dédié"]
         }
     ],
@@ -48,5 +56,92 @@
         { "number": "401", "floor": "4", "type": "SJR" },
         { "number": "402", "floor": "4", "type": "SPRES" },
         { "number": "403", "floor": "4", "type": "SPRES" }
-    ]
+    ],
+    "service_items": [
+        { "category": "activity",     "name": "Transfert aéroport Douala",              "description": "Aller simple en véhicule climatisé",             "price": 15000, "duration_minutes": 30 },
+        { "category": "spa",          "name": "Massage relaxant 60 min",                "description": "Séance au beurre de karité tiède",               "price": 25000, "duration_minutes": 60 },
+        { "category": "laundry",      "name": "Blanchisserie express (lot 5 pièces)",   "description": "Lavage, repassage et retour sous 4 heures",      "price": 5000,  "duration_minutes": 240 },
+        { "category": "housekeeping", "name": "Lit supplémentaire enfant",              "description": "Mise en place et linge par nuitée",              "price": 10000, "duration_minutes": null },
+        { "category": "activity",     "name": "Accès piscine & détente (visiteur)",     "description": "Journée avec serviette de bain fournie",         "price": 8000,  "duration_minutes": 480 },
+        { "category": "other",        "name": "Late check-out jusqu'à 16h",             "description": "Prolongation de la chambre selon disponibilité", "price": 12000, "duration_minutes": 240 }
+    ],
+    "room_packages": [
+        {
+            "code": "BB", "name": "Chambre & Petit Déjeuner",
+            "description": "Hébergement avec petit déjeuner buffet servi de 6h30 à 10h30.",
+            "meals": ["breakfast"], "services": [],
+            "pricing_mode": "per_person_night", "price": 5000,
+            "room_discount_type": "none", "room_discount_value": 0
+        },
+        {
+            "code": "DP", "name": "Formule Demi-Pension",
+            "description": "Petit déjeuner et dîner (plat et dessert au choix) inclus chaque jour.",
+            "meals": ["breakfast", "dinner"], "services": [],
+            "pricing_mode": "per_person_night", "price": 14000,
+            "room_discount_type": "percent", "room_discount_value": 5
+        },
+        {
+            "code": "PC", "name": "Formule Pension Complète",
+            "description": "Petit déjeuner, déjeuner et dîner inclus pour les séjours loisirs ou groupes.",
+            "meals": ["breakfast", "lunch", "dinner"], "services": [],
+            "pricing_mode": "per_person_night", "price": 22000,
+            "room_discount_type": "percent", "room_discount_value": 10
+        },
+        {
+            "code": "BIZ", "name": "Forfait Séjour Affaires",
+            "description": "Petit déjeuner inclus, blanchisserie express et transfert aéroport.",
+            "meals": ["breakfast"],
+            "services": ["Blanchisserie express (lot 5 pièces)", "Transfert aéroport Douala"],
+            "pricing_mode": "per_stay", "price": 20000,
+            "room_discount_type": "percent", "room_discount_value": 8
+        }
+    ],
+    "room_cost_sheets": {
+        "STD": {
+            "reference_occupants": 1, "avg_length_of_stay": 2.0, "fixed_cost_per_night": 4500,
+            "notes": "Fiche technique standard — occupation simple/double",
+            "items": [
+                { "category": "energy",       "label": "Électricité & climatisation",  "basis": "per_night",       "quantity": 10,   "unit_cost": 95 },
+                { "category": "water",        "label": "Eau & sanitaires",             "basis": "per_guest_night", "quantity": 0.20, "unit_cost": 500 },
+                { "category": "consumable",   "label": "Savonnette d'accueil",         "basis": "per_guest_night", "quantity": 1,    "unit_cost": 300, "stock_item": "Savonnette d'accueil 25 g" },
+                { "category": "consumable",   "label": "Shampoing & kit bain",         "basis": "per_guest_night", "quantity": 1,    "unit_cost": 400, "stock_item": "Shampoing 30 ml" },
+                { "category": "linen",        "label": "Blanchisserie linge chambre",  "basis": "per_stay",        "quantity": 1,    "unit_cost": 2500 },
+                { "category": "housekeeping", "label": "Ménage (main-d'œuvre)",        "basis": "per_night",       "quantity": 1,    "unit_cost": 1500 }
+            ]
+        },
+        "SUP": {
+            "reference_occupants": 2, "avg_length_of_stay": 2.5, "fixed_cost_per_night": 6000,
+            "notes": "Inclut petit déjeuner et dotation accueil supérieure",
+            "items": [
+                { "category": "energy",       "label": "Électricité & climatisation",  "basis": "per_night",       "quantity": 14,   "unit_cost": 95 },
+                { "category": "water",        "label": "Eau & sanitaires",             "basis": "per_guest_night", "quantity": 0.25, "unit_cost": 500 },
+                { "category": "consumable",   "label": "Savonnette d'accueil",         "basis": "per_guest_night", "quantity": 1,    "unit_cost": 300, "stock_item": "Savonnette d'accueil 25 g" },
+                { "category": "consumable",   "label": "Shampoing & kit dentaire",     "basis": "per_guest_night", "quantity": 1,    "unit_cost": 900, "stock_item": "Kit dentaire" },
+                { "category": "linen",        "label": "Blanchisserie linge supérieur","basis": "per_stay",        "quantity": 1,    "unit_cost": 3500 },
+                { "category": "housekeeping", "label": "Ménage (main-d'œuvre)",        "basis": "per_night",       "quantity": 1,    "unit_cost": 2000 }
+            ]
+        },
+        "SJR": {
+            "reference_occupants": 2, "avg_length_of_stay": 3.0, "fixed_cost_per_night": 8500,
+            "notes": "Suite Junior — salon séparé et dotation complète",
+            "items": [
+                { "category": "energy",       "label": "Électricité multi-zones",      "basis": "per_night",       "quantity": 20,   "unit_cost": 95 },
+                { "category": "water",        "label": "Eau & sanitaires",             "basis": "per_guest_night", "quantity": 0.30, "unit_cost": 500 },
+                { "category": "consumable",   "label": "Accueil & pantoufles",         "basis": "per_stay",        "quantity": 2,    "unit_cost": 800, "stock_item": "Pantoufles jetables (paire)" },
+                { "category": "linen",        "label": "Blanchisserie suite complète", "basis": "per_stay",        "quantity": 1,    "unit_cost": 5000 },
+                { "category": "housekeeping", "label": "Ménage approfondi",            "basis": "per_night",       "quantity": 1,    "unit_cost": 3000 }
+            ]
+        },
+        "SPRES": {
+            "reference_occupants": 2, "avg_length_of_stay": 3.0, "fixed_cost_per_night": 14000,
+            "notes": "Suite Présidentielle — terrasse et service dédié",
+            "items": [
+                { "category": "energy",       "label": "Électricité & terrasse",       "basis": "per_night",       "quantity": 30,   "unit_cost": 95 },
+                { "category": "water",        "label": "Eau & baignoire",              "basis": "per_guest_night", "quantity": 0.40, "unit_cost": 500 },
+                { "category": "amenity",      "label": "Chocolats couverture & fleurs","basis": "per_night",       "quantity": 1,    "unit_cost": 2500 },
+                { "category": "linen",        "label": "Blanchisserie VIP",            "basis": "per_stay",        "quantity": 1,    "unit_cost": 8000 },
+                { "category": "housekeeping", "label": "Service gouvernante dédié",    "basis": "per_night",       "quantity": 1,    "unit_cost": 5000 }
+            ]
+        }
+    }
 }

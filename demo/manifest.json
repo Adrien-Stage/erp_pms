@@ -1,22 +1,22 @@
 {
-    "version": 1,
-    "description": "Jeu de démonstration installé dans la base d'un établissement.",
+    "version": 2,
+    "description": "Jeu de démonstration complet installé dans la base d'un établissement.",
     "volume": {
         "customers": 20,
         "bookings": 20,
         "restaurant_orders": 20,
         "shop_orders": 20,
         "housekeeping_assignments": 20,
-        "stock_items": 75,
+        "stock_items": 77,
         "expenses": 20
     },
     "steps": [
-        { "seeder": "StaffSeeder",       "module": null,           "label": "Personnel de l'hôtel" },
-        { "seeder": "CustomerSeeder",    "module": null,           "label": "Clients" },
-        { "seeder": "HotelSeeder",       "module": null,           "label": "Catégories et chambres" },
-        { "seeder": "BookingSeeder",     "module": null,           "label": "Réservations, folios et paiements" },
-        { "seeder": "RestaurantSeeder",  "module": "restaurant",   "label": "Carte et commandes restaurant" },
+        { "seeder": "StaffSeeder",       "module": null,           "label": "Personnel de l'hôtel et planning des quarts" },
+        { "seeder": "CustomerSeeder",    "module": null,           "label": "Clients et pièces d'identité" },
+        { "seeder": "HotelSeeder",       "module": null,           "label": "Catégories, chambres, prestations et formules" },
+        { "seeder": "BookingSeeder",     "module": null,           "label": "Réservations, groupe, folios et paiements" },
+        { "seeder": "RestaurantSeeder",  "module": "restaurant",   "label": "Carte, garde-manger, recettes, banquets et commandes" },
         { "seeder": "ShopSeeder",        "module": "shop",         "label": "Boutique et ventes" },
-        { "seeder": "OperationsSeeder",  "module": null,           "label": "Ménage, fournisseurs, stock et charges" }
+        { "seeder": "OperationsSeeder",  "module": null,           "label": "Ménage, mini-bars, dépôts, maintenance, achats, budget et discussions" }
     ]
 }

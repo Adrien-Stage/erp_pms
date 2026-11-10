@@ -16,10 +16,6 @@ use PDO;
  * rien ne distinguerait la chambre 101 du jeu de celle que l'hôtel aurait
  * créée. Et ce que le jeu a seulement retrouvé (insertOnce sur une ligne
  * existante) n'y figure pas : la purge n'y touche pas.
- *
- * Le registre vit dans la base de l'établissement, écrit dans la même
- * transaction que les données : une installation annulée n'y laisse rien, et
- * une sauvegarde restaurée le garde aligné sur ce qu'elle contient.
  */
 final class Registre
 {
@@ -39,13 +35,6 @@ final class Registre
      */
     private const UNITES_DU_JEU = ['plateau', 'Plateau'];
 
-    /**
-     * Crée le registre s'il n'existe pas.
-     *
-     * Un établissement installé avant le registre a déjà des données de
-     * démonstration : elles y sont inscrites à cette occasion, reconnues à leur
-     * marqueur ou, pour le catalogue, à leur nom dans le jeu.
-     */
     public static function preparer(PDO $pdo, array $donnees): void
     {
         if (self::existe($pdo)) {
@@ -116,20 +105,43 @@ final class Registre
     }
 
     /**
-     * Inscrit ce qu'une installation antérieure a créé, parents d'abord : la
-     * purge parcourt le registre à rebours, les enfants partent avant eux.
-     *
-     * Les lignes transactionnelles (réservations, ventes, commandes,
-     * affectations, charges) n'y figurent pas : leur marqueur suffit, et la
-     * purge les retire avec ce qui en dérive.
+     * Inscrit ce qu'une installation antérieure au registre a créé, parents
+     * d'abord, en protégeant les entités propres à l'hôtel qui partageraient
+     * un même code ou numéro (ex. catégorie STD « Standard » sur Zingana).
      */
     private static function inscrireLesAnciennes(PDO $pdo, array $d): void
     {
         $noms = fn (array $liste, string $cle = 'name') => array_values(array_unique(array_column($liste, $cle)));
 
+        // 1. Catégories de chambres : couple exact (code, name) pour ne pas toucher
+        // une catégorie homonyme déjà posée par l'établissement (ex. STD = « Standard »).
+        if (self::table($pdo, 'room_types')) {
+            foreach ($d['hotel']['room_types'] ?? [] as $rt) {
+                $stmt = $pdo->prepare('SELECT id FROM room_types WHERE code = ? AND name = ? ORDER BY id');
+                $stmt->execute([$rt['code'], $rt['name']]);
+                foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $id) {
+                    self::noter($pdo, 'room_types', (int) $id);
+                }
+            }
+        }
+
+        // 2. Chambres : uniquement celles rattachées aux catégories du jeu, afin
+        // de ne jamais inscrire les vraies chambres de l'hôtel portant un numéro
+        // commun (101, 102, 202, 203…).
+        if (self::table($pdo, 'rooms') && !empty($d['hotel']['rooms'])) {
+            $nums = array_map('strval', $noms($d['hotel']['rooms'], 'number'));
+            $ph   = implode(', ', array_fill(0, count($nums), '?'));
+            $sql  = "SELECT r.id
+                     FROM rooms r
+                     JOIN " . self::TABLE . " reg ON reg.table_name = 'room_types' AND reg.record_id = r.room_type_id
+                     WHERE r.number::text IN ({$ph})
+                     ORDER BY r.id";
+            foreach (self::ids($pdo, $sql, $nums) as $id) {
+                self::noter($pdo, 'rooms', $id);
+            }
+        }
+
         $regles = [
-            ['room_types', 'code', $noms($d['hotel']['room_types'] ?? [], 'code')],
-            ['rooms', 'number', array_map('strval', $noms($d['hotel']['rooms'] ?? [], 'number'))],
             ['customers', 'notes', [CustomerSeeder::MARQUEUR]],
             ['partner_organizations', 'code LIKE', 'DEMO-P%'],
             ['shop_categories', 'name', $noms($d['shop']['categories'] ?? [])],

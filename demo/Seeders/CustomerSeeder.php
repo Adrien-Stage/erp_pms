@@ -6,7 +6,7 @@ namespace Demo\Seeders;
  * Les clients — socle de tout le reste.
  *
  * Réservations, folios, commandes restaurant et ventes boutique pointent tous
- * vers eux : cette étape passe donc en premier.
+ * vers eux : cette étape passe donc avant toute transaction.
  */
 class CustomerSeeder extends AbstractModuleSeeder
 {
@@ -20,42 +20,53 @@ class CustomerSeeder extends AbstractModuleSeeder
 
     public function label(): string
     {
-        return 'Clients';
+        return "Clients et pièces d'identité";
     }
 
     public function seed(): int
     {
-        $p       = $this->data['people'];
-        $vise    = $this->volume['customers'] ?? 20;
-        $crees   = 0;
+        $p     = $this->data['people'];
+        $vise  = $this->volume['customers'] ?? 20;
+        $crees = 0;
 
         for ($i = 0; $i < $vise; $i++) {
             $prenom = $this->cycle($p['first_names'], $i);
             $nom    = $this->cycle($p['last_names'], $i * 3 + 1);
             $email  = $this->emailDe($prenom, $nom, $i);
+            $docType = $this->cycle($p['id_types'], $i);
+            $docNum  = 'DEMO-' . str_pad((string) (100000 + $i * 7), 6, '0', STR_PAD_LEFT);
 
             // L'adresse est la clé naturelle : deux homonymes restent deux
             // clients, mais relancer l'installation n'en recrée aucun.
-            if ($this->findId('customers', ['email' => $email]) !== null) {
+            $existant = $this->findId('customers', ['email' => $email]);
+            if ($existant !== null) {
+                if ($this->columnExists('customers', 'id_document_type')) {
+                    $this->pdo->prepare(
+                        'UPDATE customers
+                         SET id_document_type = COALESCE(id_document_type, ?),
+                             id_document_number = COALESCE(id_document_number, ?)
+                         WHERE id = ? AND notes = ?'
+                    )->execute([$docType, $docNum, $existant, self::MARQUEUR]);
+                }
                 continue;
             }
 
             $this->insert('customers', array_merge([
-                'first_name'     => $prenom,
-                'last_name'      => $nom,
-                'email'          => $email,
-                'phone'          => $this->telephone($i),
-                'city'           => $this->cycle($p['cities'], $i * 2),
-                'country'        => $this->cycle($p['countries'], $i),
-                'nationality'    => $this->cycle($p['countries'], $i),
-                'id_type'        => $this->cycle($p['id_types'], $i),
-                'id_number'      => 'DEMO' . str_pad((string) (100000 + $i * 7), 6, '0', STR_PAD_LEFT),
-                'loyalty_level'  => $this->cycle($p['loyalty_levels'], $i),
-                'loyalty_points' => ($i * 137) % 5000,
-                'is_vip'         => $i % 9 === 0,
-                'notes'          => self::MARQUEUR,
-                'created_at'     => $this->jours(-180 + $i * 5),
-                'updated_at'     => $this->now(),
+                'first_name'         => $prenom,
+                'last_name'          => $nom,
+                'email'              => $email,
+                'phone'              => $this->telephone($i),
+                'city'               => $this->cycle($p['cities'], $i * 2),
+                'country'            => $this->cycle($p['countries'], $i),
+                'nationality'        => $this->cycle($p['countries'], $i),
+                'id_document_type'   => $docType,
+                'id_document_number' => $docNum,
+                'loyalty_level'      => $this->cycle($p['loyalty_levels'], $i),
+                'loyalty_points'     => ($i * 137) % 5000,
+                'is_vip'             => $i % 9 === 0,
+                'notes'              => self::MARQUEUR,
+                'created_at'         => $this->jours(-180 + $i * 5),
+                'updated_at'         => $this->now(),
             ]));
 
             $crees++;
@@ -66,7 +77,7 @@ class CustomerSeeder extends AbstractModuleSeeder
 
     private function emailDe(string $prenom, string $nom, int $i): string
     {
-        $normalise = fn(string $s) => strtolower(preg_replace(
+        $normalise = fn (string $s) => strtolower(preg_replace(
             '/[^a-z]/i',
             '',
             iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s) ?: $s

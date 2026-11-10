@@ -1,37 +1,178 @@
 {
-    "_comment": "Carte du restaurant. Prix en FCFA. meal_services : breakfast, lunch, dinner.",
+    "_comment": "Carte du restaurant, garde-manger, fiches recettes et banquets. Prix et coûts en FCFA (convertis en centimes par le seeder). meal_services : breakfast, lunch, dinner.",
     "categories": [
-        { "name": "Petit déjeuner", "description": "Servi de 6h30 à 10h30" },
-        { "name": "Entrées",        "description": "Pour ouvrir le repas" },
+        { "name": "Petit déjeuner",   "description": "Servi de 6h30 à 10h30" },
+        { "name": "Entrées",          "description": "Pour ouvrir le repas" },
         { "name": "Plats du terroir", "description": "Spécialités camerounaises" },
-        { "name": "Grillades",      "description": "Au feu de bois" },
-        { "name": "Desserts",       "description": "Faits maison" },
-        { "name": "Boissons",       "description": "Fraîches et chaudes" }
+        { "name": "Grillades",        "description": "Au feu de bois" },
+        { "name": "Desserts",         "description": "Faits maison" },
+        { "name": "Boissons",         "description": "Fraîches et chaudes" }
     ],
     "items": [
-        { "name": "Omelette nature",        "category": "Petit déjeuner",   "price": 2500,  "meals": ["breakfast"] },
-        { "name": "Bouillie de maïs",       "category": "Petit déjeuner",   "price": 1500,  "meals": ["breakfast"] },
-        { "name": "Beignets haricots",      "category": "Petit déjeuner",   "price": 2000,  "meals": ["breakfast"] },
-        { "name": "Pain perdu",             "category": "Petit déjeuner",   "price": 2500,  "meals": ["breakfast"] },
-        { "name": "Salade de crudités",     "category": "Entrées",          "price": 3000,  "meals": ["lunch", "dinner"] },
-        { "name": "Avocat crevettes",       "category": "Entrées",          "price": 4500,  "meals": ["lunch", "dinner"] },
-        { "name": "Velouté de courge",      "category": "Entrées",          "price": 3000,  "meals": ["dinner"] },
-        { "name": "Ndolè aux crevettes",    "category": "Plats du terroir", "price": 7000,  "meals": ["lunch", "dinner"] },
-        { "name": "Poulet DG",              "category": "Plats du terroir", "price": 8000,  "meals": ["lunch", "dinner"] },
-        { "name": "Eru et water fufu",      "category": "Plats du terroir", "price": 6000,  "meals": ["lunch"] },
-        { "name": "Sauce arachide",         "category": "Plats du terroir", "price": 5500,  "meals": ["lunch", "dinner"] },
-        { "name": "Koki de haricots",       "category": "Plats du terroir", "price": 4500,  "meals": ["lunch"] },
-        { "name": "Poisson braisé",         "category": "Grillades",        "price": 9000,  "meals": ["lunch", "dinner"] },
-        { "name": "Brochettes de bœuf",     "category": "Grillades",        "price": 6500,  "meals": ["lunch", "dinner"] },
-        { "name": "Poulet braisé entier",   "category": "Grillades",        "price": 10000, "meals": ["dinner"] },
-        { "name": "Côtes de porc grillées", "category": "Grillades",        "price": 7500,  "meals": ["dinner"] },
-        { "name": "Salade de fruits",       "category": "Desserts",         "price": 2500,  "meals": ["lunch", "dinner"] },
-        { "name": "Gâteau au chocolat",     "category": "Desserts",         "price": 3000,  "meals": ["lunch", "dinner"] },
-        { "name": "Jus de gingembre",       "category": "Boissons",         "price": 1500,  "meals": ["breakfast", "lunch", "dinner"] },
-        { "name": "Café expresso",          "category": "Boissons",         "price": 1000,  "meals": ["breakfast", "lunch", "dinner"] },
-        { "name": "Eau minérale 1,5 L",     "category": "Boissons",         "price": 1000,  "meals": ["breakfast", "lunch", "dinner"] },
-        { "name": "Bière locale",           "category": "Boissons",         "price": 1500,  "meals": ["lunch", "dinner"] }
+        { "name": "Omelette nature",        "category": "Petit déjeuner",   "type": "food",  "price": 2500,  "meals": ["breakfast"] },
+        { "name": "Bouillie de maïs",       "category": "Petit déjeuner",   "type": "food",  "price": 1500,  "meals": ["breakfast"] },
+        { "name": "Beignets haricots",      "category": "Petit déjeuner",   "type": "food",  "price": 2000,  "meals": ["breakfast"] },
+        { "name": "Pain perdu",             "category": "Petit déjeuner",   "type": "food",  "price": 2500,  "meals": ["breakfast"] },
+        { "name": "Salade de crudités",     "category": "Entrées",          "type": "food",  "price": 3000,  "meals": ["lunch", "dinner"] },
+        { "name": "Avocat crevettes",       "category": "Entrées",          "type": "food",  "price": 4500,  "meals": ["lunch", "dinner"] },
+        { "name": "Velouté de courge",      "category": "Entrées",          "type": "food",  "price": 3000,  "meals": ["dinner"] },
+        { "name": "Ndolè aux crevettes",    "category": "Plats du terroir", "type": "food",  "price": 7000,  "meals": ["lunch", "dinner"] },
+        { "name": "Poulet DG",              "category": "Plats du terroir", "type": "food",  "price": 8000,  "meals": ["lunch", "dinner"] },
+        { "name": "Eru et water fufu",      "category": "Plats du terroir", "type": "food",  "price": 6000,  "meals": ["lunch"] },
+        { "name": "Sauce arachide",         "category": "Plats du terroir", "type": "food",  "price": 5500,  "meals": ["lunch", "dinner"] },
+        { "name": "Koki de haricots",       "category": "Plats du terroir", "type": "food",  "price": 4500,  "meals": ["lunch"] },
+        { "name": "Poisson braisé",         "category": "Grillades",        "type": "food",  "price": 9000,  "meals": ["lunch", "dinner"] },
+        { "name": "Brochettes de bœuf",     "category": "Grillades",        "type": "food",  "price": 6500,  "meals": ["lunch", "dinner"] },
+        { "name": "Poulet braisé entier",   "category": "Grillades",        "type": "food",  "price": 10000, "meals": ["dinner"] },
+        { "name": "Côtes de porc grillées", "category": "Grillades",        "type": "food",  "price": 7500,  "meals": ["dinner"] },
+        { "name": "Salade de fruits",       "category": "Desserts",         "type": "food",  "price": 2500,  "meals": ["lunch", "dinner"] },
+        { "name": "Gâteau au chocolat",     "category": "Desserts",         "type": "food",  "price": 3000,  "meals": ["lunch", "dinner"] },
+        { "name": "Jus de gingembre",       "category": "Boissons",         "type": "drink", "price": 1500,  "meals": ["breakfast", "lunch", "dinner"] },
+        { "name": "Café expresso",          "category": "Boissons",         "type": "drink", "price": 1000,  "meals": ["breakfast", "lunch", "dinner"] },
+        { "name": "Eau minérale 1,5 L",     "category": "Boissons",         "type": "drink", "price": 1000,  "meals": ["breakfast", "lunch", "dinner"] },
+        { "name": "Bière locale",           "category": "Boissons",         "type": "drink", "price": 1500,  "meals": ["lunch", "dinner"] }
     ],
     "tables": ["T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8", "Terrasse 1", "Terrasse 2"],
-    "order_statuses": ["served", "served", "served", "ready", "preparing", "pending"]
+    "order_statuses": ["served", "served", "served", "ready", "preparing", "pending"],
+
+    "pantry_categories": [
+        "Viandes & Volailles",
+        "Poissons & Fruits de mer",
+        "Légumes & Feuilles",
+        "Épicerie & Huiles",
+        "Boissons",
+        "Préparations maison"
+    ],
+    "pantry_items": [
+        { "name": "Poulet découpé (cuisine)", "category": "Viandes & Volailles",      "unit": "kg",        "current_stock": 18,  "min_stock": 6,   "cost_price": 2800, "stock_item": "Cuisses de poulet" },
+        { "name": "Filet de bœuf paré",       "category": "Viandes & Volailles",      "unit": "kg",        "current_stock": 10,  "min_stock": 4,   "cost_price": 7000, "stock_item": "Filet de bœuf" },
+        { "name": "Bar frais nettoyé",        "category": "Poissons & Fruits de mer", "unit": "kg",        "current_stock": 12,  "min_stock": 4,   "cost_price": 4500, "stock_item": "Bar entier" },
+        { "name": "Crevettes décortiquées",   "category": "Poissons & Fruits de mer", "unit": "kg",        "current_stock": 4,   "min_stock": 2,   "cost_price": 8000, "stock_item": "Crevettes" },
+        { "name": "Arachides grillées moulues","category": "Épicerie & Huiles",       "unit": "kg",        "current_stock": 8,   "min_stock": 3,   "cost_price": 1500, "stock_item": "Arachides décortiquées" },
+        { "name": "Huile de friture",         "category": "Épicerie & Huiles",        "unit": "l",         "current_stock": 10,  "min_stock": 5,   "cost_price": 1800, "stock_item": "Huile végétale 5 L", "purchase_conversion": 5, "purchase_price": 9000 },
+        { "name": "Tomates fraîches",         "category": "Légumes & Feuilles",       "unit": "kg",        "current_stock": 12,  "min_stock": 5,   "cost_price": 800,  "stock_item": "Tomates" },
+        { "name": "Oignons émincés",          "category": "Légumes & Feuilles",       "unit": "kg",        "current_stock": 10,  "min_stock": 4,   "cost_price": 700,  "stock_item": "Oignons" },
+        { "name": "Carottes & légumes DG",    "category": "Légumes & Feuilles",       "unit": "kg",        "current_stock": 8,   "min_stock": 3,   "cost_price": 900,  "stock_item": "Carottes" },
+        { "name": "Œufs frais (unité)",       "category": "Épicerie & Huiles",        "unit": "pcs",       "current_stock": 90,  "min_stock": 30,  "cost_price": 100,  "stock_item": "Œufs frais (plateau de 30)", "purchase_conversion": 30, "purchase_price": 3000 },
+        { "name": "Beurre de cuisson",        "category": "Épicerie & Huiles",        "unit": "g",         "current_stock": 2500,"min_stock": 1000,"cost_price": 6,    "stock_item": "Beurre doux 250 g", "purchase_conversion": 250, "purchase_price": 1500 },
+        { "name": "Base sauce ndolé",         "category": "Préparations maison",      "unit": "portion",   "current_stock": 15,  "min_stock": 5,   "cost_price": 950,  "is_prepared": true }
+    ],
+    "recipes": [
+        {
+            "name": "Préparation — Base sauce ndolé (lot de 20 portions)",
+            "type": "prep",
+            "produces_pantry_item": "Base sauce ndolé",
+            "yield_quantity": 20,
+            "notes": "Cuisson lente des feuilles lavées et pâte d'arachide avec oignons et huile.",
+            "lines": [
+                { "pantry_item": "Arachides grillées moulues", "quantity": 2.5, "waste_percent": 5 },
+                { "pantry_item": "Oignons émincés",            "quantity": 1.5, "waste_percent": 10 },
+                { "pantry_item": "Huile de friture",           "quantity": 1.2, "waste_percent": 0 }
+            ]
+        },
+        {
+            "name": "Ndolè aux crevettes",
+            "type": "dish",
+            "menu_item": "Ndolè aux crevettes",
+            "yield_quantity": 1,
+            "notes": "1 portion : base ndolé maison + crevettes poêlées.",
+            "lines": [
+                { "pantry_item": "Base sauce ndolé",       "quantity": 1,    "waste_percent": 0 },
+                { "pantry_item": "Crevettes décortiquées", "quantity": 0.18, "waste_percent": 10 },
+                { "pantry_item": "Huile de friture",       "quantity": 0.05, "waste_percent": 0 }
+            ]
+        },
+        {
+            "name": "Poulet DG",
+            "type": "dish",
+            "menu_item": "Poulet DG",
+            "yield_quantity": 1,
+            "notes": "1 portion servie en cocotte avec plantains et légumes sautés.",
+            "lines": [
+                { "pantry_item": "Poulet découpé (cuisine)", "quantity": 0.35, "waste_percent": 5 },
+                { "pantry_item": "Carottes & légumes DG",    "quantity": 0.15, "waste_percent": 10 },
+                { "pantry_item": "Tomates fraîches",         "quantity": 0.10, "waste_percent": 5 },
+                { "pantry_item": "Huile de friture",         "quantity": 0.10, "waste_percent": 0 }
+            ]
+        },
+        {
+            "name": "Poisson braisé",
+            "type": "dish",
+            "menu_item": "Poisson braisé",
+            "yield_quantity": 1,
+            "notes": "Bar entier mariné aux épices et braisé au feu de bois.",
+            "lines": [
+                { "pantry_item": "Bar frais nettoyé", "quantity": 0.45, "waste_percent": 12 },
+                { "pantry_item": "Tomates fraîches",  "quantity": 0.10, "waste_percent": 5 },
+                { "pantry_item": "Oignons émincés",   "quantity": 0.08, "waste_percent": 5 }
+            ]
+        },
+        {
+            "name": "Omelette nature",
+            "type": "dish",
+            "menu_item": "Omelette nature",
+            "yield_quantity": 1,
+            "notes": "3 œufs battus, cuisson au beurre doux.",
+            "lines": [
+                { "pantry_item": "Œufs frais (unité)", "quantity": 3,  "waste_percent": 0 },
+                { "pantry_item": "Beurre de cuisson",  "quantity": 15, "waste_percent": 0 }
+            ]
+        }
+    ],
+    "banquets": [
+        {
+            "reference": "DEMO-BQ-0001",
+            "title": "Dîner de Gala — Groupe Hôtelier Littoral",
+            "client_name": "Groupe Hôtelier Littoral",
+            "client_phone": "+237 699 78 12 34",
+            "client_email": "evenements@gh-littoral.example",
+            "event_date_offset": 5,
+            "start_time": "19:00",
+            "end_time": "23:00",
+            "covers": 45,
+            "price_per_cover": 15000,
+            "extras_amount": 120000,
+            "deposit_required": 300000,
+            "paid_amount": 300000,
+            "payment_method": "transfer",
+            "status": "confirme",
+            "source": "restaurant",
+            "menu": "Cocktail de bienvenue suivi d'un dîner assis gastronomique camerounais.",
+            "menu_items": [
+                { "course": "aperitif", "name": "Jus de gingembre",       "unit_price": 1500, "notes": "Cocktail de bienvenue" },
+                { "course": "entree",   "name": "Avocat crevettes",       "unit_price": 4500, "notes": "Assiette froide" },
+                { "course": "plat",     "name": "Ndolè aux crevettes",    "unit_price": 7000, "notes": "Option terroir" },
+                { "course": "plat",     "name": "Poulet DG",              "unit_price": 8000, "notes": "Option classique" },
+                { "course": "dessert",  "name": "Gâteau au chocolat",     "unit_price": 3000, "notes": "Pièce montée" },
+                { "course": "boisson",  "name": "Eau minérale 1,5 L",     "unit_price": 1000, "notes": "1 bouteille / 2 pers." }
+            ],
+            "notes": "[demo] Banquet confirmé avec acompte encaissé."
+        },
+        {
+            "reference": "DEMO-BQ-0002",
+            "title": "Déjeuner Séminaire ONG Espoir Santé",
+            "client_name": "ONG Espoir Santé",
+            "client_phone": "+237 677 90 11 22",
+            "client_email": "coordination@espoir-sante.example",
+            "event_date_offset": 3,
+            "start_time": "12:00",
+            "end_time": "15:00",
+            "covers": 25,
+            "price_per_cover": 10000,
+            "extras_amount": 40000,
+            "deposit_required": 100000,
+            "paid_amount": 0,
+            "payment_method": null,
+            "status": "devis",
+            "source": "sur_place",
+            "menu": "Déjeuner buffet de travail avec pause café incluse.",
+            "menu_items": [
+                { "course": "entree",         "name": "Salade de crudités",   "unit_price": 3000, "notes": "Vinaigrette citron" },
+                { "course": "plat",           "name": "Poisson braisé",       "unit_price": 9000, "notes": "Buffet chaud" },
+                { "course": "accompagnement", "name": "Plantains mûrs rôtis", "unit_price": 1500, "notes": "Accompagnement libre" },
+                { "course": "boisson",        "name": "Café expresso",        "unit_price": 1000, "notes": "Pause café incluse" }
+            ],
+            "notes": "[demo] Devis en attente d'encaissement d'acompte pour confirmation."
+        }
+    ]
 }

@@ -1,5 +1,5 @@
 {
-    "_comment": "Vivier de noms servant à composer les clients. Noms d'Afrique centrale et de l'Ouest, cohérents avec la clientèle des établissements desservis.",
+    "_comment": "Vivier de noms servant à composer les clients. id_types utilise les clés de Customer::id_document_type.",
     "first_names": [
         "Aline", "Brice", "Cynthia", "Daniel", "Estelle", "Franck", "Grâce", "Hervé",
         "Ingrid", "Joseph", "Larissa", "Martial", "Nadège", "Olivier", "Pascaline",
@@ -16,7 +16,7 @@
         "Ngaoundéré", "Buéa", "Dschang", "Libreville", "Abidjan", "Dakar", "Cotonou"
     ],
     "countries": ["CM", "CM", "CM", "CM", "CI", "SN", "GA", "FR", "BE", "NG"],
-    "id_types": ["cni", "passport", "residence_permit"],
+    "id_types": ["id_card", "passport", "driver_license"],
     "loyalty_levels": ["bronze", "bronze", "silver", "silver", "gold", "platinum"],
-    "sources": ["direct", "phone", "walk_in", "email", "ota_bookingcom"]
+    "sources": ["direct", "phone", "walk_in", "email", "ota_bookingcom", "website"]
 }

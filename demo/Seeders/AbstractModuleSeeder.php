@@ -21,6 +21,9 @@ abstract class AbstractModuleSeeder
     /** Colonnes réellement présentes, par table — mémoïsé par instance. */
     private array $colonnesConnues = [];
 
+    /** Cache des utilisateurs résolus par email en minuscules. */
+    private ?array $utilisateursParEmail = null;
+
     /** Le registre des lignes créées existe-t-il ? Absent hors installation. */
     private ?bool $registre = null;
 
@@ -58,7 +61,7 @@ abstract class AbstractModuleSeeder
 
         $colonnes = array_keys($valeurs);
         $trous    = implode(', ', array_fill(0, count($colonnes), '?'));
-        $liste    = implode(', ', array_map(fn($c) => '"' . $c . '"', $colonnes));
+        $liste    = implode(', ', array_map(fn ($c) => '"' . $c . '"', $colonnes));
 
         $stmt = $this->pdo->prepare(
             "INSERT INTO \"{$table}\" ({$liste}) VALUES ({$trous}) RETURNING id"
@@ -96,10 +99,21 @@ abstract class AbstractModuleSeeder
             return null;
         }
 
-        $ou = implode(' AND ', array_map(fn($c) => '"' . $c . '" = ?', array_keys($reperes)));
+        $clauses = [];
+        $params  = [];
 
+        foreach ($reperes as $col => $val) {
+            if ($val === null) {
+                $clauses[] = "\"{$col}\" IS NULL";
+            } else {
+                $clauses[] = "\"{$col}\" = ?";
+                $params[]  = $val;
+            }
+        }
+
+        $ou   = implode(' AND ', $clauses);
         $stmt = $this->pdo->prepare("SELECT id FROM \"{$table}\" WHERE {$ou} LIMIT 1");
-        $this->lier($stmt, array_values($reperes));
+        $this->lier($stmt, $params);
         $stmt->execute();
         $id = $stmt->fetchColumn();
 
@@ -109,7 +123,7 @@ abstract class AbstractModuleSeeder
     /** Nombre de lignes d'une table, filtré par une clause facultative. */
     protected function count(string $table, string $where = '', array $params = []): int
     {
-        $sql = "SELECT COUNT(*) FROM \"{$table}\"" . ($where !== '' ? " WHERE {$where}" : '');
+        $sql  = "SELECT COUNT(*) FROM \"{$table}\"" . ($where !== '' ? " WHERE {$where}" : '');
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute($params);
 
@@ -119,7 +133,7 @@ abstract class AbstractModuleSeeder
     /** Ids d'une table, dans l'ordre d'insertion. */
     protected function ids(string $table, string $where = '', array $params = [], int $limit = 500): array
     {
-        $sql = "SELECT id FROM \"{$table}\"" . ($where !== '' ? " WHERE {$where}" : '') . " ORDER BY id LIMIT {$limit}";
+        $sql  = "SELECT id FROM \"{$table}\"" . ($where !== '' ? " WHERE {$where}" : '') . " ORDER BY id LIMIT {$limit}";
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute($params);
 
@@ -137,12 +151,40 @@ abstract class AbstractModuleSeeder
         return $stmt->fetchColumn() !== false;
     }
 
+    /** La colonne existe-t-elle dans la table ? */
+    protected function columnExists(string $table, string $colonne): bool
+    {
+        return in_array($colonne, $this->colonnes($table), true);
+    }
+
     /** Un id d'utilisateur pour les colonnes de traçabilité, ou null. */
     protected function anyUserId(): ?int
     {
         $id = $this->pdo->query('SELECT id FROM users ORDER BY id LIMIT 1')->fetchColumn();
 
         return $id === false ? null : (int) $id;
+    }
+
+    /** Id d'un utilisateur retrouvé par email (insensible à la casse), ou repli. */
+    protected function userIdByEmail(string $email, bool $fallbackAny = true): ?int
+    {
+        if ($this->utilisateursParEmail === null) {
+            $this->utilisateursParEmail = [];
+            if ($this->tableExists('users')) {
+                foreach ($this->pdo->query('SELECT lower(email) AS email, id FROM users')->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                    $this->utilisateursParEmail[$row['email']] = (int) $row['id'];
+                }
+            }
+        }
+
+        $id = $this->utilisateursParEmail[strtolower($email)] ?? null;
+
+        return $id ?? ($fallbackAny ? $this->anyUserId() : null);
+    }
+
+    protected function resetUserCache(): void
+    {
+        $this->utilisateursParEmail = null;
     }
 
     // ── Aides de composition ─────────────────────────────────────────────────
@@ -175,6 +217,11 @@ abstract class AbstractModuleSeeder
         $quand ??= $this->now();
 
         return ['created_at' => $quand, 'updated_at' => $quand];
+    }
+
+    protected function json(array $valeur): string
+    {
+        return json_encode($valeur, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     // ── Interne ──────────────────────────────────────────────────────────────
@@ -212,8 +259,8 @@ abstract class AbstractModuleSeeder
     {
         if (!isset($this->colonnesConnues[$table])) {
             $stmt = $this->pdo->prepare(
-                'SELECT column_name FROM information_schema.columns
-                 WHERE table_schema = \'public\' AND table_name = ?'
+                "SELECT column_name FROM information_schema.columns
+                 WHERE table_schema = 'public' AND table_name = ?"
             );
             $stmt->execute([$table]);
             $this->colonnesConnues[$table] = $stmt->fetchAll(PDO::FETCH_COLUMN);
