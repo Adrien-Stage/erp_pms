@@ -65,12 +65,13 @@ test('tous les fichiers JSON de demo/data sont valides et couvrent le contrat m�
     expect($numerosChambres)->toContain('101', '102', '204', '205', '304', '305', '401', '402', '403');
     expect($donnees['hotel']['room_cost_sheets'])->toHaveKeys(['STD', 'SUP', 'SJR', 'SPRES']);
 
-    // Restaurant : 6 catégories, 22 articles, 12 articles garde-manger, 5 recettes, 2 banquets avec menus structurés.
+    // Restaurant : 6 catégories, 26 articles (dont 4 boissons bar), 12 articles garde-manger, 5 recettes, 2 banquets, fiches bar.
     expect($donnees['restaurant']['categories'])->toHaveCount(6)
-        ->and($donnees['restaurant']['items'])->toHaveCount(22)
+        ->and($donnees['restaurant']['items'])->toHaveCount(26)
         ->and($donnees['restaurant']['pantry_items'])->toHaveCount(12)
         ->and($donnees['restaurant']['recipes'])->toHaveCount(5)
-        ->and($donnees['restaurant']['banquets'])->toHaveCount(2);
+        ->and($donnees['restaurant']['banquets'])->toHaveCount(2)
+        ->and($donnees['restaurant']['bar_drinks'])->toHaveCount(5);
 
     foreach ($donnees['restaurant']['banquets'] as $banquet) {
         expect($banquet['reference'])->toStartWith('DEMO-BQ-')
@@ -86,8 +87,8 @@ test('tous les fichiers JSON de demo/data sont valides et couvrent le contrat m�
     ));
     expect(count($alertesBoutique))->toBeGreaterThanOrEqual(2);
 
-    // Exploitation : 77 articles stock dont les alertes attendues + 20 charges alignées sur Expense::CATEGORIES + 5 partenaires.
-    expect($donnees['operations']['stock_items'])->toHaveCount(77)
+    // Exploitation : 79 articles stock (dont Rhum et Whisky bar) dont les alertes attendues + 20 charges alignées sur Expense::CATEGORIES + 5 partenaires.
+    expect($donnees['operations']['stock_items'])->toHaveCount(79)
         ->and($donnees['operations']['expenses'])->toHaveCount(20)
         ->and($donnees['operations']['partner_organizations'])->toHaveCount(5);
 

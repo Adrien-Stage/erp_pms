@@ -111,6 +111,9 @@ class RestaurantSeeder extends AbstractModuleSeeder
         // --- Garde-manger & fiches techniques / préparations maison ---
         $crees += $this->gardeMangerEtRecettes($r, $platsParNom, $posId);
 
+        // --- Fiches boissons du Bar (doses, cocktails, mocktails, bouteilles) ---
+        $crees += $this->barDrinks($r, $platsParNom, $posId);
+
         // --- Banquets (1 confirmé avec acompte, 1 devis à transformer) ---
         if ($posId !== null) {
             $crees += $this->banquets($r, $platsParNom, $posId);
@@ -169,6 +172,10 @@ class RestaurantSeeder extends AbstractModuleSeeder
                 $choisis = ['Ndolè aux crevettes', 'Bière locale', 'Gâteau au chocolat'];
             } elseif ($i === 2) {
                 $choisis = ['Poisson braisé', 'Eau minérale 1,5 L'];
+            } elseif ($i === 3) {
+                $choisis = ['Côtes de porc grillées', 'Verre de rhum (5 cl)'];
+            } elseif ($i === 4) {
+                $choisis = ['Poulet braisé entier', 'Cocktail Daiquiri'];
             } else {
                 $choisis = [];
             }
@@ -248,6 +255,7 @@ class RestaurantSeeder extends AbstractModuleSeeder
             }
 
             foreach ($lignes as $ligne) {
+                $isBeverage = ($ligne['plat']['type'] ?? 'food') === 'drink';
                 $this->insert('restaurant_customer_order_items', array_merge([
                     'restaurant_customer_order_id' => $commandeId,
                     'menu_item_id'                 => $ligne['plat']['id'],
@@ -255,7 +263,8 @@ class RestaurantSeeder extends AbstractModuleSeeder
                     'quantity'                     => $ligne['qte'],
                     'unit_price'                   => $ligne['plat']['price'],
                     'total_price'                  => $ligne['plat']['price'] * $ligne['qte'],
-                    'station'                      => ($ligne['plat']['type'] ?? 'food') === 'drink' ? 'bar' : 'cuisine',
+                    'station'                      => $isBeverage ? 'bar' : 'cuisine',
+                    'is_beverage'                  => $isBeverage,
                     'ready_at'                     => in_array($statut, ['ready', 'served'], true) ? $quand : null,
                 ], $this->timestamps($quand)));
                 $crees++;
@@ -387,6 +396,81 @@ class RestaurantSeeder extends AbstractModuleSeeder
                 if ($ligneAvant === null) {
                     $crees++;
                 }
+            }
+        }
+
+        return $crees;
+    }
+
+    /** Fiches techniques des boissons du bar (bouteilles entières, verres de 5 cl, cocktails et mocktails). */
+    private function barDrinks(array $r, array $platsParNom, ?int $posId): int
+    {
+        if (!$this->tableExists('restaurant_bar_drinks') || empty($r['bar_drinks'])) {
+            return 0;
+        }
+
+        $stockParNom = [];
+        if ($this->tableExists('stock_items')) {
+            foreach ($this->pdo->query('SELECT id, name FROM stock_items')->fetchAll(\PDO::FETCH_ASSOC) as $s) {
+                $stockParNom[$s['name']] = (int) $s['id'];
+            }
+        }
+
+        $crees = 0;
+
+        foreach ($r['bar_drinks'] as $bd) {
+            $plat = $platsParNom[$bd['menu_item']] ?? null;
+            if ($plat === null) {
+                continue;
+            }
+
+            $menuItemId = (int) $plat['id'];
+            $format     = $bd['format'];
+            $recipe     = in_array($format, ['cocktail', 'mocktail'], true);
+
+            $ingredients = [];
+
+            if ($recipe) {
+                foreach ($bd['ingredients'] ?? [] as $ing) {
+                    $stockId = $stockParNom[$ing['stock_item']] ?? null;
+                    if ($stockId === null) {
+                        continue;
+                    }
+                    $ingredients[] = [
+                        'stock_item_id' => $stockId,
+                        'measure'       => $ing['measure'] ?? 'ml',
+                        'quantity'      => (float) $ing['quantity'],
+                    ];
+                }
+            } else {
+                $stockId = isset($bd['stock_item']) ? ($stockParNom[$bd['stock_item']] ?? null) : null;
+                if ($stockId !== null) {
+                    $ingredients[] = [
+                        'stock_item_id' => $stockId,
+                        'measure'       => $format === 'glass' ? 'ml' : 'stock',
+                        'quantity'      => $format === 'glass' ? 50 : 1,
+                    ];
+                }
+            }
+
+            if ($ingredients === []) {
+                continue;
+            }
+
+            $avant = $this->findId('restaurant_bar_drinks', ['restaurant_menu_item_id' => $menuItemId]);
+
+            $this->insertOnce(
+                'restaurant_bar_drinks',
+                ['restaurant_menu_item_id' => $menuItemId],
+                array_merge([
+                    'format'       => $format,
+                    'ingredients'  => $this->json($ingredients),
+                    'instructions' => $bd['instructions'] ?? null,
+                ], $this->timestamps())
+            );
+
+            if ($avant === null) {
+                $crees++;
             }
         }
 

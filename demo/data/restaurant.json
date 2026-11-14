@@ -30,7 +30,11 @@
         { "name": "Jus de gingembre",       "category": "Boissons",         "type": "drink", "price": 1500,  "meals": ["breakfast", "lunch", "dinner"] },
         { "name": "Café expresso",          "category": "Boissons",         "type": "drink", "price": 1000,  "meals": ["breakfast", "lunch", "dinner"] },
         { "name": "Eau minérale 1,5 L",     "category": "Boissons",         "type": "drink", "price": 1000,  "meals": ["breakfast", "lunch", "dinner"] },
-        { "name": "Bière locale",           "category": "Boissons",         "type": "drink", "price": 1500,  "meals": ["lunch", "dinner"] }
+        { "name": "Bière locale",           "category": "Boissons",         "type": "drink", "price": 1500,  "meals": ["lunch", "dinner"] },
+        { "name": "Verre de rhum (5 cl)",   "category": "Boissons",         "type": "drink", "price": 2500,  "meals": ["lunch", "dinner"] },
+        { "name": "Cocktail Daiquiri",      "category": "Boissons",         "type": "drink", "price": 4500,  "meals": ["lunch", "dinner"] },
+        { "name": "Cocktail Planteur des îles", "category": "Boissons",     "type": "drink", "price": 5000,  "meals": ["lunch", "dinner"] },
+        { "name": "Mocktail Virgin Mojito", "category": "Boissons",         "type": "drink", "price": 3000,  "meals": ["breakfast", "lunch", "dinner"] }
     ],
     "tables": ["T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8", "Terrasse 1", "Terrasse 2"],
     "order_statuses": ["served", "served", "served", "ready", "preparing", "pending"],
@@ -173,6 +177,47 @@
                 { "course": "boisson",        "name": "Café expresso",        "unit_price": 1000, "notes": "Pause café incluse" }
             ],
             "notes": "[demo] Devis en attente d'encaissement d'acompte pour confirmation."
+        }
+    ],
+    "bar_drinks": [
+        {
+            "menu_item": "Verre de rhum (5 cl)",
+            "format": "glass",
+            "stock_item": "Rhum ambré 75 cl"
+        },
+        {
+            "menu_item": "Cocktail Daiquiri",
+            "format": "cocktail",
+            "instructions": "Frapper au shaker avec glace pilée et jus de citron vert frais. Servir filtré dans un verre à cocktail rafraîchi.",
+            "ingredients": [
+                { "stock_item": "Rhum ambré 75 cl", "measure": "ml", "quantity": 50 },
+                { "stock_item": "Sirop de sucre de canne 70 cl", "measure": "ml", "quantity": 20 }
+            ]
+        },
+        {
+            "menu_item": "Cocktail Planteur des îles",
+            "format": "cocktail",
+            "instructions": "Mélanger au shaker avec glaçons, servir dans un verre haut avec une tranche d'orange et une cerise.",
+            "ingredients": [
+                { "stock_item": "Rhum ambré 75 cl", "measure": "ml", "quantity": 50 },
+                { "stock_item": "Jus de mangue 33 cl", "measure": "ml", "quantity": 50 },
+                { "stock_item": "Sirop de grenadine 70 cl", "measure": "ml", "quantity": 20 }
+            ]
+        },
+        {
+            "menu_item": "Mocktail Virgin Mojito",
+            "format": "mocktail",
+            "instructions": "Pilonner menthe fraîche et quartiers de citron vert, ajouter les sirops et glace pilée, allonger à l'eau gazeuse.",
+            "ingredients": [
+                { "stock_item": "Sirop de menthe 70 cl", "measure": "ml", "quantity": 20 },
+                { "stock_item": "Sirop de sucre de canne 70 cl", "measure": "ml", "quantity": 10 },
+                { "stock_item": "Eau gazeuse 1 L", "measure": "ml", "quantity": 150 }
+            ]
+        },
+        {
+            "menu_item": "Bière locale",
+            "format": "bottle",
+            "stock_item": "Bière locale 33 cl"
         }
     ]
 }

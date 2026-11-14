@@ -35,6 +35,7 @@ class OperationsSeeder extends AbstractModuleSeeder
         $crees += $this->menage($o);
         $crees += $this->achats($o);
         $crees += $this->depotsEtMinibars($o);
+        $crees += $this->barBouteillesEtFiches();
         $crees += $this->maintenance();
         $crees += $this->approvisionnements($o);
         $crees += $this->fichesCoutsChambres();
@@ -492,21 +493,46 @@ class OperationsSeeder extends AbstractModuleSeeder
 
         $depotMinibarId = null;
 
+        $restoPosId = $this->tableExists('points_of_sale')
+            ? ($this->pdo->query("SELECT id FROM points_of_sale WHERE kind = 'restauration' AND is_active = true ORDER BY sort_order, id LIMIT 1")->fetchColumn() ?: null)
+            : null;
+
         if ($this->tableExists('service_stores')) {
             foreach ($o['service_stores'] ?? [] as $rang => $store) {
-                $avant   = $this->findId('service_stores', ['name' => $store['name']]);
-                $storeId = $this->insertOnce(
-                    'service_stores',
-                    ['name' => $store['name']],
-                    array_merge([
-                        'department' => $store['department'],
-                        'is_active'  => true,
-                        'sort_order' => $rang,
-                    ], $this->timestamps())
-                );
+                $isBar = ($store['restaurant_service'] ?? null) === 'bar' || ($store['department'] === 'restaurant' && str_contains(mb_strtolower($store['name']), 'bar'));
+                $storeId = null;
 
-                if ($avant === null) {
-                    $crees++;
+                if ($isBar && $restoPosId !== null && $this->columnExists('service_stores', 'point_of_sale_id')) {
+                    $storeId = $this->findId('service_stores', [
+                        'point_of_sale_id'   => (int) $restoPosId,
+                        'restaurant_service' => 'bar',
+                    ]);
+                }
+                if ($isBar && $storeId === null && $this->columnExists('service_stores', 'restaurant_service')) {
+                    $storeId = $this->findId('service_stores', ['restaurant_service' => 'bar']);
+                }
+
+                if ($storeId === null) {
+                    $avant   = $this->findId('service_stores', ['name' => $store['name']]);
+                    $storeId = $this->insertOnce(
+                        'service_stores',
+                        ['name' => $store['name']],
+                        array_merge([
+                            'department'         => $store['department'],
+                            'point_of_sale_id'   => ($store['department'] === 'restaurant' && $restoPosId !== null) ? (int) $restoPosId : null,
+                            'restaurant_service' => $store['restaurant_service'] ?? ($isBar ? 'bar' : null),
+                            'is_active'          => true,
+                            'sort_order'         => $rang,
+                        ], $this->timestamps())
+                    );
+
+                    if ($avant === null) {
+                        $crees++;
+                    }
+                } elseif ($this->columnExists('service_stores', 'restaurant_service')) {
+                    $this->pdo->prepare(
+                        "UPDATE service_stores SET restaurant_service = COALESCE(restaurant_service, 'bar'), point_of_sale_id = COALESCE(point_of_sale_id, ?) WHERE id = ?"
+                    )->execute([$restoPosId !== null ? (int) $restoPosId : null, $storeId]);
                 }
 
                 if ($store['department'] === 'housekeeping' && $depotMinibarId === null) {
@@ -520,6 +546,11 @@ class OperationsSeeder extends AbstractModuleSeeder
                             continue;
                         }
 
+                        // Si c'est du Rhum au Bar, 1 bouteille est ouverte donc 5 bouteilles fermées restent en stock
+                        $qte = ($isBar && $ligne['stock_item'] === 'Rhum ambré 75 cl' && $ligne['quantity'] > 1)
+                            ? $ligne['quantity'] - 1
+                            : $ligne['quantity'];
+
                         $avantStock = $this->findId('service_store_stocks', [
                             'service_store_id' => $storeId,
                             'stock_item_id'    => $info['id'],
@@ -529,7 +560,7 @@ class OperationsSeeder extends AbstractModuleSeeder
                             'service_store_stocks',
                             ['service_store_id' => $storeId, 'stock_item_id' => $info['id']],
                             array_merge([
-                                'current_stock' => $ligne['quantity'],
+                                'current_stock' => $qte,
                                 'average_cost'  => $info['cost'],
                             ], $this->timestamps())
                         );
@@ -677,6 +708,199 @@ class OperationsSeeder extends AbstractModuleSeeder
         $settings['minibar']['depot_id'] = $depotId;
         $this->pdo->prepare('UPDATE tenants SET settings = ? WHERE id = ?')
             ->execute([$this->json($settings), (int) $row['id']]);
+    }
+
+    /** Fiches boissons Bar, bouteille de Rhum ambré ouverte et historique des consommations. */
+    private function barBouteillesEtFiches(): int
+    {
+        $crees = 0;
+
+        $stockParNom = [];
+        if ($this->tableExists('stock_items')) {
+            foreach ($this->pdo->query('SELECT id, name, average_cost FROM stock_items')->fetchAll(\PDO::FETCH_ASSOC) as $s) {
+                $stockParNom[$s['name']] = ['id' => (int) $s['id'], 'cost' => (int) $s['average_cost']];
+            }
+        }
+
+        // 1. Fiches techniques des boissons (restaurant_bar_drinks)
+        if ($this->tableExists('restaurant_bar_drinks') && !empty($this->data['restaurant']['bar_drinks']) && $this->tableExists('restaurant_menu_items')) {
+            $menuItemsParNom = [];
+            foreach ($this->pdo->query('SELECT id, name FROM restaurant_menu_items')->fetchAll(\PDO::FETCH_ASSOC) as $m) {
+                $menuItemsParNom[$m['name']] = (int) $m['id'];
+            }
+
+            foreach ($this->data['restaurant']['bar_drinks'] as $bd) {
+                $menuItemId = $menuItemsParNom[$bd['menu_item']] ?? null;
+                if ($menuItemId === null) {
+                    continue;
+                }
+
+                $format = $bd['format'];
+                $recipe = in_array($format, ['cocktail', 'mocktail'], true);
+                $ingredients = [];
+
+                if ($recipe) {
+                    foreach ($bd['ingredients'] ?? [] as $ing) {
+                        $stockId = $stockParNom[$ing['stock_item']]['id'] ?? null;
+                        if ($stockId === null) {
+                            continue;
+                        }
+                        $ingredients[] = [
+                            'stock_item_id' => $stockId,
+                            'measure'       => $ing['measure'] ?? 'ml',
+                            'quantity'      => (float) $ing['quantity'],
+                        ];
+                    }
+                } else {
+                    $stockId = isset($bd['stock_item']) ? ($stockParNom[$bd['stock_item']]['id'] ?? null) : null;
+                    if ($stockId !== null) {
+                        $ingredients[] = [
+                            'stock_item_id' => $stockId,
+                            'measure'       => $format === 'glass' ? 'ml' : 'stock',
+                            'quantity'      => $format === 'glass' ? 50 : 1,
+                        ];
+                    }
+                }
+
+                if ($ingredients === []) {
+                    continue;
+                }
+
+                $avant = $this->findId('restaurant_bar_drinks', ['restaurant_menu_item_id' => $menuItemId]);
+                $this->insertOnce(
+                    'restaurant_bar_drinks',
+                    ['restaurant_menu_item_id' => $menuItemId],
+                    array_merge([
+                        'format'       => $format,
+                        'ingredients'  => $this->json($ingredients),
+                        'instructions' => $bd['instructions'] ?? null,
+                    ], $this->timestamps())
+                );
+
+                if ($avant === null) {
+                    $crees++;
+                }
+            }
+        }
+
+        // 2. Bouteille ouverte au Bar et traçabilité (restaurant_bar_bottles)
+        if ($this->tableExists('restaurant_bar_bottles') && $this->tableExists('service_stores')) {
+            $barStoreId = $this->pdo->query(
+                "SELECT id FROM service_stores WHERE restaurant_service = 'bar' AND is_active = true ORDER BY id LIMIT 1"
+            )->fetchColumn();
+            if (!$barStoreId) {
+                $barStoreId = $this->findId('service_stores', ['name' => 'Dépôt Bar - Restaurant']);
+            }
+
+            $rhumInfo = $stockParNom['Rhum ambré 75 cl'] ?? null;
+            $barmanId = $this->userIdByEmail('arnaud.simo@' . StaffSeeder::DOMAINE, false) ?? $this->anyUserId();
+
+            if ($barStoreId && $rhumInfo) {
+                $storeId  = (int) $barStoreId;
+                $rhumId   = (int) $rhumInfo['id'];
+                $rhumCost = (int) $rhumInfo['cost'];
+
+                $avantBtl = $this->findId('restaurant_bar_bottles', [
+                    'service_store_id' => $storeId,
+                    'stock_item_id'    => $rhumId,
+                ]);
+
+                if ($avantBtl === null) {
+                    $bottleId = $this->insert('restaurant_bar_bottles', array_merge([
+                        'service_store_id' => $storeId,
+                        'stock_item_id'    => $rhumId,
+                        'capacity_ml'      => 750,
+                        'remaining_ml'     => 680,
+                        'opening_cost'     => $rhumCost,
+                        'opened_by'        => $barmanId,
+                        'opening_key'      => '00000000-0000-4000-8000-000000000001',
+                    ], $this->timestamps($this->jours(0, '08:30:00'))));
+                    $crees++;
+
+                    // 3. Mouvements de stock / traçabilité bouteille (selon brainstorming)
+                    if ($this->tableExists('service_store_movements')) {
+                        $orderId = null;
+                        if ($this->tableExists('restaurant_customer_orders')) {
+                            $orderId = $this->pdo->query(
+                                "SELECT id FROM restaurant_customer_orders WHERE notes = '" . RestaurantSeeder::REPERE_COMMANDE . "' ORDER BY id LIMIT 1"
+                            )->fetchColumn() ?: null;
+                        }
+
+                        // Mouvement 1 : Ouverture de la bouteille (75 cl)
+                        $this->insert('service_store_movements', array_merge([
+                            'service_store_id' => $storeId,
+                            'stock_item_id'    => $rhumId,
+                            'type'             => 'out',
+                            'quantity'         => -1,
+                            'stock_after'      => 5,
+                            'unit_cost'        => $rhumCost,
+                            'stock_account'    => '311',
+                            'source_type'      => 'bar_open',
+                            'source_id'        => $bottleId,
+                            'reason'           => 'Ouverture de la bouteille',
+                            'details'          => $this->json([
+                                'bottle_id'    => $bottleId,
+                                'remaining_ml' => 750,
+                                'value_delta'  => -$rhumCost,
+                            ]),
+                            'user_id'          => $barmanId,
+                            'occurred_at'      => $this->jours(0, '08:30:00'),
+                        ], $this->timestamps($this->jours(0, '08:30:00'))));
+                        $crees++;
+
+                        // Mouvement 2 : Vente au verre (5 cl prélevés -> 70 cl restants)
+                        $this->insert('service_store_movements', array_merge([
+                            'service_store_id' => $storeId,
+                            'stock_item_id'    => $rhumId,
+                            'type'             => 'out',
+                            'quantity'         => 0,
+                            'stock_after'      => 5,
+                            'unit_cost'        => 0,
+                            'stock_account'    => '311',
+                            'source_type'      => 'bar_sale',
+                            'source_id'        => $orderId !== null ? (int) $orderId : $bottleId,
+                            'reason'           => 'Verre de rhum (5 cl)',
+                            'details'          => $this->json([
+                                'bottle_id'    => $bottleId,
+                                'volume_ml'    => -50,
+                                'remaining_ml' => 700,
+                                'value_delta'  => -80000,
+                                'sale_label'   => 'Verre de rhum (5 cl)',
+                            ]),
+                            'user_id'          => $barmanId,
+                            'occurred_at'      => $this->jours(0, '09:15:00'),
+                        ], $this->timestamps($this->jours(0, '09:15:00'))));
+                        $crees++;
+
+                        // Mouvement 3 : Prélèvement pour un cocktail (2 cl prélevés -> 68 cl restants)
+                        $this->insert('service_store_movements', array_merge([
+                            'service_store_id' => $storeId,
+                            'stock_item_id'    => $rhumId,
+                            'type'             => 'out',
+                            'quantity'         => 0,
+                            'stock_after'      => 5,
+                            'unit_cost'        => 0,
+                            'stock_account'    => '311',
+                            'source_type'      => 'bar_sale',
+                            'source_id'        => $orderId !== null ? (int) $orderId : $bottleId,
+                            'reason'           => 'Cocktail Daiquiri',
+                            'details'          => $this->json([
+                                'bottle_id'    => $bottleId,
+                                'volume_ml'    => -20,
+                                'remaining_ml' => 680,
+                                'value_delta'  => -32000,
+                                'sale_label'   => 'Cocktail Daiquiri',
+                            ]),
+                            'user_id'          => $barmanId,
+                            'occurred_at'      => $this->jours(0, '09:20:00'),
+                        ], $this->timestamps($this->jours(0, '09:20:00'))));
+                        $crees++;
+                    }
+                }
+            }
+        }
+
+        return $crees;
     }
 
     // ── Maintenance (DIT) ────────────────────────────────────────────────────
