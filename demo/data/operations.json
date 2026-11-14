@@ -76,6 +76,8 @@
         { "name": "Eau gazeuse 1 L", "category": "EAUX MINERALES", "unit": "bouteille", "price": 900, "min": 48, "suppliers": [["Brasseries du Cameroun", 900], ["Dépôt de boissons Bonabéri", 950]] },
         { "name": "Jus de mangue 33 cl", "category": "EAUX MINERALES", "unit": "bouteille", "price": 600, "min": 48, "suppliers": [["Brasseries du Cameroun", 600], ["Dépôt de boissons Bonabéri", 650]] },
         { "name": "Bière locale 33 cl", "category": "EAUX MINERALES", "unit": "bouteille", "price": 650, "min": 48, "suppliers": [["Brasseries du Cameroun", 650], ["Dépôt de boissons Bonabéri", 700]] },
+        { "name": "Rhum ambré 75 cl", "category": "EAUX MINERALES", "unit": "bouteille", "price": 12000, "min": 6, "suppliers": [["Dépôt de boissons Bonabéri", 12000], ["Brasseries du Cameroun", 12500]] },
+        { "name": "Whisky blend 75 cl", "category": "EAUX MINERALES", "unit": "bouteille", "price": 15000, "min": 4, "suppliers": [["Dépôt de boissons Bonabéri", 15000], ["Brasseries du Cameroun", 15500]] },
         { "name": "Détergent multi-surfaces 5 L", "category": "ENTRETIEN", "unit": "bidon", "price": 6500, "min": 10, "suppliers": [["Hygiène Pro Services", 6500], ["Cash & Carry Bonanjo", 7075]] },
         { "name": "Eau de javel 2 L", "category": "ENTRETIEN", "unit": "bidon", "price": 1800, "min": 20, "suppliers": [["Hygiène Pro Services", 1800], ["Cash & Carry Bonanjo", 1950]] },
         { "name": "Liquide vaisselle 5 L", "category": "ENTRETIEN", "unit": "bidon", "price": 5500, "min": 8, "suppliers": [["Hygiène Pro Services", 5500], ["Cash & Carry Bonanjo", 6000]] },
@@ -158,6 +160,22 @@
             "stocks": [
                 { "stock_item": "Ampoule LED 9 W",                          "quantity": 25 },
                 { "stock_item": "Piles AA pour télécommandes (paquet de 4)","quantity": 15 }
+            ]
+        },
+        {
+            "name": "Dépôt Bar - Restaurant",
+            "department": "restaurant",
+            "restaurant_service": "bar",
+            "stocks": [
+                { "stock_item": "Rhum ambré 75 cl",             "quantity": 6 },
+                { "stock_item": "Whisky blend 75 cl",           "quantity": 4 },
+                { "stock_item": "Bière locale 33 cl",           "quantity": 48 },
+                { "stock_item": "Eau gazeuse 1 L",              "quantity": 24 },
+                { "stock_item": "Eau minérale 50 cl",           "quantity": 48 },
+                { "stock_item": "Jus de mangue 33 cl",          "quantity": 24 },
+                { "stock_item": "Sirop de grenadine 70 cl",     "quantity": 6 },
+                { "stock_item": "Sirop de menthe 70 cl",        "quantity": 6 },
+                { "stock_item": "Sirop de sucre de canne 70 cl", "quantity": 6 }
             ]
         }
     ],

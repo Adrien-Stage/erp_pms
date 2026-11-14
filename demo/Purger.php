@@ -109,6 +109,26 @@ class Purger
             }
         }
 
+        if ($this->table('restaurant_bar_bottles')) {
+            $botIds = $this->ids(
+                "SELECT r.id FROM restaurant_bar_bottles r
+                 JOIN " . Registre::TABLE . " reg ON reg.table_name = 'restaurant_bar_bottles' AND reg.record_id = r.id"
+            );
+            if ($botIds !== []) {
+                $n += $this->supprimerPar('restaurant_bar_bottles', 'id', $botIds);
+            }
+        }
+
+        if ($this->table('service_store_movements')) {
+            $mvtIds = $this->ids(
+                "SELECT m.id FROM service_store_movements m
+                 JOIN " . Registre::TABLE . " reg ON reg.table_name = 'service_store_movements' AND reg.record_id = m.id"
+            );
+            if ($mvtIds !== []) {
+                $n += $this->supprimerPar('service_store_movements', 'id', $mvtIds);
+            }
+        }
+
         if ($n > 0) {
             $log('purge', "· Restaurant & banquets : {$n} ligne(s).", 'info');
         }
@@ -324,6 +344,8 @@ class Purger
         'shop_products'               => 'articles boutique',
         'restaurant_menu_categories'  => 'catégories de la carte',
         'restaurant_menu_items'       => 'plats',
+        'restaurant_bar_drinks'       => 'fiches boissons bar',
+        'restaurant_bar_bottles'      => 'bouteilles ouvertes au bar',
         'restaurant_pantry_categories'=> 'catégories garde-manger',
         'restaurant_pantry_items'     => 'articles garde-manger',
         'restaurant_recipes'          => 'fiches recettes',
