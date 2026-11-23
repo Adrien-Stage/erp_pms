@@ -286,7 +286,9 @@ sont celles de la pile : on ne crée **pas** de fichier `.env` dans le conteneur
 | `TENANTS_BASE_PATH` | `/var/wetchah/tenants` (§3.4) | Dossier hôte des Compose générés |
 | `TZ` | `Africa/Douala` | Fuseau |
 | `VAPID_SUBJECT`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | clés Web Push de l'éditeur | Notifications des établissements |
-| `MAIL_MAILER`, `RESEND_API_KEY`, `MAIL_FROM_ADDRESS` | messagerie | `log` suffit pour démarrer |
+| `MAIL_MAILER`, `MAIL_FROM_ADDRESS` | transport et adresse d'expédition | `log` suffit pour démarrer |
+| `RESEND_API_KEY` | clé du compte Resend | pour `MAIL_MAILER=resend` |
+| `MAIL_SCHEME`, `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD` | relais, port et identifiants SMTP | pour `MAIL_MAILER=smtp` |
 | `TRUSTED_PROXIES`, `SESSION_SECURE_COOKIE` | voir §10 | Seulement derrière un reverse proxy HTTPS |
 
 > **`TENANTS_PUBLIC_HOST` est le réglage qui distingue un serveur d'un poste.** Sans
@@ -295,7 +297,35 @@ sont celles de la pile : on ne crée **pas** de fichier `.env` dans le conteneur
 > pointent vers `localhost` — c'est-à-dire vers *le poste de l'administrateur*. Le
 > site vitrine rejetterait en outre toutes ses soumissions de formulaire.
 
-Clés VAPID (une fois pour la plateforme, à conserver) :
+### Relais SMTP Brevo
+
+Renseigner les variables dans **Environment variables** de la pile
+**wetchah-erp** dans Portainer. Avec Docker Compose en ligne de commande,
+utiliser le fichier de réglages passé à `--env-file`, généralement
+`/opt/wetchah/erp.env` si le code est dans `/opt/wetchah/wetchah_erp`.
+La clé SMTP reste dans les réglages privés du serveur.
+
+```dotenv
+MAIL_MAILER=smtp
+MAIL_SCHEME=smtp
+MAIL_HOST=smtp-relay.brevo.com
+MAIL_PORT=587
+MAIL_USERNAME=identifiant-smtp-brevo
+MAIL_PASSWORD=cle-smtp-brevo
+MAIL_FROM_ADDRESS=adresse-verifiee-dans-brevo
+```
+
+Remplacer les trois dernières valeurs par l'identifiant et la clé SMTP du
+compte Brevo, puis par l'adresse d'expédition vérifiée. Redéployer la console.
+Elle transmet ces réglages à la création d'un établissement. Pour un
+établissement existant, ouvrir sa fiche et cliquer sur **Modules → Appliquer**
+pour recréer son conteneur avec ces valeurs. Wetchah App utilise le nom de
+l'établissement comme nom d'expéditeur quand son réglage personnalisé est vide.
+Le fichier Compose généré est accessible à son propriétaire et aux administrateurs du serveur.
+
+### Clés VAPID
+
+Générer les clés une fois pour la plateforme.
 
 ```bash
 docker run --rm node:22-slim npx --yes web-push generate-vapid-keys

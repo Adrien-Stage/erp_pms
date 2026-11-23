@@ -7,6 +7,7 @@
 use App\Models\Tenant;
 use App\Services\TenantProvisioningService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 
 uses(RefreshDatabase::class);
 
@@ -35,4 +36,19 @@ test("le dossier des établissements par défaut est celui que monte le docker-c
         ->and($compose)->toContain("TENANTS_BASE_PATH: {$defaut}");
     // phpunit.xml impose un dossier de test : on lit la valeur par défaut dans le fichier de config.
     expect(file_get_contents(base_path('config/provisioning.php')))->toContain("env('TENANTS_BASE_PATH', '/var/wetchah/tenants')");
+});
+
+test("le compose régénéré protège les secrets et conserve la clé de l'établissement", function () {
+    $disque = Storage::fake('local');
+    $tenant = etablissementValide(['compose_base_path' => $disque->path('tenants')]);
+    $compose = $tenant->composePath();
+    $disque->put('tenants/.compose/' . $tenant->slug . '.yml', 'APP_KEY: "base64:cle-de-test"');
+    chmod($compose, 0644);
+
+    (new ReflectionMethod(TenantProvisioningService::class, 'generateDockerCompose'))
+        ->invoke(app(TenantProvisioningService::class), $tenant, 'ghcr.io/x/app@sha256:aaa', null, null, fn () => null);
+
+    clearstatcache(true, $compose);
+    expect(fileperms($compose) & 0777)->toBe(0600)
+        ->and(file_get_contents($compose))->toContain('APP_KEY: "base64:cle-de-test"');
 });
