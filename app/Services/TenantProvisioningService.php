@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Tenant;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
@@ -840,8 +841,11 @@ YAML;
         $yaml = "name: {$projectName}\n\nservices:\n\n" . implode("\n", $services)
             . "\nnetworks:\n  {$network}:\n    external: true\n\nvolumes:\n  meka_erp_{$tenant->slug}_pgdata:\n  meka_erp_{$tenant->slug}_storage:\n  meka_erp_{$tenant->slug}_grcdata:\n";
 
-        if (file_put_contents($composePath, $yaml) === false) {
-            throw new RuntimeException("Impossible d'écrire le fichier docker-compose : {$composePath}");
+        try {
+            // Le Compose contient des secrets, dont la clé du relais SMTP.
+            File::replace($composePath, $yaml, 0600);
+        } catch (\ErrorException $e) {
+            throw new RuntimeException("Impossible d'écrire le fichier docker-compose : {$composePath}", previous: $e);
         }
 
         $log('compose', "📄 docker-compose généré : {$composePath}", 'info');
